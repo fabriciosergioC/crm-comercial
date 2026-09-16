@@ -415,11 +415,18 @@ function getApiBaseUrl() {
     if (stored && stored.trim()) {
       return stored.trim().replace(/\/+$/, "");
     }
-    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.protocol === "file:") {
+    // Quando aberto diretamente do disco local (file://)
+    if (window.location.protocol === "file:") {
       return "http://localhost:3001/api";
     }
+    // Desenvolvimento local em porta separada (ex.: Live Server 5500)
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+      return window.location.port === "3001" ? "/api" : "http://localhost:3001/api";
+    }
+    // Na Vercel ou em produção na nuvem: usa caminho relativo /api do mesmo domínio
+    return "/api";
   }
-  return "http://localhost:3001/api";
+  return "/api";
 }
 
 let CRM_API_BASE = getApiBaseUrl();

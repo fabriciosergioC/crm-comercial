@@ -38,9 +38,13 @@ app.use('/api', routes);
 app.use(notFound);
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`[backend] API rodando em http://localhost:${PORT}/api`);
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.log('[backend] AVISO: credenciais do Supabase ausentes no .env — os endpoints de dados responderão 503 até serem configuradas.');
-  }
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`[backend] API rodando em http://localhost:${PORT}/api`);
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.log('[backend] AVISO: credenciais do Supabase ausentes no .env — os endpoints de dados responderão 503 até serem configuradas.');
+    }
+  });
+}
+
+module.exports = app;

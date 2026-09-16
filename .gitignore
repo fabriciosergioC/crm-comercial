@@ -14,6 +14,7 @@ Thumbs.db
 .env.*.local
 backend/.env
 
-# Dependências e artefatos do backend
+# Dependências e artefatos
+node_modules/
 backend/node_modules/
 backend/install.log
