@@ -1,0 +1,2875 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gestão Comercial</title>
+
+<link rel="stylesheet" href="css/style.css">
+
+<script src="js/script.js"></script>
+<script src="config.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <div id="boot-erro">
+    <div class="card">
+      <h1>Não foi possível abrir o sistema</h1>
+      <p>Aconteceu um erro inesperado ao iniciar a página. Tente recarregar. Se
+      continuar acontecendo, copie a mensagem abaixo e envie para quem te
+      ajudou a montar este arquivo.</p>
+      <pre id="boot-erro-detalhe"></pre>
+    </div>
+  </div>
+
+  <script type="text/plain" id="app-source">
+const { useState, useMemo, useReducer, useEffect, useRef, useCallback, createContext, useContext } = React;
+
+/* Ícones desenhados à mão (sem depender de nenhuma biblioteca externa de
+   ícones) — os nomes batem exatamente com os usados no resto do arquivo. */
+function Icon({ size = 16, style, className, children, viewBox = "0 0 24 24" }) {
+  return (
+    <svg width={size} height={size} viewBox={viewBox} fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+      {children}
+    </svg>
+  );
+}
+const Search = (p) => <Icon {...p}><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></Icon>;
+const Bell = (p) => <Icon {...p}><path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6" /><path d="M10 20a2 2 0 0 0 4 0" /></Icon>;
+const Plus = (p) => <Icon {...p}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></Icon>;
+const ChevronRight = (p) => <Icon {...p}><polyline points="9 6 15 12 9 18" /></Icon>;
+const Clock = (p) => <Icon {...p}><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 16 14" /></Icon>;
+const AlertTriangle = (p) => <Icon {...p}><path d="M12 3 2 20h20L12 3z" /><line x1="12" y1="10" x2="12" y2="13.5" /><line x1="12" y1="16.5" x2="12" y2="16.6" /></Icon>;
+const CheckCircle2 = (p) => <Icon {...p}><circle cx="12" cy="12" r="9" /><polyline points="8 12 11 15 16 9" /></Icon>;
+const X = (p) => <Icon {...p}><line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" /></Icon>;
+const Phone = (p) => <Icon {...p}><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" /></Icon>;
+const MessageCircle = (p) => <Icon {...p}><path d="M4 12a8 8 0 1 1 3 6.2L4 20l1.8-3A8 8 0 0 1 4 12z" /></Icon>;
+const Instagram = (p) => <Icon {...p}><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><line x1="17.5" y1="6.5" x2="17.51" y2="6.5" strokeWidth="2.5" /></Icon>;
+const Mail = (p) => <Icon {...p}><rect x="3" y="5" width="18" height="14" rx="2" /><polyline points="3 7 12 13 21 7" /></Icon>;
+const MapPin = (p) => <Icon {...p}><path d="M12 21s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z" /><circle cx="12" cy="9" r="2.3" /></Icon>;
+const Building2 = (p) => <Icon {...p}><rect x="4" y="3" width="10" height="18" /><rect x="14" y="9" width="6" height="12" /><line x1="7" y1="7" x2="7.01" y2="7" /><line x1="11" y1="7" x2="11.01" y2="7" /><line x1="7" y1="11" x2="7.01" y2="11" /><line x1="11" y1="11" x2="11.01" y2="11" /><line x1="7" y1="15" x2="7.01" y2="15" /><line x1="11" y1="15" x2="11.01" y2="15" /></Icon>;
+const MoreHorizontal = (p) => <Icon {...p}><line x1="5" y1="12" x2="5.01" y2="12" strokeWidth="3" /><line x1="12" y1="12" x2="12.01" y2="12" strokeWidth="3" /><line x1="19" y1="12" x2="19.01" y2="12" strokeWidth="3" /></Icon>;
+const Link2 = (p) => <Icon {...p}><path d="M9 15l6-6" /><path d="M13 5h3a4 4 0 0 1 0 8h-2" /><path d="M11 19H8a4 4 0 0 1 0-8h2" /></Icon>;
+const Users = (p) => <Icon {...p}><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6" /><circle cx="17" cy="9" r="2.5" /><path d="M15 20c0-2.5 1.5-4.5 3.5-5.3" /></Icon>;
+const Timer = (p) => <Icon {...p}><line x1="10" y1="2" x2="14" y2="2" /><line x1="12" y1="2" x2="12" y2="6" /><circle cx="12" cy="14" r="8" /><polyline points="12 10 12 14 15 16" /></Icon>;
+const FileText = (p) => <Icon {...p}><path d="M6 2h9l5 5v15H6z" /><polyline points="15 2 15 7 20 7" /><line x1="9" y1="13" x2="16" y2="13" /><line x1="9" y1="17" x2="16" y2="17" /></Icon>;
+const UserCheck = (p) => <Icon {...p}><circle cx="9" cy="8" r="4" /><path d="M2 20c0-4 3-7 7-7s7 3 7 7" /><polyline points="16 11 18 13 22 9" /></Icon>;
+const LogOut = (p) => <Icon {...p}><path d="M9 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" /><polyline points="15 16 20 12 15 8" /><line x1="20" y1="12" x2="9" y2="12" /></Icon>;
+const Menu = (p) => <Icon {...p}><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></Icon>;
+const Flame = (p) => <Icon {...p}><path d="M12 2c1 4-3 5-3 9a3 3 0 0 0 6 0c0-1.5-1-2-1-3.5 1.5 1 3 3.5 3 6a5 5 0 0 1-10 0c0-5 3-7 5-11.5z" /></Icon>;
+const Snowflake = (p) => <Icon {...p}><line x1="12" y1="2" x2="12" y2="22" /><line x1="4" y1="7" x2="20" y2="17" /><line x1="20" y1="7" x2="4" y2="17" /></Icon>;
+const Thermometer = (p) => <Icon {...p}><path d="M12 14V4a2 2 0 0 0-4 0v10a4 4 0 1 0 4 0z" /></Icon>;
+const TrendingUp = (p) => <Icon {...p}><polyline points="3 17 9 11 13 15 21 6" /><polyline points="15 6 21 6 21 12" /></Icon>;
+const Ban = (p) => <Icon {...p}><circle cx="12" cy="12" r="9" /><line x1="6" y1="6" x2="18" y2="18" /></Icon>;
+const RotateCcw = (p) => <Icon {...p}><path d="M3 12a9 9 0 1 0 3-6.7" /><polyline points="3 4 3 9 8 9" /></Icon>;
+const Globe = (p) => <Icon {...p}><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z" /></Icon>;
+const ExternalLink = (p) => <Icon {...p}><path d="M14 4h6v6" /><line x1="20" y1="4" x2="10" y2="14" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></Icon>;
+const List = (p) => <Icon {...p}><line x1="9" y1="6" x2="20" y2="6" /><line x1="9" y1="12" x2="20" y2="12" /><line x1="9" y1="18" x2="20" y2="18" /><line x1="4.5" y1="6" x2="4.51" y2="6" strokeWidth="3" /><line x1="4.5" y1="12" x2="4.51" y2="12" strokeWidth="3" /><line x1="4.5" y1="18" x2="4.51" y2="18" strokeWidth="3" /></Icon>;
+const LayoutGrid = (p) => <Icon {...p}><rect x="3" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" /></Icon>;
+const Send = (p) => <Icon {...p}><path d="M21 3 3 10.5l7.5 3L13.5 21 21 3z" /><line x1="10.5" y1="13.5" x2="21" y2="3" /></Icon>;
+const Eye = (p) => <Icon {...p}><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></Icon>;
+const ArrowRight = (p) => <Icon {...p}><line x1="4" y1="12" x2="20" y2="12" /><polyline points="13 5 20 12 13 19" /></Icon>;
+const ChevronDown = (p) => <Icon {...p}><polyline points="6 9 12 15 18 9" /></Icon>;
+
+
+/* =========================================================================
+   DESIGN TOKENS
+   Subject: internal sales-ops tool for a 2-person web dev studio (Erick &
+   Fabrício). Job: answer "what do I do right now" in seconds. Treated as an
+   operations console, not a marketing dashboard — quiet surfaces, one accent,
+   color used only to carry status meaning, numbers set in mono so they read
+   like real operational data.
+   ========================================================================= */
+
+const Tokens = () => (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+    .gc-root {
+      --paper: #F6F5F1;
+      --surface: #FFFFFF;
+      --surface-sunken: #F0EEE8;
+      --ink: #1B1E23;
+      --ink-soft: #4A5058;
+      --slate: #6B7280;
+      --line: #E4E1D8;
+      --line-strong: #D3CFC3;
+
+      --accent: #2C5F72;
+      --accent-ink: #17414F;
+      --accent-soft: #DEEBEE;
+      --accent-soft-strong: #C7DEE2;
+
+      --tone-slate-bg: #ECEBE6; --tone-slate-fg: #5C5F55;
+      --tone-amber-bg: #FBF0D9; --tone-amber-fg: #8A6413;
+      --tone-blue-bg:  #E1EBF5; --tone-blue-fg:  #2A5788;
+      --tone-violet-bg:#EAE5F6; --tone-violet-fg:#5B3F9E;
+      --tone-teal-bg:  #DCEEEA; --tone-teal-fg:  #1F6E5C;
+      --tone-green-bg: #DEEEDD; --tone-green-fg: #2C6B34;
+      --tone-red-bg:   #F7E2DD; --tone-red-fg:   #A23E28;
+
+      --hot: #B23B22; --hot-bg: #F7E2DD;
+      --warm: #93690F; --warm-bg: #FBF0D9;
+      --cold: #4C5B6B; --cold-bg: #E7EAEE;
+
+      --danger: #A23E28; --danger-bg: #F7E2DD;
+      --success: #2C6B34; --success-bg: #DEEEDD;
+      --warn: #93690F; --warn-bg: #FBF0D9;
+
+      --font-display: 'Space Grotesk', system-ui, sans-serif;
+      --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+      --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--font-body);
+      min-height: 100vh;
+    }
+    .gc-root * { box-sizing: border-box; }
+    .gc-display { font-family: var(--font-display); letter-spacing: -0.01em; }
+    .gc-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    .gc-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+    .gc-scroll::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; }
+    .gc-scroll::-webkit-scrollbar-track { background: transparent; }
+
+    .gc-row-hover:hover { background: var(--surface-sunken); }
+    .gc-focus:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .gc-focus:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+    .gc-card { transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease; }
+    .gc-card-hover:hover { border-color: var(--line-strong); box-shadow: 0 4px 16px rgba(23,25,28,0.06); }
+    .gc-pressable { transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease; }
+    .gc-pressable:active { transform: scale(0.98); }
+    .gc-btn { transition: background 0.15s ease, opacity 0.15s ease, transform 0.1s ease; }
+    .gc-btn:active { transform: scale(0.97); }
+
+    @keyframes gc-slide-in { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    .gc-slide-in { animation: gc-slide-in 0.2s ease-out; }
+    @keyframes gc-fade-in { from { opacity: 0; } to { opacity: 1; } }
+    .gc-fade-in { animation: gc-fade-in 0.15s ease-out; }
+    @keyframes gc-pop-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+    .gc-pop-in { animation: gc-pop-in 0.14s ease-out; }
+    @keyframes gc-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .gc-toast-in { animation: gc-toast-in 0.18s ease-out; }
+    @keyframes gc-spin { to { transform: rotate(360deg); } }
+    .gc-spin { animation: gc-spin 0.8s linear infinite; }
+    @keyframes gc-pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+    .gc-pulse-soft { animation: gc-pulse-soft 1.8s ease-in-out infinite; }
+    @media (prefers-reduced-motion: reduce) {
+      .gc-slide-in, .gc-fade-in, .gc-pop-in, .gc-toast-in, .gc-spin, .gc-pulse-soft { animation: none; }
+      .gc-card, .gc-pressable, .gc-btn { transition: none; }
+    }
+  `}</style>
+);
+
+/* =========================================================================
+   CONSTANTS
+   ========================================================================= */
+
+const USERS = [
+  { id: "erick", name: "Erick" },
+  { id: "fabricio", name: "Fabrício" },
+];
+
+const STATUS_LIST = ["Novo","Contato pendente","Contatado","Respondeu","Demo enviada","Demo em análise","Interessado","Proposta enviada","Negociação","Fechado","Perdido"];
+const TEMPERATURES = ["Frio","Morno","Quente"];
+const PRIORITIES = ["Baixa","Média","Alta"];
+const CHANNELS = ["Ligação","WhatsApp","Instagram","E-mail","Presencial","Outro"];
+const RESULTS = ["Não atendeu","Atendeu","Pediu retorno","Respondeu","Demo enviada","Demonstrou interesse","Pediu preço","Pediu proposta","Sem interesse","Número inválido","Outro"];
+const SOURCES = ["Indicação","Instagram","Google","Prospecção ativa","Site","Outro"];
+const LOSS_REASONS = ["Preço","Não precisa","Já possui site","Escolheu concorrente","Sem orçamento","Momento inadequado","Sem resposta","Outro"];
+const SEGMENTS = ["Alimentação","Saúde","Fitness","Jurídico","Beleza","Imóveis","Móveis","Pet","Estética","Contabilidade","Automotivo","Eventos","Arquitetura"];
+const PLANS = ["Site institucional","Landing page","E-commerce","Site + manutenção mensal"];
+
+const STATUS_TONE = {
+  "Novo": "slate", "Contato pendente": "amber", "Contatado": "blue", "Respondeu": "blue",
+  "Demo enviada": "violet", "Demo em análise": "violet", "Interessado": "amber",
+  "Proposta enviada": "teal", "Negociação": "teal", "Fechado": "green", "Perdido": "red",
+};
+
+const TEMP_TONE = { "Frio": "cold", "Morno": "warm", "Quente": "hot" };
+const PRIORITY_ORDER = { "Alta": 0, "Média": 1, "Baixa": 2 };
+const TEMP_RANK = { "Frio": 0, "Morno": 1, "Quente": 2 };
+
+const CHANNEL_ICON = {
+  "Ligação": Phone, "WhatsApp": MessageCircle, "Instagram": Instagram,
+  "E-mail": Mail, "Presencial": Users, "Outro": MoreHorizontal,
+};
+
+/* Pipeline stages group the 11 fine-grained statuses into the 9 columns the
+   commercial pipeline is discussed in day-to-day. The lead's real `status`
+   field always stays at full granularity (shown as a small sub-label on
+   each card) — this grouping is purely a display concern shared by the
+   Dashboard funnel and the Pipeline (Kanban) view, so the two stay consistent. */
+const STAGE_GROUPS = [
+  { key: "novo", label: "Novo", statuses: ["Novo"] },
+  { key: "contato", label: "Contato", statuses: ["Contato pendente", "Contatado"] },
+  { key: "respondeu", label: "Respondeu", statuses: ["Respondeu"] },
+  { key: "demo", label: "Demo", statuses: ["Demo enviada", "Demo em análise"] },
+  { key: "interessado", label: "Interessado", statuses: ["Interessado"] },
+  { key: "proposta", label: "Proposta", statuses: ["Proposta enviada"] },
+  { key: "negociacao", label: "Negociação", statuses: ["Negociação"] },
+  { key: "fechado", label: "Fechado", statuses: ["Fechado"] },
+  { key: "perdido", label: "Perdido", statuses: ["Perdido"] },
+];
+const STAGE_BY_STATUS = Object.fromEntries(STAGE_GROUPS.flatMap(g => g.statuses.map(s => [s, g.key])));
+
+/* =========================================================================
+   DATE / FORMAT UTILITIES
+   ========================================================================= */
+
+const pad = (n) => String(n).padStart(2, "0");
+const daysAgo = (n, h = 9, m = 0) => { const d = new Date(); d.setDate(d.getDate() - n); d.setHours(h, m, 0, 0); return d.toISOString(); };
+const daysFromNow = (n, h = 9, m = 0) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(h, m, 0, 0); return d.toISOString(); };
+const hoursFromNow = (n) => new Date(Date.now() + n * 3600000).toISOString();
+const hoursAgo = (n) => new Date(Date.now() - n * 3600000).toISOString();
+
+function fmtDate(d) { if (!d) return "—"; const dt = new Date(d); return `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}`; }
+function fmtDateFull(d) { if (!d) return "—"; const dt = new Date(d); return `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}/${dt.getFullYear()}`; }
+function fmtTime(d) { if (!d) return ""; const dt = new Date(d); return `${pad(dt.getHours())}:${pad(dt.getMinutes())}`; }
+function fmtDateTime(d) { if (!d) return "—"; return `${fmtDate(d)} · ${fmtTime(d)}`; }
+function fmtMoney(v) {
+  if (v === null || v === undefined || v === "") return "—";
+  return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+}
+function startOfDay(d) { const dt = new Date(d); dt.setHours(0, 0, 0, 0); return dt; }
+function daysDiff(a, b) { return Math.round((startOfDay(a).getTime() - startOfDay(b).getTime()) / 86400000); }
+function actionBucket(date) {
+  if (!date) return null;
+  const diff = daysDiff(date, new Date());
+  if (diff < 0) return "atrasado";
+  if (diff === 0) return "hoje";
+  return "proximo";
+}
+function daysSince(d) { if (!d) return null; return daysDiff(new Date(), d); }
+
+function demoUrgency(demo) {
+  if (demo.deactivated) return "desativada";
+  if (!demo.sentAt) return "criada";
+  const ms = new Date(demo.expiresAt).getTime() - Date.now();
+  if (ms <= 0) return "expirada";
+  if (ms <= 3600000) return "critica";
+  if (ms <= 6 * 3600000) return "atencao";
+  return "ativa";
+}
+function remainingLabel(demo) {
+  if (demo.deactivated) return "Desativada manualmente";
+  if (!demo.sentAt) return "Ainda não enviada ao cliente";
+  const ms = new Date(demo.expiresAt).getTime() - Date.now();
+  const abs = Math.abs(ms);
+  const h = Math.floor(abs / 3600000);
+  const m = Math.floor((abs % 3600000) / 60000);
+  return ms <= 0 ? `Expirou há ${h}h ${pad(m)}min` : `Expira em ${h}h ${pad(m)}min`;
+}
+
+function userName(id) { return (USERS.find(u => u.id === id) || {}).name || id; }
+
+/* Most recent status-history entry marks when the lead entered its current
+   status; falls back to createdAt for leads that never changed status. */
+function daysInCurrentStage(lead, statusHistory) {
+  const entries = statusHistory.filter(s => s.leadId === lead.id).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const ref = entries.length ? entries[0].date : lead.createdAt;
+  return daysSince(ref);
+}
+
+/* The "value" of an open opportunity is never invented — it only exists
+   once a real proposal has been sent. Picks the most recent proposal. */
+function latestProposalForLead(leadId, proposals) {
+  const list = proposals.filter(p => p.leadId === leadId).sort((a, b) => new Date(b.proposalDate) - new Date(a.proposalDate));
+  return list[0] || null;
+}
+
+/* Bump temperature upward only, never automatically downgrade it. */
+function suggestTemperature(current, result) {
+  const hot = ["Demonstrou interesse", "Pediu preço", "Pediu proposta"];
+  const warm = ["Atendeu", "Pediu retorno", "Respondeu", "Demo enviada"];
+  let suggested = current;
+  if (hot.includes(result)) suggested = "Quente";
+  else if (warm.includes(result)) suggested = current === "Frio" ? "Morno" : current;
+  return TEMP_RANK[suggested] > TEMP_RANK[current] ? suggested : current;
+}
+
+/* =========================================================================
+   MOCK DATA
+   Fictitious companies for demonstration only — not real client data.
+   Chosen to exercise every dashboard/alert state described in the brief.
+   ========================================================================= */
+
+const MOCK_LEADS = [
+  { id: "l1", company: "Padaria Ponto Doce", contactName: "Marta Nunes", phone: "(31) 98811-2233", whatsapp: "(31) 98811-2233", instagram: "@padariapontodoce", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Alimentação", notes: "Quer algo simples para mostrar o cardápio.", owner: "erick", priority: "Média", temperature: "Morno", source: "Indicação", status: "Contatado", createdAt: daysAgo(6), lastContactAt: daysAgo(1, 15, 30), nextAction: { date: daysFromNow(0, 10, 0), note: "Ligar confirmando interesse na demo" }, score: { dor: 3, facilidade: 4, pagamento: 3, recorrencia: 2 } },
+  { id: "l2", company: "Clínica OdontoVida", contactName: "Dr. Ricardo Passos", phone: "(31) 3822-4410", whatsapp: "(31) 99900-1122", instagram: "@odontovidaipatinga", gmaps: "https://maps.google.com/?q=OdontoVida", currentSite: "", city: "Ipatinga", neighborhood: "Cariru", segment: "Saúde", notes: "Recepcionista é o contato principal.", owner: "fabricio", priority: "Alta", temperature: "Quente", source: "Instagram", status: "Demo enviada", createdAt: daysAgo(3), lastContactAt: hoursAgo(4), nextAction: { date: daysFromNow(0, 14, 0), note: "Verificar demo antes de expirar" }, score: { dor: 4, facilidade: 3, pagamento: 4, recorrencia: 4 } },
+  { id: "l3", company: "Estúdio Fitness Corpo&Cia", contactName: "Bruna Lopes", phone: "(31) 98765-1010", whatsapp: "(31) 98765-1010", instagram: "@corpoecia.fit", gmaps: "", currentSite: "corpoecia.wixsite.com", city: "Timóteo", neighborhood: "Del Rey", segment: "Fitness", notes: "Site atual está desatualizado há anos.", owner: "erick", priority: "Média", temperature: "Morno", source: "Prospecção ativa", status: "Demo em análise", createdAt: daysAgo(4), lastContactAt: hoursAgo(20), nextAction: { date: daysFromNow(0, 17, 0), note: "Cobrar retorno sobre a prévia" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 3 } },
+  { id: "l4", company: "Advocacia Reis & Martins", contactName: "Dra. Camila Reis", phone: "(31) 3221-7788", whatsapp: "(31) 99111-4400", instagram: "", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Centro", segment: "Jurídico", notes: "Precisa de aprovação da sócia.", owner: "fabricio", priority: "Alta", temperature: "Quente", source: "Indicação", status: "Proposta enviada", createdAt: daysAgo(12), lastContactAt: daysAgo(5, 11, 0), nextAction: { date: daysAgo(1, 10, 0), note: "Cobrar resposta da proposta" }, score: { dor: 4, facilidade: 2, pagamento: 5, recorrencia: 4 } },
+  { id: "l5", company: "Salão Bela Face", contactName: "Juliana Prado", phone: "(31) 98844-6655", whatsapp: "(31) 98844-6655", instagram: "@belafacesalao", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Chapada", segment: "Beleza", notes: "Quer agendamento online integrado no futuro.", owner: "erick", priority: "Alta", temperature: "Quente", source: "Instagram", status: "Negociação", createdAt: daysAgo(15), lastContactAt: daysAgo(1, 16, 0), nextAction: { date: daysFromNow(1, 10, 0), note: "Retornar com nova condição de pagamento" }, score: { dor: 4, facilidade: 4, pagamento: 3, recorrencia: 4 } },
+  { id: "l6", company: "Imobiliária Chave Certa", contactName: "Sérgio Aguiar", phone: "(31) 3835-9090", whatsapp: "(31) 99222-3311", instagram: "@chavecertaimoveis", gmaps: "", currentSite: "chavecertaimoveis.com.br", city: "Ipatinga", neighborhood: "Bethânia", segment: "Imóveis", notes: "", owner: "fabricio", priority: "Baixa", temperature: "Frio", source: "Site", status: "Perdido", createdAt: daysAgo(30), lastContactAt: daysAgo(18, 9, 0), nextAction: null, lossReason: "Escolheu concorrente", score: { dor: 2, facilidade: 2, pagamento: 3, recorrencia: 2 } },
+  { id: "l7", company: "Marcenaria Bom Corte", contactName: "Adilson Ferraz", phone: "(31) 98700-2020", whatsapp: "(31) 98700-2020", instagram: "", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Água Santa", segment: "Móveis", notes: "Cadastrado após indicação do cliente Rodagem Mil.", owner: "erick", priority: "Média", temperature: "Frio", source: "Indicação", status: "Novo", createdAt: daysAgo(1), lastContactAt: null, nextAction: { date: daysFromNow(0, 11, 0), note: "Primeiro contato" }, score: { dor: 2, facilidade: 3, pagamento: 2, recorrencia: 2 } },
+  { id: "l8", company: "Pet Shop Amigo Fiel", contactName: "Renata Costa", phone: "(31) 98899-7766", whatsapp: "(31) 98899-7766", instagram: "@amigofielpet", gmaps: "", currentSite: "", city: "Timóteo", neighborhood: "Del Rey", segment: "Pet", notes: "", owner: "fabricio", priority: "Baixa", temperature: "Frio", source: "Google", status: "Contato pendente", createdAt: daysAgo(7), lastContactAt: daysAgo(5, 10, 0), nextAction: { date: daysAgo(2, 9, 0), note: "Tentar novamente por WhatsApp" }, score: { dor: 2, facilidade: 2, pagamento: 2, recorrencia: 3 } },
+  { id: "l9", company: "Estúdio Tattoo Traço Fino", contactName: "Kaique Vidal", phone: "(31) 98922-3344", whatsapp: "(31) 98922-3344", instagram: "@tracofino.tattoo", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Cidade Nobre", segment: "Estética", notes: "Respondeu uma vez e sumiu.", owner: "erick", priority: "Média", temperature: "Morno", source: "Instagram", status: "Respondeu", createdAt: daysAgo(9), lastContactAt: daysAgo(4, 18, 0), nextAction: { date: daysAgo(2, 9, 0), note: "Fazer nova tentativa" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 2 } },
+  { id: "l10", company: "Contabilidade Serra Azul", contactName: "Fábio Teixeira", phone: "(31) 3823-5566", whatsapp: "(31) 99333-8899", instagram: "", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Contabilidade", notes: "Pediu valores por WhatsApp.", owner: "fabricio", priority: "Alta", temperature: "Quente", source: "Indicação", status: "Interessado", createdAt: daysAgo(5), lastContactAt: daysAgo(0, 8, 30), nextAction: { date: daysFromNow(0, 15, 0), note: "Enviar valores e condições" }, score: { dor: 4, facilidade: 4, pagamento: 4, recorrencia: 4 } },
+  { id: "l11", company: "Autopeças Rodagem Mil", contactName: "Marcelo Assis", phone: "(31) 3822-1199", whatsapp: "(31) 99887-6655", instagram: "@rodagemmil", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Horto", segment: "Automotivo", notes: "", owner: "erick", priority: "Alta", temperature: "Quente", source: "Indicação", status: "Fechado", createdAt: daysAgo(40), lastContactAt: daysAgo(20, 14, 0), nextAction: null, score: { dor: 4, facilidade: 4, pagamento: 5, recorrencia: 4 } },
+  { id: "l12", company: "Buffet Doce Encontro", contactName: "Patrícia Melo", phone: "(31) 98711-0033", whatsapp: "(31) 98711-0033", instagram: "@doceencontrobuffet", gmaps: "", currentSite: "", city: "Timóteo", neighborhood: "Del Rey", segment: "Eventos", notes: "", owner: "fabricio", priority: "Média", temperature: "Quente", source: "Instagram", status: "Fechado", createdAt: daysAgo(25), lastContactAt: daysAgo(10, 9, 0), nextAction: null, score: { dor: 3, facilidade: 4, pagamento: 4, recorrencia: 3 } },
+  { id: "l13", company: "Arquitetura Linha Viva", contactName: "Rafael Sant'Anna", phone: "(31) 99123-4567", whatsapp: "(31) 99123-4567", instagram: "@linhaviva.arq", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Arquitetura", notes: "Demo enviada mas sem retorno desde então.", owner: "erick", priority: "Média", temperature: "Morno", source: "Site", status: "Demo enviada", createdAt: daysAgo(4), lastContactAt: daysAgo(2, 9, 0), nextAction: { date: daysAgo(1, 9, 0), note: "Cobrar retorno sobre a prévia expirada" }, score: { dor: 3, facilidade: 2, pagamento: 3, recorrencia: 3 } },
+  { id: "l14", company: "Academia Potência", contactName: "Diego Fontes", phone: "(31) 98456-7788", whatsapp: "(31) 98456-7788", instagram: "@potenciaacademia", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Veneza", segment: "Fitness", notes: "", owner: "fabricio", priority: "Alta", temperature: "Morno", source: "Prospecção ativa", status: "Proposta enviada", createdAt: daysAgo(20), lastContactAt: daysAgo(9, 10, 0), nextAction: { date: daysAgo(3, 9, 0), note: "Verificar validade da proposta" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 3 } },
+];
+
+const MOCK_STATUS_HISTORY = [
+  { id: "sh1", leadId: "l1", from: "Novo", to: "Contato pendente", date: daysAgo(6), user: "erick" },
+  { id: "sh2", leadId: "l1", from: "Contato pendente", to: "Contatado", date: daysAgo(1, 15, 30), user: "erick" },
+  { id: "sh3", leadId: "l2", from: "Contatado", to: "Respondeu", date: daysAgo(2, 9, 0), user: "fabricio" },
+  { id: "sh4", leadId: "l2", from: "Respondeu", to: "Demo enviada", date: hoursAgo(4), user: "fabricio" },
+  { id: "sh5", leadId: "l4", from: "Interessado", to: "Proposta enviada", date: daysAgo(5, 11, 0), user: "fabricio" },
+  { id: "sh6", leadId: "l6", from: "Negociação", to: "Perdido", date: daysAgo(18, 9, 0), user: "fabricio" },
+  { id: "sh7", leadId: "l11", from: "Negociação", to: "Fechado", date: daysAgo(20, 14, 0), user: "erick" },
+  { id: "sh8", leadId: "l12", from: "Negociação", to: "Fechado", date: daysAgo(10, 9, 0), user: "fabricio" },
+];
+
+const MOCK_INTERACTIONS = [
+  { id: "i1", leadId: "l1", date: daysAgo(6), user: "erick", channel: "Ligação", result: "Atendeu", note: "Conversou com a proprietária, curiosa sobre preços." },
+  { id: "i2", leadId: "l1", date: daysAgo(1, 15, 30), user: "erick", channel: "WhatsApp", result: "Respondeu", note: "Pediu para enviar uma prévia do site." },
+  { id: "i3", leadId: "l2", date: daysAgo(3), user: "fabricio", channel: "Instagram", result: "Respondeu", note: "Respondeu ao direct sobre o anúncio." },
+  { id: "i4", leadId: "l2", date: daysAgo(2, 9, 0), user: "fabricio", channel: "WhatsApp", result: "Pediu preço", note: "Perguntou valores de site + agenda online." },
+  { id: "i5", leadId: "l2", date: hoursAgo(4), user: "fabricio", channel: "WhatsApp", result: "Demo enviada", note: "Enviada demonstração do site." },
+  { id: "i6", leadId: "l3", date: daysAgo(4), user: "erick", channel: "Ligação", result: "Atendeu", note: "Falou sobre o site atual estar antigo." },
+  { id: "i7", leadId: "l3", date: hoursAgo(20), user: "erick", channel: "WhatsApp", result: "Demonstrou interesse", note: "Gostou do layout, quer pensar no valor." },
+  { id: "i8", leadId: "l4", date: daysAgo(12), user: "fabricio", channel: "Presencial", result: "Atendeu", note: "Reunião no escritório." },
+  { id: "i9", leadId: "l4", date: daysAgo(5, 11, 0), user: "fabricio", channel: "E-mail", result: "Pediu proposta", note: "Enviada proposta formal por e-mail." },
+  { id: "i10", leadId: "l5", date: daysAgo(15), user: "erick", channel: "WhatsApp", result: "Pediu preço", note: "" },
+  { id: "i11", leadId: "l5", date: daysAgo(1, 16, 0), user: "erick", channel: "Ligação", result: "Atendeu", note: "Negociando forma de pagamento." },
+  { id: "i12", leadId: "l6", date: daysAgo(18, 9, 0), user: "fabricio", channel: "WhatsApp", result: "Sem interesse", note: "Disse que já fechou com outra empresa." },
+  { id: "i13", leadId: "l8", date: daysAgo(5, 10, 0), user: "fabricio", channel: "Ligação", result: "Não atendeu", note: "" },
+  { id: "i14", leadId: "l9", date: daysAgo(9), user: "erick", channel: "Instagram", result: "Atendeu", note: "" },
+  { id: "i15", leadId: "l9", date: daysAgo(4, 18, 0), user: "erick", channel: "Instagram", result: "Respondeu", note: "Disse que ia ver com o sócio." },
+  { id: "i16", leadId: "l10", date: daysAgo(5), user: "fabricio", channel: "Ligação", result: "Atendeu", note: "" },
+  { id: "i17", leadId: "l10", date: daysAgo(0, 8, 30), user: "fabricio", channel: "WhatsApp", result: "Pediu preço", note: "Quer proposta com manutenção mensal." },
+  { id: "i18", leadId: "l13", date: daysAgo(4), user: "erick", channel: "E-mail", result: "Respondeu", note: "" },
+  { id: "i19", leadId: "l13", date: daysAgo(2, 9, 0), user: "erick", channel: "E-mail", result: "Demo enviada", note: "Prévia enviada por e-mail." },
+  { id: "i20", leadId: "l14", date: daysAgo(9, 10, 0), user: "fabricio", channel: "WhatsApp", result: "Pediu proposta", note: "" },
+];
+
+const MOCK_FOLLOWUPS = [
+  { id: "f1", leadId: "l1", dueDate: daysFromNow(0, 10, 0), note: "Ligar confirmando interesse na demo", status: "pendente", createdBy: "erick" },
+  { id: "f2", leadId: "l2", dueDate: daysFromNow(0, 14, 0), note: "Verificar demo antes de expirar", status: "pendente", createdBy: "fabricio" },
+  { id: "f3", leadId: "l3", dueDate: daysFromNow(0, 17, 0), note: "Cobrar retorno sobre a prévia", status: "pendente", createdBy: "erick" },
+  { id: "f4", leadId: "l4", dueDate: daysAgo(1, 10, 0), note: "Cobrar resposta da proposta", status: "pendente", createdBy: "fabricio" },
+  { id: "f5", leadId: "l8", dueDate: daysAgo(2, 9, 0), note: "Tentar novamente por WhatsApp", status: "pendente", createdBy: "fabricio" },
+  { id: "f6", leadId: "l9", dueDate: daysAgo(2, 9, 0), note: "Fazer nova tentativa", status: "pendente", createdBy: "erick" },
+  { id: "f7", leadId: "l10", dueDate: daysFromNow(0, 15, 0), note: "Enviar valores e condições", status: "pendente", createdBy: "fabricio" },
+  { id: "f8", leadId: "l13", dueDate: daysAgo(1, 9, 0), note: "Cobrar retorno sobre a prévia expirada", status: "pendente", createdBy: "erick" },
+  { id: "f9", leadId: "l14", dueDate: daysAgo(3, 9, 0), note: "Verificar validade da proposta", status: "pendente", createdBy: "fabricio" },
+  { id: "f10", leadId: "l5", dueDate: daysFromNow(1, 10, 0), note: "Retornar com nova condição de pagamento", status: "pendente", createdBy: "erick" },
+  { id: "f11", leadId: "l7", dueDate: daysFromNow(0, 11, 0), note: "Primeiro contato", status: "pendente", createdBy: "erick" },
+  { id: "f12", leadId: "l1", dueDate: daysAgo(7, 9, 0), note: "Primeiro contato", status: "concluido", createdBy: "erick" },
+];
+
+const MOCK_DEMOS = [
+  { id: "d1", leadId: "l2", url: "https://demo.estudio.com/odontovida", createdAt: hoursAgo(17), sentAt: hoursAgo(17), validityHours: 24, expiresAt: hoursFromNow(7), owner: "fabricio", deactivated: false, views: 3, lastViewedAt: hoursAgo(2) },
+  { id: "d2", leadId: "l3", url: "https://demo.estudio.com/corpoecia", createdAt: hoursAgo(23.5), sentAt: hoursAgo(23.5), validityHours: 24, expiresAt: hoursFromNow(0.5), owner: "erick", deactivated: false, views: null, lastViewedAt: null },
+  { id: "d3", leadId: "l13", url: "https://demo.estudio.com/linhaviva", createdAt: hoursAgo(50), sentAt: hoursAgo(50), validityHours: 24, expiresAt: hoursAgo(26), owner: "erick", deactivated: false, views: 1, lastViewedAt: hoursAgo(48) },
+  { id: "d4", leadId: "l9", url: "https://demo.estudio.com/tracofino", createdAt: daysAgo(9), sentAt: daysAgo(9), validityHours: 24, expiresAt: hoursAgo(190), owner: "erick", deactivated: true, views: null, lastViewedAt: null },
+  { id: "d5", leadId: "l10", url: "https://demo.estudio.com/serra-azul", createdAt: hoursAgo(1), sentAt: null, validityHours: 24, expiresAt: null, owner: "fabricio", deactivated: false, views: null, lastViewedAt: null },
+];
+
+const MOCK_PROPOSALS = [
+  { id: "p1", leadId: "l4", plan: "Site institucional", implementationValue: 2200, monthlyValue: 90, proposalDate: daysAgo(5, 11, 0), validUntil: daysFromNow(2), notes: "Inclui até 6 páginas.", status: "Enviada" },
+  { id: "p2", leadId: "l5", plan: "Site + manutenção mensal", implementationValue: 1800, monthlyValue: 120, proposalDate: daysAgo(6), validUntil: daysFromNow(4), notes: "Negociando parcelamento da implantação.", status: "Em negociação" },
+  { id: "p3", leadId: "l14", plan: "Landing page", implementationValue: 1200, monthlyValue: 0, proposalDate: daysAgo(9, 10, 0), validUntil: daysAgo(2), notes: "", status: "Enviada" },
+  { id: "p4", leadId: "l11", plan: "Site institucional", implementationValue: 1900, monthlyValue: 80, proposalDate: daysAgo(21), validUntil: daysAgo(14), notes: "", status: "Aprovada" },
+  { id: "p5", leadId: "l12", plan: "Landing page", implementationValue: 1100, monthlyValue: 0, proposalDate: daysAgo(11), validUntil: daysAgo(4), notes: "", status: "Aprovada" },
+  { id: "p6", leadId: "l6", plan: "Site institucional", implementationValue: 1700, monthlyValue: 90, proposalDate: daysAgo(20), validUntil: daysAgo(13), notes: "Cliente fechou com concorrente.", status: "Recusada" },
+];
+
+const MOCK_CLIENTS = [
+  { id: "c1", leadId: "l11", company: "Autopeças Rodagem Mil", contactName: "Marcelo Assis", plan: "Site institucional", contractedValue: 1900, monthlyValue: 80, closingDate: daysAgo(20, 14, 0), publishDate: daysAgo(12), domain: "rodagemmil.com.br", owner: "erick", notes: "Cliente indicou a Marcenaria Bom Corte.", status: "Ativo" },
+  { id: "c2", leadId: "l12", company: "Buffet Doce Encontro", contactName: "Patrícia Melo", plan: "Landing page", contractedValue: 1100, monthlyValue: 0, closingDate: daysAgo(10, 9, 0), publishDate: daysAgo(6), domain: "doceencontrobuffet.com.br", owner: "fabricio", notes: "", status: "Ativo" },
+];
+
+const MOCK_CLIENT_UPDATES = [
+  { id: "cu1", clientId: "c1", date: daysAgo(3), type: "Alteração", note: "Trocou 2 fotos da galeria de peças." },
+];
+
+/* Initial in-memory database. Usado como fallback quando o backend estiver offline. */
+const initialDb = {
+  leads: MOCK_LEADS,
+  statusHistory: MOCK_STATUS_HISTORY,
+  interactions: MOCK_INTERACTIONS,
+  followups: MOCK_FOLLOWUPS,
+  demos: MOCK_DEMOS,
+  proposals: MOCK_PROPOSALS,
+  clients: MOCK_CLIENTS,
+  clientUpdates: MOCK_CLIENT_UPDATES,
+};
+
+/* =========================================================================
+   API CLIENT — SUPABASE (via backend Express http://localhost:3001/api)
+   ========================================================================= */
+
+function getApiBaseUrl() {
+  if (typeof window !== "undefined") {
+    if (window.CRM_API_URL && window.CRM_API_URL.trim()) {
+      return window.CRM_API_URL.trim().replace(/\/+$/, "");
+    }
+    const stored = localStorage.getItem("crm_api_url");
+    if (stored && stored.trim()) {
+      return stored.trim().replace(/\/+$/, "");
+    }
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.protocol === "file:") {
+      return "http://localhost:3001/api";
+    }
+  }
+  return "http://localhost:3001/api";
+}
+
+let CRM_API_BASE = getApiBaseUrl();
+
+const crmApi = {
+  getBaseUrl() {
+    return CRM_API_BASE;
+  },
+  setBaseUrl(url) {
+    if (url && url.trim()) {
+      const clean = url.trim().replace(/\/+$/, "");
+      CRM_API_BASE = clean;
+      localStorage.setItem("crm_api_url", clean);
+    } else {
+      localStorage.removeItem("crm_api_url");
+      CRM_API_BASE = getApiBaseUrl();
+    }
+  },
+  async health() {
+    try {
+      const res = await fetch(`${CRM_API_BASE}/health`);
+      if (!res.ok) return { ok: false };
+      const data = await res.json();
+      return { ok: true, ...data };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  },
+
+  async loadAll() {
+    const fetchJson = (path) =>
+      fetch(`${CRM_API_BASE}${path}`)
+        .then((r) => (r.ok ? r.json() : { data: [] }))
+        .catch(() => ({ data: [] }));
+
+    const [leads, statusHistory, interactions, followups, demos, proposals, clients, clientUpdates] =
+      await Promise.all([
+        fetchJson("/leads"),
+        fetchJson("/status-history"),
+        fetchJson("/interactions"),
+        fetchJson("/followups"),
+        fetchJson("/demos"),
+        fetchJson("/proposals"),
+        fetchJson("/clients"),
+        fetchJson("/client-updates"),
+      ]);
+
+    return {
+      leads: leads.data || [],
+      statusHistory: statusHistory.data || [],
+      interactions: interactions.data || [],
+      followups: followups.data || [],
+      demos: demos.data || [],
+      proposals: proposals.data || [],
+      clients: clients.data || [],
+      clientUpdates: clientUpdates.data || [],
+    };
+  },
+
+  leads: {
+    create: (lead) =>
+      fetch(`${CRM_API_BASE}/leads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(lead),
+      }).then((r) => r.json()),
+    update: (id, patch) =>
+      fetch(`${CRM_API_BASE}/leads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }).then((r) => r.json()),
+    changeStatus: (id, status, user, lossReason) =>
+      fetch(`${CRM_API_BASE}/leads/${id}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, user, lossReason }),
+      }).then((r) => r.json()),
+    addInteraction: (id, interaction) =>
+      fetch(`${CRM_API_BASE}/leads/${id}/interactions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(interaction),
+      }).then((r) => r.json()),
+  },
+
+  followups: {
+    create: (followup) =>
+      fetch(`${CRM_API_BASE}/followups`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(followup),
+      }).then((r) => r.json()),
+    update: (id, patch) =>
+      fetch(`${CRM_API_BASE}/followups/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }).then((r) => r.json()),
+  },
+
+  demos: {
+    create: (demo) =>
+      fetch(`${CRM_API_BASE}/demos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(demo),
+      }).then((r) => r.json()),
+    update: (id, patch) =>
+      fetch(`${CRM_API_BASE}/demos/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }).then((r) => r.json()),
+  },
+
+  proposals: {
+    create: (proposal) =>
+      fetch(`${CRM_API_BASE}/proposals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(proposal),
+      }).then((r) => r.json()),
+    update: (id, patch) =>
+      fetch(`${CRM_API_BASE}/proposals/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }).then((r) => r.json()),
+  },
+
+  clients: {
+    create: (client) =>
+      fetch(`${CRM_API_BASE}/clients`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(client),
+      }).then((r) => r.json()),
+    update: (id, patch) =>
+      fetch(`${CRM_API_BASE}/clients/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }).then((r) => r.json()),
+  },
+
+  clientUpdates: {
+    create: (update) =>
+      fetch(`${CRM_API_BASE}/client-updates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(update),
+      }).then((r) => r.json()),
+  },
+
+  async seedDemoData() {
+    for (const lead of MOCK_LEADS) {
+      try {
+        await crmApi.leads.create(lead);
+      } catch (e) {
+        console.error("Falha ao semear lead:", lead.company, e);
+      }
+    }
+    return await crmApi.loadAll();
+  },
+};
+
+/* =========================================================================
+   DATA LAYER
+   ---------------------------------------------------------------------
+   Every mutation goes through this reducer for instant optimistic UI update,
+   mirrored asynchronously by crmApi to Supabase.
+   ========================================================================= */
+
+function dbReducer(db, action) {
+  switch (action.type) {
+    case "SET_DB": {
+      return { ...db, ...action.db };
+    }
+    case "ADD_LEAD": {
+      return { ...db, leads: [action.lead, ...db.leads] };
+    }
+    case "UPDATE_LEAD": {
+      return { ...db, leads: db.leads.map(l => l.id === action.id ? { ...l, ...action.patch } : l) };
+    }
+    case "CHANGE_STATUS": {
+      const lead = db.leads.find(l => l.id === action.id);
+      if (!lead) return db;
+      const entry = { id: `sh_${Date.now()}`, leadId: action.id, from: lead.status, to: action.status, date: new Date().toISOString(), user: action.user };
+      return {
+        ...db,
+        leads: db.leads.map(l => l.id === action.id ? { ...l, status: action.status } : l),
+        statusHistory: [entry, ...db.statusHistory],
+      };
+    }
+    case "ADD_INTERACTION": {
+      const lead = db.leads.find(l => l.id === action.leadId);
+      const nextTemp = lead ? suggestTemperature(lead.temperature, action.interaction.result) : undefined;
+      return {
+        ...db,
+        interactions: [action.interaction, ...db.interactions],
+        leads: db.leads.map(l => l.id === action.leadId
+          ? { ...l, lastContactAt: action.interaction.date, temperature: nextTemp }
+          : l),
+      };
+    }
+    case "SET_NEXT_ACTION": {
+      return { ...db, leads: db.leads.map(l => l.id === action.leadId ? { ...l, nextAction: action.nextAction } : l) };
+    }
+    case "ADD_FOLLOWUP": {
+      return { ...db, followups: [action.followup, ...db.followups] };
+    }
+    case "UPDATE_FOLLOWUP": {
+      return { ...db, followups: db.followups.map(f => f.id === action.id ? { ...f, ...action.patch } : f) };
+    }
+    case "ADD_DEMO": {
+      return { ...db, demos: [action.demo, ...db.demos] };
+    }
+    case "UPDATE_DEMO": {
+      return { ...db, demos: db.demos.map(d => d.id === action.id ? { ...d, ...action.patch } : d) };
+    }
+    case "ADD_PROPOSAL": {
+      return { ...db, proposals: [action.proposal, ...db.proposals] };
+    }
+    case "UPDATE_PROPOSAL": {
+      return { ...db, proposals: db.proposals.map(p => p.id === action.id ? { ...p, ...action.patch } : p) };
+    }
+    case "CONVERT_TO_CLIENT": {
+      return { ...db, clients: [action.client, ...db.clients] };
+    }
+    case "ADD_CLIENT_UPDATE": {
+      return { ...db, clientUpdates: [action.update, ...db.clientUpdates] };
+    }
+    case "SET_LOSS_REASON": {
+      return { ...db, leads: db.leads.map(l => l.id === action.id ? { ...l, lossReason: action.reason } : l) };
+    }
+    default:
+      return db;
+  }
+}
+
+/* =========================================================================
+   UI PRIMITIVES
+   ========================================================================= */
+
+const TONE_STYLE = (tone) => ({ background: `var(--tone-${tone}-bg, var(--tone-slate-bg))`, color: `var(--tone-${tone}-fg, var(--tone-slate-fg))` });
+
+function Pill({ tone = "slate", children, dot = false }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full text-xs font-medium px-2 py-1 whitespace-nowrap" style={TONE_STYLE(tone)}>
+      {dot && <span className="w-1.5 h-1.5 rounded-full" style={{ background: `var(--tone-${tone}-fg)` }} />}
+      {children}
+    </span>
+  );
+}
+
+function TempPill({ temperature }) {
+  const tone = TEMP_TONE[temperature] || "cold";
+  const Icon = temperature === "Quente" ? Flame : temperature === "Morno" ? Thermometer : Snowflake;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full text-xs font-medium px-2 py-1 whitespace-nowrap" style={{ background: `var(--${tone}-bg)`, color: `var(--${tone})` }}>
+      <Icon size={12} strokeWidth={2.5} />
+      {temperature}
+    </span>
+  );
+}
+
+function StatusPill({ status }) {
+  return <Pill tone={STATUS_TONE[status] || "slate"}>{status}</Pill>;
+}
+
+function PriorityMark({ priority }) {
+  const tone = priority === "Alta" ? "hot" : priority === "Média" ? "warm" : "cold";
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: `var(--${tone})` }}>
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: `var(--${tone})` }} />
+      {priority}
+    </span>
+  );
+}
+
+function Button({ children, variant = "primary", size = "md", icon: Icon, onClick, type = "button", disabled, className = "" }) {
+  const base = "inline-flex items-center justify-center gap-1.5 font-medium rounded-lg transition-colors gc-focus disabled:opacity-40 disabled:cursor-not-allowed";
+  const sizes = { md: "text-sm px-3.5 py-2", sm: "text-xs px-2.5 py-1.5", lg: "text-sm px-4 py-2.5" };
+  const styles = {
+    primary: { background: "var(--accent)", color: "#fff" },
+    secondary: { background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line-strong)" },
+    ghost: { background: "transparent", color: "var(--ink-soft)" },
+    danger: { background: "var(--danger-bg)", color: "var(--danger)" },
+  };
+  return (
+    <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${sizes[size]} ${className}`} style={styles[variant]}>
+      {Icon && <Icon size={size === "sm" ? 14 : 16} />}
+      {children}
+    </button>
+  );
+}
+
+function IconButton({ icon: Icon, onClick, label, active = false, badge }) {
+  return (
+    <button type="button" onClick={onClick} aria-label={label} className="relative w-9 h-9 rounded-lg inline-flex items-center justify-center gc-focus"
+      style={{ background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent-ink)" : "var(--ink-soft)" }}>
+      <Icon size={18} />
+      {badge > 0 && (
+        <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[10px] leading-4 font-semibold text-white text-center gc-mono" style={{ background: "var(--danger)" }}>
+          {badge > 9 ? "9+" : badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function Field({ label, children, hint, required }) {
+  return (
+    <label className="block">
+      <span className="block text-xs font-medium mb-1.5" style={{ color: "var(--ink-soft)" }}>
+        {label}{required && <span style={{ color: "var(--danger)" }}> *</span>}
+      </span>
+      {children}
+      {hint && <span className="block text-xs mt-1" style={{ color: "var(--slate)" }}>{hint}</span>}
+    </label>
+  );
+}
+
+const inputStyle = "w-full text-sm rounded-lg px-3 py-2 gc-focus";
+const inputBorder = { background: "var(--surface)", border: "1px solid var(--line-strong)", color: "var(--ink)" };
+
+function TextInput({ className = "", style, ...props }) { return <input {...props} className={`${inputStyle} ${className}`} style={{ ...inputBorder, ...style }} />; }
+function TextArea({ className = "", style, ...props }) { return <textarea {...props} className={`${inputStyle} ${className}`} style={{ ...inputBorder, minHeight: 72, resize: "vertical", ...style }} />; }
+function Select({ children, className = "", style, ...props }) { return <select {...props} className={`${inputStyle} ${className}`} style={{ ...inputBorder, ...style }}>{children}</select>; }
+
+function Modal({ title, onClose, children, width = 480 }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 gc-fade-in" style={{ background: "rgba(23,25,28,0.4)" }} onClick={onClose}>
+      <div className="w-full rounded-2xl gc-scroll overflow-y-auto" style={{ maxWidth: width, maxHeight: "88vh", background: "var(--surface)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10" style={{ background: "var(--surface)", borderBottom: "1px solid var(--line)" }}>
+          <h3 className="gc-display font-semibold text-base">{title}</h3>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg inline-flex items-center justify-center gc-focus" style={{ color: "var(--slate)" }} aria-label="Fechar">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Drawer({ title, subtitle, onClose, children, headerRight }) {
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end gc-fade-in" style={{ background: "rgba(23,25,28,0.35)" }} onClick={onClose}>
+      <div className="h-full w-full gc-slide-in gc-scroll overflow-y-auto" style={{ maxWidth: 720, background: "var(--paper)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 px-6 py-4 flex items-start justify-between gap-3" style={{ background: "var(--surface)", borderBottom: "1px solid var(--line)" }}>
+          <div className="min-w-0">
+            <h2 className="gc-display font-semibold text-lg truncate">{title}</h2>
+            {subtitle && <div className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>{subtitle}</div>}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {headerRight}
+            <button onClick={onClose} className="w-9 h-9 rounded-lg inline-flex items-center justify-center gc-focus" style={{ color: "var(--slate)" }} aria-label="Fechar">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+        <div className="px-6 py-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ icon: Icon, title, hint }) {
+  return (
+    <div className="flex flex-col items-center justify-center text-center py-14 px-6">
+      <div className="w-11 h-11 rounded-full flex items-center justify-center mb-3" style={{ background: "var(--surface-sunken)", color: "var(--slate)" }}>
+        <Icon size={20} />
+      </div>
+      <div className="font-medium text-sm">{title}</div>
+      {hint && <div className="text-sm mt-1 max-w-xs" style={{ color: "var(--slate)" }}>{hint}</div>}
+    </div>
+  );
+}
+
+function SectionCard({ title, action, children, className = "" }) {
+  return (
+    <div className={`rounded-2xl ${className}`} style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+      {title && (
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--line)" }}>
+          <h3 className="gc-display font-semibold text-[15px]">{title}</h3>
+          {action}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function Bar({ value, max, tone = "accent" }) {
+  const pct = max > 0 ? Math.max(2, Math.round((value / max) * 100)) : 0;
+  return (
+    <div className="h-1.5 rounded-full w-full" style={{ background: "var(--surface-sunken)" }}>
+      <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: tone === "accent" ? "var(--accent)" : `var(--${tone})`, transition: "width 0.3s ease" }} />
+    </div>
+  );
+}
+
+function Kbd({ children, className = "", style }) {
+  return (
+    <kbd className={`inline-flex items-center justify-center rounded px-1.5 py-0.5 text-[10px] font-medium gc-mono ${className}`} style={{ background: "var(--surface-sunken)", color: "var(--slate)", border: "1px solid var(--line-strong)", ...style }}>
+      {children}
+    </kbd>
+  );
+}
+
+function Spinner({ size = 16, style }) {
+  return (
+    <span className="inline-block rounded-full gc-spin" style={{ width: size, height: size, border: "2px solid var(--line-strong)", borderTopColor: "var(--accent)", ...style }} />
+  );
+}
+
+/* Compact icon+label pill used for one-tap actions (WhatsApp, Ligar, etc.)
+   both in the attention list and in the lead's quick-actions bar. */
+function QuickAction({ icon: Icon, label, href, onClick, tone = "default" }) {
+  const styles = tone === "accent"
+    ? { background: "var(--accent)", color: "#fff" }
+    : { background: "var(--surface)", color: "var(--ink-soft)", border: "1px solid var(--line-strong)" };
+  const cls = "inline-flex items-center gap-1.5 rounded-full text-xs font-medium px-3 py-1.5 gc-focus gc-pressable whitespace-nowrap shrink-0";
+  if (href) {
+    return <a href={href} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={cls} style={styles}><Icon size={13} />{label}</a>;
+  }
+  return <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} className={cls} style={styles}><Icon size={13} />{label}</button>;
+}
+
+function waLink(whatsapp) { return whatsapp ? `https://wa.me/${whatsapp.replace(/\D/g, "")}` : null; }
+function telLink(phone) { return phone ? `tel:${phone.replace(/\D/g, "")}` : null; }
+function igLink(instagram) { return instagram ? `https://instagram.com/${instagram.replace("@", "")}` : null; }
+function siteLink(site) { return site ? `https://${site.replace(/^https?:\/\//, "")}` : null; }
+
+/* =========================================================================
+   TOASTS — lightweight feedback after actions (lead salvo, status alterado,
+   follow-up criado, proposta atualizada, demo enviada...). Plain prop
+   drilling of `notify` from the root, no context needed at this app's size.
+   ========================================================================= */
+
+function useToastStack() {
+  const [toasts, setToasts] = useState([]);
+  const notify = (message, tone = "success") => {
+    const id = `t_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    setToasts((t) => [...t.slice(-2), { id, message, tone }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3000);
+  };
+  return { toasts, notify };
+}
+
+function ToastStack({ toasts }) {
+  if (toasts.length === 0) return null;
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 sm:left-auto sm:right-4 sm:translate-x-0 z-[100] flex flex-col gap-2 items-center sm:items-end pointer-events-none w-[calc(100%-2rem)] sm:w-auto">
+      {toasts.map((t) => {
+        const tone = t.tone === "error" ? "danger" : t.tone === "info" ? "accent" : "success";
+        const Icon = t.tone === "error" ? AlertTriangle : CheckCircle2;
+        return (
+          <div key={t.id} className="pointer-events-auto gc-toast-in flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium max-w-sm"
+            style={{ background: "var(--ink)", color: "#fff", boxShadow: "0 12px 28px rgba(23,25,28,0.25)" }}>
+            <Icon size={16} style={{ color: tone === "danger" ? "#F0B4A3" : tone === "accent" ? "#9FD3E8" : "#A9DBB0", flexShrink: 0 }} />
+            <span className="truncate">{t.message}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* =========================================================================
+   SELECTORS — derived data, computed fresh from `db` on every render.
+   Nothing here is stored; counts/statuses are always calculated so the UI
+   never gets out of sync with the underlying records.
+   ========================================================================= */
+
+function useSelectors(db) {
+  return useMemo(() => {
+    const leadById = Object.fromEntries(db.leads.map(l => [l.id, l]));
+    const openLeads = db.leads.filter(l => l.status !== "Fechado" && l.status !== "Perdido");
+
+    const pendingFollowups = db.followups.filter(f => f.status === "pendente");
+    const followupsToday = pendingFollowups.filter(f => actionBucket(f.dueDate) === "hoje");
+    const followupsOverdue = pendingFollowups.filter(f => actionBucket(f.dueDate) === "atrasado");
+    const followupsUpcoming = pendingFollowups.filter(f => actionBucket(f.dueDate) === "proximo");
+
+    const demosActive = db.demos.filter(d => ["ativa", "atencao"].includes(demoUrgency(d)));
+    const demosExpiringSoon = db.demos.filter(d => demoUrgency(d) === "atencao" || demoUrgency(d) === "critica");
+    const demosExpired = db.demos.filter(d => demoUrgency(d) === "expirada");
+    const demosDraft = db.demos.filter(d => demoUrgency(d) === "criada");
+
+    const proposalsPending = db.proposals.filter(p => ["Enviada", "Em negociação"].includes(p.status));
+    const proposalsStale = proposalsPending.filter(p => daysSince(p.proposalDate) >= 4);
+
+    const hotLeads = openLeads.filter(l => l.temperature === "Quente");
+    const hotNoNextAction = hotLeads.filter(l => !l.nextAction);
+    const closedLeads = db.leads.filter(l => l.status === "Fechado");
+    const lostLeads = db.leads.filter(l => l.status === "Perdido");
+    const newLeads = db.leads.filter(l => daysSince(l.createdAt) <= 3);
+
+    const noMovement = openLeads.filter(l => {
+      const ref = l.lastContactAt || l.createdAt;
+      return daysSince(ref) >= 4;
+    });
+
+    /* Opportunity value never gets invented — it only exists once a real
+       proposal has been sent, so leads without one simply carry no value. */
+    const proposalValueByLead = {};
+    db.leads.forEach(l => {
+      const p = latestProposalForLead(l.id, db.proposals);
+      if (p) proposalValueByLead[l.id] = p;
+    });
+    const negotiationValue = db.proposals
+      .filter(p => ["Enviada", "Em negociação"].includes(p.status))
+      .reduce((sum, p) => sum + (p.implementationValue || 0), 0);
+    const closedValue = db.clients.reduce((sum, c) => sum + (c.contractedValue || 0), 0);
+
+    /* Shared by the Dashboard funnel and the Pipeline (Kanban) view. */
+    const pipelineStages = STAGE_GROUPS.map(g => {
+      const stageLeads = db.leads.filter(l => g.statuses.includes(l.status));
+      const value = stageLeads.reduce((sum, l) => {
+        const p = proposalValueByLead[l.id];
+        return sum + (p ? (p.implementationValue || 0) : 0);
+      }, 0);
+      return { ...g, leads: stageLeads, count: stageLeads.length, value };
+    });
+
+    /* "Ações de hoje" — every dated commitment due today, ordered by time. */
+    const todaysActions = [
+      ...followupsToday.map(f => ({ kind: "followup", id: f.id, leadId: f.leadId, date: f.dueDate, label: f.note })),
+      ...db.demos.filter(d => demoUrgency(d) !== "expirada" && demoUrgency(d) !== "desativada" && demoUrgency(d) !== "criada" && new Date(d.expiresAt).toDateString() === new Date().toDateString())
+        .map(d => ({ kind: "demo", id: d.id, leadId: d.leadId, date: d.expiresAt, label: `Demo de ${leadById[d.leadId]?.company || "lead"} expira` })),
+    ].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    /* "Central de atenção" — the five categories called out in the brief,
+       each carrying enough context for the UI to offer a one-tap action. */
+    const attention = [
+      ...followupsOverdue.map(f => ({ id: `fu_${f.id}`, type: "followup_overdue", tone: "red", text: leadById[f.leadId]?.company || "Lead removido", sub: `Follow-up atrasado há ${Math.abs(daysDiff(f.dueDate, new Date()))} dia(s) — ${f.note}`, leadId: f.leadId, refId: f.id })),
+      ...followupsToday.map(f => ({ id: `ft_${f.id}`, type: "followup_today", tone: "amber", text: leadById[f.leadId]?.company || "Lead removido", sub: `Follow-up hoje às ${fmtTime(f.dueDate)} — ${f.note}`, leadId: f.leadId, refId: f.id })),
+      ...demosExpiringSoon.map(d => ({ id: `dc_${d.id}`, type: "demo_expiring", tone: demoUrgency(d) === "critica" ? "red" : "amber", text: leadById[d.leadId]?.company || "Lead removido", sub: `Demo próxima de expirar — ${remainingLabel(d)}`, leadId: d.leadId, refId: d.id })),
+      ...proposalsStale.map(p => ({ id: `pp_${p.id}`, type: "proposal_stale", tone: "amber", text: leadById[p.leadId]?.company || "Lead removido", sub: `Proposta sem retorno há ${daysSince(p.proposalDate)} dias`, leadId: p.leadId, refId: p.id })),
+      ...hotNoNextAction.map(l => ({ id: `hn_${l.id}`, type: "hot_no_action", tone: "amber", text: l.company, sub: "Lead quente sem próxima ação definida", leadId: l.id })),
+    ];
+    const attentionSorted = [...attention].sort((a, b) => (a.tone === "red" ? 0 : 1) - (b.tone === "red" ? 0 : 1));
+
+    const bySegment = groupCount(db.leads, l => l.segment);
+    const byCity = groupCount(db.leads, l => l.city);
+    const byOwner = groupCount(db.leads, l => userName(l.owner));
+    const bySource = groupCount(db.leads, l => l.source);
+
+    const funnel = [
+      { label: "Leads", value: db.leads.length },
+      { label: "Contatados", value: db.leads.filter(l => db.interactions.some(i => i.leadId === l.id)).length },
+      { label: "Respostas", value: db.leads.filter(l => db.interactions.some(i => i.leadId === l.id && ["Respondeu", "Atendeu", "Pediu preço", "Pediu proposta", "Demonstrou interesse"].includes(i.result))).length },
+      { label: "Demos enviadas", value: db.demos.filter(d => d.sentAt).length },
+      { label: "Propostas", value: db.proposals.length },
+      { label: "Fechados", value: closedLeads.length },
+    ];
+
+    const lossByReason = groupCount(db.leads.filter(l => l.status === "Perdido"), l => l.lossReason || "Não informado");
+
+    const channelStats = CHANNELS.map(ch => {
+      const total = db.interactions.filter(i => i.channel === ch).length;
+      const responded = db.interactions.filter(i => i.channel === ch && ["Respondeu", "Atendeu", "Pediu preço", "Pediu proposta", "Demonstrou interesse", "Demo enviada"].includes(i.result)).length;
+      return { channel: ch, total, responded };
+    }).filter(c => c.total > 0);
+
+    const perOwner = USERS.map(u => {
+      const leads = db.leads.filter(l => l.owner === u.id);
+      const contacts = db.interactions.filter(i => i.user === u.id).length;
+      const responses = db.interactions.filter(i => i.user === u.id && ["Respondeu", "Atendeu", "Pediu preço", "Pediu proposta", "Demonstrou interesse"].includes(i.result)).length;
+      const proposals = db.proposals.filter(p => leads.some(l => l.id === p.leadId)).length;
+      const closed = leads.filter(l => l.status === "Fechado").length;
+      return { user: u.name, leads: leads.length, contacts, responses, proposals, closed, conversion: leads.length ? Math.round((closed / leads.length) * 100) : 0 };
+    });
+
+    return {
+      leadById, openLeads, pendingFollowups, followupsToday, followupsOverdue, followupsUpcoming,
+      demosActive, demosExpiringSoon, demosExpired, demosDraft, proposalsPending, proposalsStale,
+      hotLeads, hotNoNextAction, closedLeads, lostLeads, newLeads, noMovement, todaysActions,
+      attention: attentionSorted, proposalValueByLead, negotiationValue, closedValue, pipelineStages,
+      bySegment, byCity, byOwner, bySource, funnel, lossByReason, channelStats, perOwner,
+    };
+  }, [db]);
+}
+
+function groupCount(items, keyFn) {
+  const map = {};
+  items.forEach(item => { const k = keyFn(item) || "—"; map[k] = (map[k] || 0) + 1; });
+  return Object.entries(map).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }));
+}
+
+/* Which lead-detail tab an alert or search result should land on. */
+function tabForAttentionType(type) {
+  if (type === "demo_expiring") return "demo";
+  if (type === "proposal_stale") return "proposta";
+  if (type === "followup_overdue" || type === "followup_today") return "followups";
+  return "geral";
+}
+
+/* Global search across the entities the brief calls out explicitly:
+   empresa, contato, cidade, telefone, proposta, cliente. */
+function globalSearch(query, db) {
+  const q = (query || "").trim().toLowerCase();
+  if (q.length < 1) return [];
+  const results = [];
+  db.leads.forEach(l => {
+    const hay = [l.company, l.contactName, l.city, l.phone, l.whatsapp, l.segment].filter(Boolean).join(" ").toLowerCase();
+    if (hay.includes(q)) results.push({ id: `sl_${l.id}`, leadId: l.id, tab: "geral", title: l.company, sub: `${l.city} · ${l.segment}`, icon: Building2 });
+  });
+  db.clients.forEach(c => {
+    if ((c.company || "").toLowerCase().includes(q) && !results.some(r => r.leadId === c.leadId)) {
+      results.push({ id: `sc_${c.id}`, leadId: c.leadId, tab: "geral", title: c.company, sub: "Cliente ativo", icon: UserCheck });
+    }
+  });
+  db.proposals.forEach(p => {
+    if ((p.plan || "").toLowerCase().includes(q)) {
+      const lead = db.leads.find(l => l.id === p.leadId);
+      if (lead) results.push({ id: `sp_${p.id}`, leadId: p.leadId, tab: "proposta", title: lead.company, sub: `Proposta — ${p.plan}`, icon: FileText });
+    }
+  });
+  return results.slice(0, 8);
+}
+
+/* =========================================================================
+   SHELL — login, sidebar, topbar, notification panel
+   ========================================================================= */
+
+const NAV_ITEMS = [
+  { id: "dashboard", label: "Dashboard", icon: Building2 },
+  { id: "leads", label: "Leads", icon: Users },
+  { id: "followups", label: "Follow-ups", icon: Clock },
+  { id: "demos", label: "Demos", icon: Timer },
+  { id: "proposals", label: "Propostas", icon: FileText },
+  { id: "clients", label: "Clientes", icon: UserCheck },
+  { id: "reports", label: "Relatórios", icon: TrendingUp },
+];
+
+function LoginScreen({ onLogin }) {
+  return (
+    <div className="gc-root min-h-screen flex items-center justify-center px-4">
+      <Tokens />
+      <div className="w-full max-w-sm">
+        <div className="mb-8 text-center">
+          <div className="w-11 h-11 rounded-xl mx-auto mb-4 flex items-center justify-center gc-display font-semibold text-white" style={{ background: "var(--accent)" }}>GC</div>
+          <h1 className="gc-display text-xl font-semibold">Gestão Comercial</h1>
+          <p className="text-sm mt-1" style={{ color: "var(--slate)" }}>Quem está acessando?</p>
+        </div>
+        <div className="space-y-2">
+          {USERS.map(u => (
+            <button key={u.id} onClick={() => onLogin(u.id)}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl gc-focus text-left transition-colors"
+              style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+              <span className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-sm" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
+                {u.name[0]}
+              </span>
+              <span className="font-medium text-sm">{u.name}</span>
+              <ChevronRight size={16} className="ml-auto" style={{ color: "var(--slate)" }} />
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-center mt-6" style={{ color: "var(--slate)" }}>
+          Versão de demonstração com dados fictícios. A autenticação real entra na conexão com o Supabase.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Sidebar({ view, setView, mobileOpen, setMobileOpen }) {
+  const content = (
+    <div className="h-full flex flex-col" style={{ background: "var(--surface)" }}>
+      <div className="px-5 py-5 flex items-center gap-2.5">
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center gc-display font-semibold text-sm text-white" style={{ background: "var(--accent)" }}>GC</div>
+        <span className="gc-display font-semibold text-[15px]">Gestão Comercial</span>
+      </div>
+      <nav className="flex-1 px-3 space-y-0.5">
+        {NAV_ITEMS.map(item => {
+          const active = view === item.id;
+          return (
+            <button key={item.id} onClick={() => { setView(item.id); setMobileOpen(false); }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium gc-focus transition-colors"
+              style={{ background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent-ink)" : "var(--ink-soft)" }}>
+              <item.icon size={17} strokeWidth={active ? 2.4 : 2} />
+              {item.label}
+            </button>
+          );
+        })}
+      </nav>
+      <div className="px-5 py-4 text-xs" style={{ color: "var(--slate)", borderTop: "1px solid var(--line)" }}>
+        Dados de demonstração<br />prontos para Supabase
+      </div>
+    </div>
+  );
+  return (
+    <>
+      <div className="hidden md:block w-60 shrink-0 h-screen sticky top-0" style={{ borderRight: "1px solid var(--line)" }}>{content}</div>
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0" style={{ background: "rgba(23,25,28,0.4)" }} onClick={() => setMobileOpen(false)} />
+          <div className="absolute left-0 top-0 h-full w-64 gc-slide-in" style={{ animation: "none" }}>{content}</div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function NotificationPanel({ items, onClose, onOpenLead }) {
+  const ICONS_BY_TYPE = { followup_overdue: Clock, followup_today: Clock, demo_expiring: Timer, proposal_stale: FileText, hot_no_action: Flame };
+  return (
+    <div className="absolute right-0 top-11 w-80 rounded-xl z-30 gc-pop-in gc-scroll overflow-y-auto" style={{ maxHeight: 420, background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 12px 32px rgba(23,25,28,0.12)" }}>
+      <div className="px-4 py-3 font-semibold text-sm gc-display" style={{ borderBottom: "1px solid var(--line)" }}>Notificações</div>
+      {items.length === 0 ? (
+        <div className="p-6 text-sm text-center" style={{ color: "var(--slate)" }}>Tudo em dia por aqui.</div>
+      ) : (
+        <div>
+          {items.map(n => {
+            const Icon = ICONS_BY_TYPE[n.type] || AlertTriangle;
+            const tone = n.tone === "red" ? "danger" : "warn";
+            return (
+              <button key={n.id} onClick={() => { onOpenLead(n.leadId, tabForAttentionType(n.type)); onClose(); }} className="w-full text-left px-4 py-3 flex gap-2.5 gc-row-hover" style={{ borderBottom: "1px solid var(--line)" }}>
+                <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: `var(--${tone}-bg)`, color: `var(--${tone})` }}>
+                  <Icon size={13} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium truncate">{n.text}</span>
+                  <span className="block text-xs mt-0.5" style={{ color: "var(--slate)" }}>{n.sub}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Topbar({ db, currentUser, setCurrentUser, onSearch, search, attention, onOpenLead, onMenu, onLogout, searchInputRef, apiStatus, onSeedDemo }) {
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const results = useMemo(() => globalSearch(search, db), [search, db]);
+
+  return (
+    <div className="sticky top-0 z-20 flex items-center gap-3 px-4 md:px-6 py-3" style={{ background: "var(--paper)", borderBottom: "1px solid var(--line)" }}>
+      <button className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center" onClick={onMenu} style={{ color: "var(--ink-soft)" }}>
+        <Menu size={20} />
+      </button>
+      <div className="flex-1 max-w-md relative">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--slate)" }} />
+        <input ref={searchInputRef} value={search} onChange={(e) => onSearch(e.target.value)}
+          onFocus={() => setSearchOpen(true)} onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+          placeholder="Buscar empresa, contato, cidade, telefone…"
+          className="w-full text-sm rounded-lg pl-9 pr-14 py-2 gc-focus" style={{ background: "var(--surface)", border: "1px solid var(--line-strong)" }} />
+        <Kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 hidden sm:inline-flex">Ctrl K</Kbd>
+        {searchOpen && search.trim() && (
+          <div className="absolute left-0 top-11 w-full rounded-xl z-30 gc-pop-in gc-scroll overflow-y-auto" style={{ maxHeight: 320, background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 12px 32px rgba(23,25,28,0.14)" }}>
+            {results.length === 0 ? (
+              <div className="p-4 text-sm text-center" style={{ color: "var(--slate)" }}>Nada encontrado para "{search}"</div>
+            ) : results.map(r => (
+              <button key={r.id} onMouseDown={() => { onOpenLead(r.leadId, r.tab); onSearch(""); }} className="w-full text-left px-4 py-2.5 flex items-center gap-2.5 gc-row-hover" style={{ borderBottom: "1px solid var(--line)" }}>
+                <r.icon size={14} style={{ color: "var(--slate)" }} className="shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium truncate">{r.title}</span>
+                  <span className="block text-xs truncate" style={{ color: "var(--slate)" }}>{r.sub}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => {
+            const current = crmApi.getBaseUrl();
+            const next = window.prompt("URL da API do Backend (ex.: https://seu-crm.onrender.com/api):\nDeixe em branco para restaurar localhost.", current);
+            if (next !== null) {
+              crmApi.setBaseUrl(next);
+              window.location.reload();
+            }
+          }}
+          className="gc-pressable gc-focus"
+          style={{ background: "transparent", border: "none", padding: 0 }}
+          title="Clique para visualizar ou alterar a URL do servidor backend"
+        >
+          {apiStatus === "connected" ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer" style={{ background: "var(--success-bg)", color: "var(--success)" }}>
+              <span className="w-2 h-2 rounded-full" style={{ background: "var(--success)" }} />
+              <span className="hidden sm:inline">Supabase Conectado</span>
+              <span className="sm:hidden">Supabase</span>
+            </span>
+          ) : apiStatus === "checking" ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer" style={{ background: "var(--tone-slate-bg)", color: "var(--slate)" }}>
+              <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--slate)" }} />
+              Conectando...
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer" style={{ background: "var(--warn-bg)", color: "var(--warn)" }}>
+              <span className="w-2 h-2 rounded-full" style={{ background: "var(--warn)" }} />
+              <span className="hidden sm:inline">Modo Local (Configurar API)</span>
+              <span className="sm:hidden">Offline</span>
+            </span>
+          )}
+        </button>
+        {apiStatus === "connected" && db.leads.length === 0 && onSeedDemo && (
+          <button onClick={onSeedDemo} className="hidden sm:inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg gc-focus gc-pressable font-medium" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
+            Importar dados demo
+          </button>
+        )}
+      </div>
+      <div className="relative">
+        <IconButton icon={Bell} label="Notificações" active={notifOpen} badge={attention.length} onClick={() => setNotifOpen(v => !v)} />
+        {notifOpen && <NotificationPanel items={attention} onClose={() => setNotifOpen(false)} onOpenLead={onOpenLead} />}
+      </div>
+      <div className="flex items-center gap-2 pl-2 ml-1" style={{ borderLeft: "1px solid var(--line)" }}>
+        <span className="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
+          {userName(currentUser)[0]}
+        </span>
+        <span className="text-sm font-medium hidden sm:block">{userName(currentUser)}</span>
+        <button onClick={onLogout} className="w-8 h-8 rounded-lg flex items-center justify-center gc-focus" style={{ color: "var(--slate)" }} aria-label="Trocar usuário">
+          <LogOut size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   DASHBOARD — a commercial command center, not a pile of stats. Hierarchy:
+   what needs attention now → today's actions & pipeline shape → indicators.
+   ========================================================================= */
+
+function StatTile({ label, value, sub, tone, onClick, icon: Icon }) {
+  return (
+    <button onClick={onClick} className="text-left rounded-xl px-4 py-3.5 gc-focus gc-card gc-card-hover gc-pressable" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+      <div className="flex items-center justify-between">
+        <div className="gc-mono text-2xl font-medium leading-none" style={{ color: tone ? `var(--${tone})` : "var(--ink)" }}>{value}</div>
+        {Icon && <Icon size={15} style={{ color: tone ? `var(--${tone})` : "var(--slate)" }} />}
+      </div>
+      <div className="text-xs mt-2" style={{ color: "var(--slate)" }}>{label}</div>
+      {sub && <div className="text-[11px] mt-0.5 gc-mono" style={{ color: "var(--slate)" }}>{sub}</div>}
+    </button>
+  );
+}
+
+const ATTENTION_ICON = { followup_overdue: Clock, followup_today: Clock, demo_expiring: Timer, proposal_stale: FileText, hot_no_action: Flame };
+
+function AttentionCard({ item, lead, onOpenLead, onCompleteFollowup }) {
+  const Icon = ATTENTION_ICON[item.type] || AlertTriangle;
+  const tone = item.tone === "red" ? "danger" : "warn";
+  return (
+    <div className="rounded-xl p-4 gc-card gc-card-hover" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+      <div className="flex items-start gap-3">
+        <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `var(--${tone}-bg)`, color: `var(--${tone})` }}>
+          <Icon size={15} />
+        </span>
+        <button onClick={() => onOpenLead(item.leadId, tabForAttentionType(item.type))} className="min-w-0 flex-1 text-left gc-focus rounded">
+          <span className="block text-sm font-semibold truncate">{item.text}</span>
+          <span className="block text-xs mt-0.5" style={{ color: "var(--slate)" }}>{item.sub}</span>
+        </button>
+      </div>
+      <div className="flex items-center gap-1.5 flex-wrap mt-3 pl-11">
+        {lead?.whatsapp && <QuickAction icon={MessageCircle} label="WhatsApp" href={waLink(lead.whatsapp)} />}
+        {lead?.phone && <QuickAction icon={Phone} label="Ligar" href={telLink(lead.phone)} />}
+        {item.type === "proposal_stale" && <QuickAction icon={FileText} label="Abrir proposta" onClick={() => onOpenLead(item.leadId, "proposta")} />}
+        {(item.type === "followup_overdue" || item.type === "followup_today") && <QuickAction icon={CheckCircle2} label="Concluir" onClick={() => onCompleteFollowup(item)} />}
+        {item.type === "hot_no_action" && <QuickAction icon={ArrowRight} label="Definir ação" onClick={() => onOpenLead(item.leadId, "geral")} />}
+      </div>
+    </div>
+  );
+}
+
+function PipelineFunnel({ stages, onOpenStage }) {
+  const max = Math.max(1, ...stages.map(s => s.count));
+  return (
+    <SectionCard title="Funil comercial">
+      <div className="px-5 py-4 space-y-2.5">
+        {stages.map(s => (
+          <button key={s.key} onClick={() => onOpenStage(s.key)} className="w-full flex items-center gap-3 gc-focus rounded-lg py-1.5 px-1 -mx-1 gc-row-hover">
+            <span className="text-sm w-24 shrink-0 text-left truncate">{s.label}</span>
+            <div className="flex-1"><Bar value={s.count} max={max} tone={s.key === "perdido" ? "danger" : s.key === "fechado" ? "success" : "accent"} /></div>
+            <span className="gc-mono text-sm w-5 text-right shrink-0">{s.count}</span>
+            <span className="gc-mono text-xs w-20 text-right shrink-0 hidden sm:block" style={{ color: "var(--slate)" }}>{s.value > 0 ? fmtMoney(s.value) : ""}</span>
+          </button>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
+
+function Dashboard({ db, sel, currentUser, onOpenLead, setView, setLeadsFilter, setLeadsViewMode, dispatch, notify }) {
+  const tiles = [
+    { label: "Leads abertos", value: sel.openLeads.length, icon: Users, onClick: () => { setLeadsFilter({ open: true }); setView("leads"); } },
+    { label: "Oportunidades quentes", value: sel.hotLeads.length, tone: sel.hotLeads.length ? "hot" : undefined, icon: Flame, onClick: () => { setLeadsFilter({ temperature: "Quente" }); setView("leads"); } },
+    { label: "Propostas em aberto", value: sel.proposalsPending.length, icon: FileText, onClick: () => setView("proposals") },
+    { label: "Valor em negociação", value: fmtMoney(sel.negotiationValue), icon: TrendingUp, onClick: () => setView("proposals") },
+    { label: "Vendas fechadas", value: sel.closedLeads.length, sub: sel.closedValue > 0 ? fmtMoney(sel.closedValue) : undefined, tone: "success", icon: CheckCircle2, onClick: () => setView("clients") },
+  ];
+
+  const todayLabel = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
+
+  const handleCompleteFollowup = (item) => {
+    dispatch({ type: "UPDATE_FOLLOWUP", id: item.refId, patch: { status: "concluido" } });
+    notify(`Follow-up concluído — ${item.text}`);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="gc-display text-xl font-semibold capitalize">{todayLabel}</h1>
+        <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>Olá, {userName(currentUser)}. Aqui está o que precisa de você agora.</p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {tiles.map((t, i) => <StatTile key={i} {...t} />)}
+      </div>
+
+      <div>
+        <h2 className="gc-display text-[15px] font-semibold mb-3">Central de atenção</h2>
+        {sel.attention.length === 0 ? (
+          <SectionCard><EmptyState icon={CheckCircle2} title="Tudo em dia" hint="Follow-ups atrasados, demos expirando, propostas paradas e leads quentes sem próxima ação aparecem aqui." /></SectionCard>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {sel.attention.map(item => (
+              <AttentionCard key={item.id} item={item} lead={sel.leadById[item.leadId]} onOpenLead={onOpenLead} onCompleteFollowup={handleCompleteFollowup} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <SectionCard title="Ações de hoje">
+          {sel.todaysActions.length === 0 ? (
+            <EmptyState icon={CheckCircle2} title="Nada agendado para hoje" hint="Follow-ups e demos que vencem hoje aparecem aqui." />
+          ) : (
+            <div>
+              {sel.todaysActions.map(a => (
+                <button key={`${a.kind}_${a.id}`} onClick={() => onOpenLead(a.leadId, a.kind === "demo" ? "demo" : "followups")} className="w-full flex items-center gap-3 px-5 py-3 text-left gc-row-hover" style={{ borderBottom: "1px solid var(--line)" }}>
+                  <span className="gc-mono text-sm font-medium w-12 shrink-0" style={{ color: "var(--accent-ink)" }}>{fmtTime(a.date)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium truncate">{sel.leadById[a.leadId]?.company}</span>
+                    <span className="block text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{a.label}</span>
+                  </span>
+                  {a.kind === "demo" ? <Timer size={14} style={{ color: "var(--slate)" }} /> : <Clock size={14} style={{ color: "var(--slate)" }} />}
+                </button>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+
+        <PipelineFunnel stages={sel.pipelineStages} onOpenStage={() => { setLeadsViewMode("pipeline"); setView("leads"); }} />
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   LEADS — list, filters, creation
+   ========================================================================= */
+
+function matchesLead(lead, search) {
+  if (!search) return true;
+  const q = search.toLowerCase();
+  return [lead.company, lead.city, lead.segment, lead.contactName].some(v => (v || "").toLowerCase().includes(q));
+}
+
+function FilterChip({ label, active, onClick }) {
+  return (
+    <button onClick={onClick} className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap gc-focus"
+      style={{ background: active ? "var(--accent)" : "var(--surface)", color: active ? "#fff" : "var(--ink-soft)", border: active ? "none" : "1px solid var(--line-strong)" }}>
+      {label}
+    </button>
+  );
+}
+
+function LeadRow({ lead, onClick }) {
+  const bucket = actionBucket(lead.nextAction?.date);
+  return (
+    <button onClick={onClick} className="w-full text-left gc-row-hover px-5 py-3.5" style={{ borderBottom: "1px solid var(--line)" }}>
+      {/* Mobile: stacked card */}
+      <div className="md:hidden space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <span className="min-w-0">
+            <span className="block text-sm font-medium truncate">{lead.company}</span>
+            <span className="block text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{lead.city} · {lead.segment}</span>
+          </span>
+          <span className="shrink-0"><TempPill temperature={lead.temperature} /></span>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <StatusPill status={lead.status} />
+          <span className="text-xs" style={{ color: "var(--slate)" }}>{userName(lead.owner)}</span>
+        </div>
+        {lead.nextAction && (
+          <div className="flex items-center gap-1.5 text-xs">
+            {bucket === "atrasado" && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--danger)" }} />}
+            <span className="gc-mono shrink-0" style={{ color: bucket === "atrasado" ? "var(--danger)" : "var(--slate)" }}>{fmtDate(lead.nextAction.date)}</span>
+            <span className="truncate" style={{ color: "var(--ink-soft)" }}>{lead.nextAction.note}</span>
+          </div>
+        )}
+      </div>
+      {/* Desktop: grid row */}
+      <div className="hidden md:grid items-center gap-3" style={{ gridTemplateColumns: "1.6fr 1fr 0.7fr 1fr 1.3fr 0.9fr" }}>
+        <span className="min-w-0">
+          <span className="block text-sm font-medium truncate">{lead.company}</span>
+          <span className="block text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{lead.city} · {lead.segment}</span>
+        </span>
+        <span><StatusPill status={lead.status} /></span>
+        <span><TempPill temperature={lead.temperature} /></span>
+        <span className="text-sm" style={{ color: "var(--ink-soft)" }}>{userName(lead.owner)}</span>
+        <span className="min-w-0">
+          {lead.nextAction ? (
+            <span className="flex items-center gap-1.5 text-sm truncate">
+              {bucket === "atrasado" && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--danger)" }} />}
+              {bucket === "hoje" && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--warn)" }} />}
+              <span className="gc-mono text-xs shrink-0" style={{ color: bucket === "atrasado" ? "var(--danger)" : "var(--slate)" }}>{fmtDate(lead.nextAction.date)}</span>
+              <span className="truncate" style={{ color: "var(--ink-soft)" }}>{lead.nextAction.note}</span>
+            </span>
+          ) : <span className="text-sm" style={{ color: "var(--slate)" }}>—</span>}
+        </span>
+        <span className="gc-mono text-xs" style={{ color: "var(--slate)" }}>{lead.lastContactAt ? fmtDateTime(lead.lastContactAt) : "Sem contato"}</span>
+      </div>
+    </button>
+  );
+}
+
+function ViewToggle({ mode, setMode }) {
+  return (
+    <div className="inline-flex items-center rounded-lg p-0.5 shrink-0" style={{ background: "var(--surface-sunken)" }}>
+      <button onClick={() => setMode("list")} className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium gc-focus gc-pressable"
+        style={{ background: mode === "list" ? "var(--surface)" : "transparent", color: mode === "list" ? "var(--ink)" : "var(--slate)", boxShadow: mode === "list" ? "0 1px 2px rgba(23,25,28,0.08)" : "none" }}>
+        <List size={13} /> Lista
+      </button>
+      <button onClick={() => setMode("pipeline")} className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium gc-focus gc-pressable"
+        style={{ background: mode === "pipeline" ? "var(--surface)" : "transparent", color: mode === "pipeline" ? "var(--ink)" : "var(--slate)", boxShadow: mode === "pipeline" ? "0 1px 2px rgba(23,25,28,0.08)" : "none" }}>
+        <LayoutGrid size={13} /> Pipeline
+      </button>
+    </div>
+  );
+}
+
+function KanbanCard({ lead, proposal, daysInStage, onClick }) {
+  const bucket = actionBucket(lead.nextAction?.date);
+  return (
+    <button onClick={onClick} className="w-full text-left rounded-xl p-3.5 gc-focus gc-card gc-card-hover gc-pressable space-y-2" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+      <div className="flex items-start justify-between gap-2">
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold truncate">{lead.company}</span>
+          <span className="block text-xs truncate" style={{ color: "var(--slate)" }}>{lead.contactName || lead.segment}</span>
+        </span>
+        <TempPill temperature={lead.temperature} />
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <PriorityMark priority={lead.priority} />
+        <span className="text-xs" style={{ color: "var(--slate)" }}>· {lead.segment}</span>
+      </div>
+      {proposal && (
+        <div className="gc-mono text-sm font-medium" style={{ color: "var(--accent-ink)" }}>{fmtMoney(proposal.implementationValue)}</div>
+      )}
+      {lead.nextAction ? (
+        <div className="flex items-center gap-1.5 text-xs">
+          {bucket === "atrasado" && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--danger)" }} />}
+          <span className="gc-mono shrink-0" style={{ color: bucket === "atrasado" ? "var(--danger)" : "var(--slate)" }}>{fmtDate(lead.nextAction.date)}</span>
+          <span className="truncate" style={{ color: "var(--ink-soft)" }}>{lead.nextAction.note}</span>
+        </div>
+      ) : (
+        <div className="text-xs" style={{ color: "var(--slate)" }}>Sem próxima ação</div>
+      )}
+      <div className="text-[11px] pt-1" style={{ color: "var(--slate)", borderTop: "1px solid var(--line)" }}>
+        {daysInStage <= 0 ? "Entrou na etapa hoje" : `${daysInStage} dia(s) nesta etapa`}
+      </div>
+    </button>
+  );
+}
+
+function PipelineBoard({ leads, statusHistory, proposalValueByLead, onOpenLead }) {
+  const buckets = useMemo(() => STAGE_GROUPS.map(g => ({ ...g, leads: leads.filter(l => g.statuses.includes(l.status)) })), [leads]);
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-2 gc-scroll -mx-4 px-4 md:mx-0 md:px-0">
+      {buckets.map(col => {
+        const colValue = col.leads.reduce((sum, l) => sum + (proposalValueByLead[l.id] ? (proposalValueByLead[l.id].implementationValue || 0) : 0), 0);
+        return (
+          <div key={col.key} className="shrink-0 w-64 flex flex-col rounded-xl" style={{ background: "var(--surface-sunken)" }}>
+            <div className="px-3.5 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--line)" }}>
+              <span className="text-sm font-semibold">{col.label}</span>
+              <span className="gc-mono text-xs" style={{ color: "var(--slate)" }}>{col.leads.length}{colValue > 0 ? ` · ${fmtMoney(colValue)}` : ""}</span>
+            </div>
+            <div className="flex-1 p-2.5 space-y-2.5 gc-scroll overflow-y-auto" style={{ maxHeight: "calc(100vh - 320px)", minHeight: 120 }}>
+              {col.leads.length === 0 ? (
+                <div className="text-xs text-center py-6" style={{ color: "var(--slate)" }}>Vazio</div>
+              ) : col.leads.map(l => (
+                <KanbanCard key={l.id} lead={l} proposal={proposalValueByLead[l.id]} daysInStage={daysInCurrentStage(l, statusHistory)} onClick={() => onOpenLead(l.id)} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onCreateLead, currentUser, viewMode, setViewMode }) {
+  const [sortBy, setSortBy] = useState("next_action");
+
+  const filtered = useMemo(() => {
+    let list = db.leads.filter(l => matchesLead(l, search));
+    if (filter.status) list = list.filter(l => l.status === filter.status);
+    if (filter.temperature) list = list.filter(l => l.temperature === filter.temperature);
+    if (filter.owner) list = list.filter(l => l.owner === filter.owner);
+    if (filter.priority) list = list.filter(l => l.priority === filter.priority);
+    if (filter.recent) list = list.filter(l => daysSince(l.createdAt) <= 3);
+    if (filter.noMovement) list = list.filter(l => sel.noMovement.some(nm => nm.id === l.id));
+    if (filter.open) list = list.filter(l => l.status !== "Fechado" && l.status !== "Perdido");
+
+    const bucketRank = { atrasado: 0, hoje: 1, proximo: 2, null: 3 };
+    if (sortBy === "next_action") {
+      list = [...list].sort((a, b) => bucketRank[actionBucket(a.nextAction?.date)] - bucketRank[actionBucket(b.nextAction?.date)]);
+    } else if (sortBy === "priority") {
+      list = [...list].sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]);
+    } else if (sortBy === "temperature") {
+      list = [...list].sort((a, b) => TEMP_RANK[b.temperature] - TEMP_RANK[a.temperature]);
+    } else if (sortBy === "last_contact") {
+      list = [...list].sort((a, b) => new Date(b.lastContactAt || 0) - new Date(a.lastContactAt || 0));
+    }
+    return list;
+  }, [db.leads, search, filter, sortBy, sel.noMovement]);
+
+  const clearable = Object.values(filter).some(Boolean);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="gc-display text-xl font-semibold">Leads</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>{filtered.length} de {db.leads.length} leads</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <ViewToggle mode={viewMode} setMode={setViewMode} />
+          <Button icon={Plus} onClick={onCreateLead}>Novo lead</Button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 gc-scroll">
+        <FilterChip label="Todos" active={!clearable} onClick={() => setFilter({})} />
+        <FilterChip label="Em andamento" active={!!filter.open} onClick={() => setFilter(f => ({ ...f, open: !f.open }))} />
+        {STATUS_LIST.map(s => (
+          <FilterChip key={s} label={s} active={filter.status === s} onClick={() => setFilter(f => ({ ...f, status: f.status === s ? null : s }))} />
+        ))}
+      </div>
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 gc-scroll">
+        {TEMPERATURES.map(t => (
+          <FilterChip key={t} label={t} active={filter.temperature === t} onClick={() => setFilter(f => ({ ...f, temperature: f.temperature === t ? null : t }))} />
+        ))}
+        <span className="w-px h-5 shrink-0" style={{ background: "var(--line-strong)" }} />
+        {USERS.map(u => (
+          <FilterChip key={u.id} label={u.name} active={filter.owner === u.id} onClick={() => setFilter(f => ({ ...f, owner: f.owner === u.id ? null : u.id }))} />
+        ))}
+        <span className="w-px h-5 shrink-0" style={{ background: "var(--line-strong)" }} />
+        <FilterChip label="Sem movimentação" active={!!filter.noMovement} onClick={() => setFilter(f => ({ ...f, noMovement: !f.noMovement }))} />
+        {viewMode === "list" && (
+          <div className="ml-auto flex items-center gap-1.5 shrink-0 pl-2">
+            <span className="text-xs" style={{ color: "var(--slate)" }}>Ordenar:</span>
+            <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ width: "auto", padding: "6px 10px", fontSize: 12 }}>
+              <option value="next_action">Próxima ação</option>
+              <option value="priority">Prioridade</option>
+              <option value="temperature">Temperatura</option>
+              <option value="last_contact">Último contato</option>
+            </Select>
+          </div>
+        )}
+      </div>
+
+      {viewMode === "pipeline" ? (
+        filtered.length === 0 ? (
+          <SectionCard><EmptyState icon={Search} title="Nenhum lead encontrado" hint="Ajuste os filtros ou a busca para ver mais resultados." /></SectionCard>
+        ) : (
+          <PipelineBoard leads={filtered} statusHistory={db.statusHistory} proposalValueByLead={sel.proposalValueByLead} onOpenLead={onOpenLead} />
+        )
+      ) : (
+        <SectionCard>
+          <div className="hidden md:grid gap-3 px-5 py-2.5 text-xs font-medium" style={{ gridTemplateColumns: "1.6fr 1fr 0.7fr 1fr 1.3fr 0.9fr", color: "var(--slate)", borderBottom: "1px solid var(--line)" }}>
+            <span>Empresa</span><span>Status</span><span>Temp.</span><span>Responsável</span><span>Próxima ação</span><span>Último contato</span>
+          </div>
+          {filtered.length === 0 ? (
+            <EmptyState icon={Search} title="Nenhum lead encontrado" hint="Ajuste os filtros ou a busca para ver mais resultados." />
+          ) : filtered.map(l => <LeadRow key={l.id} lead={l} onClick={() => onOpenLead(l.id)} />)}
+        </SectionCard>
+      )}
+    </div>
+  );
+}
+
+function LeadFormModal({ onClose, onSave, currentUser }) {
+  const [expanded, setExpanded] = useState(false);
+  const [form, setForm] = useState({
+    company: "", contactName: "", phone: "", whatsapp: "", instagram: "", gmaps: "", currentSite: "",
+    city: "", neighborhood: "", segment: SEGMENTS[0], notes: "",
+    owner: currentUser || USERS[0].id, priority: "Média", temperature: "Frio", source: SOURCES[0],
+  });
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+  const canSave = form.company.trim().length > 0;
+  return (
+    <Modal title="Novo lead" onClose={onClose} width={520}>
+      <div className="space-y-4">
+        <p className="text-xs -mt-1" style={{ color: "var(--slate)" }}>Cadastro rápido — complete os outros dados depois, na ficha do lead.</p>
+        <Field label="Nome da empresa" required><TextInput autoFocus value={form.company} onChange={set("company")} placeholder="Ex.: Padaria Ponto Doce" /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Contato"><TextInput value={form.contactName} onChange={set("contactName")} placeholder="Nome do responsável" /></Field>
+          <Field label="Segmento"><Select value={form.segment} onChange={set("segment")}>{SEGMENTS.map(s => <option key={s}>{s}</option>)}</Select></Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="WhatsApp"><TextInput value={form.whatsapp} onChange={set("whatsapp")} placeholder="(31) 90000-0000" /></Field>
+          <Field label="Instagram"><TextInput value={form.instagram} onChange={set("instagram")} placeholder="@empresa" /></Field>
+        </div>
+        <Field label="Cidade"><TextInput value={form.city} onChange={set("city")} /></Field>
+
+        {!expanded ? (
+          <button type="button" onClick={() => setExpanded(true)} className="text-xs font-medium gc-focus flex items-center gap-1" style={{ color: "var(--accent-ink)" }}>
+            <ChevronDown size={13} /> Mostrar mais campos
+          </button>
+        ) : (
+          <div className="space-y-4 pt-1 gc-fade-in" style={{ borderTop: "1px solid var(--line)" }}>
+            <div className="grid grid-cols-2 gap-3 pt-3">
+              <Field label="Telefone"><TextInput value={form.phone} onChange={set("phone")} /></Field>
+              <Field label="Site atual"><TextInput value={form.currentSite} onChange={set("currentSite")} /></Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Bairro"><TextInput value={form.neighborhood} onChange={set("neighborhood")} /></Field>
+              <Field label="Google Maps (link)"><TextInput value={form.gmaps} onChange={set("gmaps")} /></Field>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Responsável interno"><Select value={form.owner} onChange={set("owner")}>{USERS.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></Field>
+              <Field label="Prioridade"><Select value={form.priority} onChange={set("priority")}>{PRIORITIES.map(p => <option key={p}>{p}</option>)}</Select></Field>
+              <Field label="Origem"><Select value={form.source} onChange={set("source")}>{SOURCES.map(s => <option key={s}>{s}</option>)}</Select></Field>
+            </div>
+            <Field label="Observações"><TextArea value={form.notes} onChange={set("notes")} /></Field>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={!canSave} onClick={() => onSave(form)}>Salvar lead</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* =========================================================================
+   LEAD DETAIL DRAWER
+   ========================================================================= */
+
+const LEAD_TABS = [
+  { id: "geral", label: "Visão geral" },
+  { id: "historico", label: "Histórico" },
+  { id: "followups", label: "Follow-ups" },
+  { id: "demo", label: "Demo" },
+  { id: "proposta", label: "Proposta" },
+];
+
+function InfoRow({ icon: Icon, label, value, href }) {
+  if (!value) return null;
+  const content = (
+    <span className="flex items-center gap-2.5 text-sm py-1.5">
+      <Icon size={14} style={{ color: "var(--slate)" }} />
+      <span style={{ color: "var(--ink-soft)" }}>{label}</span>
+      <span className="ml-auto truncate max-w-[60%] text-right">{value}</span>
+    </span>
+  );
+  return href ? <a href={href} target="_blank" rel="noreferrer" className="block gc-focus rounded">{content}</a> : content;
+}
+
+function StatusChanger({ lead, onChange }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(v => !v)} className="gc-focus rounded-full"><StatusPill status={lead.status} /></button>
+      {open && (
+        <div className="absolute left-0 top-8 z-20 w-52 rounded-xl py-1.5 gc-fade-in gc-scroll overflow-y-auto" style={{ maxHeight: 280, background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 12px 32px rgba(23,25,28,0.14)" }}>
+          {STATUS_LIST.map(s => (
+            <button key={s} onClick={() => { onChange(s); setOpen(false); }} className="w-full text-left px-3 py-2 text-sm gc-row-hover flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: `var(--tone-${STATUS_TONE[s]}-fg)` }} />
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScoreBar({ label, value, onChange }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-xs w-32 shrink-0" style={{ color: "var(--ink-soft)" }}>{label}</span>
+      <div className="flex gap-1">
+        {[0, 1, 2, 3, 4, 5].map(n => (
+          <button key={n} onClick={() => onChange(n)} className="w-5 h-5 rounded gc-focus" style={{ background: n <= value ? "var(--accent)" : "var(--surface-sunken)" }} aria-label={`${n}`} />
+        ))}
+      </div>
+      <span className="gc-mono text-xs ml-auto" style={{ color: "var(--slate)" }}>{value}/5</span>
+    </div>
+  );
+}
+
+function NextActionEditor({ lead, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [date, setDate] = useState(lead.nextAction?.date ? new Date(lead.nextAction.date).toISOString().slice(0, 16) : "");
+  const [note, setNote] = useState(lead.nextAction?.note || "");
+  if (!editing) {
+    const bucket = actionBucket(lead.nextAction?.date);
+    return (
+      <div className="rounded-xl p-4" style={{ background: bucket === "atrasado" ? "var(--danger-bg)" : "var(--surface-sunken)" }}>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium" style={{ color: bucket === "atrasado" ? "var(--danger)" : "var(--slate)" }}>
+            {bucket === "atrasado" ? "Próxima ação — atrasada" : "Próxima ação"}
+          </span>
+          <button onClick={() => setEditing(true)} className="text-xs font-medium gc-focus" style={{ color: "var(--accent-ink)" }}>Editar</button>
+        </div>
+        {lead.nextAction ? (
+          <>
+            <div className="gc-mono text-sm font-medium mt-1.5">{fmtDateTime(lead.nextAction.date)}</div>
+            <div className="text-sm mt-0.5">{lead.nextAction.note}</div>
+          </>
+        ) : <div className="text-sm mt-1.5" style={{ color: "var(--slate)" }}>Nenhuma ação definida.</div>}
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-xl p-4 space-y-2.5" style={{ background: "var(--surface-sunken)" }}>
+      <Field label="Data e horário"><TextInput type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+      <Field label="O que fazer"><TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ex.: Retornar amanhã às 10h" /></Field>
+      <div className="flex justify-end gap-2 pt-1">
+        <Button size="sm" variant="secondary" onClick={() => setEditing(false)}>Cancelar</Button>
+        <Button size="sm" onClick={() => { onSave(date ? { date: new Date(date).toISOString(), note } : null); setEditing(false); }}>Salvar</Button>
+      </div>
+    </div>
+  );
+}
+
+function LossReasonModal({ onClose, onSave }) {
+  const [reason, setReason] = useState(LOSS_REASONS[0]);
+  return (
+    <Modal title="Motivo da perda" onClose={onClose} width={400}>
+      <Field label="Por que este lead foi perdido?">
+        <Select value={reason} onChange={(e) => setReason(e.target.value)}>{LOSS_REASONS.map(r => <option key={r}>{r}</option>)}</Select>
+      </Field>
+      <div className="flex justify-end gap-2 pt-4">
+        <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+        <Button variant="danger" onClick={() => onSave(reason)}>Confirmar perda</Button>
+      </div>
+    </Modal>
+  );
+}
+
+function ConvertClientModal({ lead, onClose, onSave }) {
+  const [form, setForm] = useState({ plan: PLANS[0], contractedValue: "", monthlyValue: "", domain: "", publishDate: "" });
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+  return (
+    <Modal title={`Converter ${lead.company} em cliente`} onClose={onClose} width={480}>
+      <div className="space-y-4">
+        <Field label="Plano contratado"><Select value={form.plan} onChange={set("plan")}>{PLANS.map(p => <option key={p}>{p}</option>)}</Select></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Valor de implantação"><TextInput type="number" value={form.contractedValue} onChange={set("contractedValue")} placeholder="0" /></Field>
+          <Field label="Mensalidade"><TextInput type="number" value={form.monthlyValue} onChange={set("monthlyValue")} placeholder="0" /></Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Domínio"><TextInput value={form.domain} onChange={set("domain")} placeholder="empresa.com.br" /></Field>
+          <Field label="Data de publicação" hint="Opcional"><TextInput type="date" value={form.publishDate} onChange={set("publishDate")} /></Field>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => onSave(form)}>Converter em cliente</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function AddInteractionForm({ onSave }) {
+  const [channel, setChannel] = useState(CHANNELS[0]);
+  const [result, setResult] = useState(RESULTS[0]);
+  const [note, setNote] = useState("");
+  return (
+    <div className="rounded-xl p-4 space-y-2.5" style={{ background: "var(--surface-sunken)" }}>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Canal"><Select value={channel} onChange={(e) => setChannel(e.target.value)}>{CHANNELS.map(c => <option key={c}>{c}</option>)}</Select></Field>
+        <Field label="Resultado"><Select value={result} onChange={(e) => setResult(e.target.value)}>{RESULTS.map(r => <option key={r}>{r}</option>)}</Select></Field>
+      </div>
+      <Field label="Observação"><TextArea value={note} onChange={(e) => setNote(e.target.value)} placeholder="O que aconteceu na conversa" /></Field>
+      <div className="flex justify-end">
+        <Button size="sm" icon={Plus} onClick={() => { onSave({ channel, result, note }); setNote(""); }}>Registrar interação</Button>
+      </div>
+    </div>
+  );
+}
+
+/* Chronological, cross-entity timeline — the brief's explicit ask so the
+   whole story of a lead reads without hopping between tabs. Only events we
+   actually have real timestamps for are shown (never a fabricated date). */
+function buildLeadTimeline(leadId, db) {
+  const events = [];
+  db.interactions.filter(i => i.leadId === leadId).forEach(i => events.push({ type: "interaction", date: i.date, data: i }));
+  db.statusHistory.filter(s => s.leadId === leadId).forEach(s => events.push({ type: "status", date: s.date, data: s }));
+  db.followups.filter(f => f.leadId === leadId).forEach(f => events.push({ type: "followup", date: f.dueDate, data: f }));
+  db.demos.filter(d => d.leadId === leadId).forEach(d => {
+    events.push({ type: "demo_created", date: d.createdAt, data: d });
+    if (d.sentAt) events.push({ type: "demo_sent", date: d.sentAt, data: d });
+  });
+  db.proposals.filter(p => p.leadId === leadId).forEach(p => events.push({ type: "proposal", date: p.proposalDate, data: p }));
+  return events.sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
+function dayLabel(date) {
+  const d = daysSince(date);
+  if (d === 0) return "Hoje";
+  if (d === 1) return "Ontem";
+  if (d === -1) return "Amanhã";
+  if (d < -1) return `Em ${Math.abs(d)} dias`;
+  return fmtDateFull(date);
+}
+
+function TimelineEvent({ event }) {
+  const { type, date, data } = event;
+  if (type === "status") {
+    return (
+      <div className="flex items-center gap-2.5 py-2">
+        <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--surface-sunken)", color: "var(--slate)" }}><RotateCcw size={11} /></span>
+        <span className="text-xs gc-mono shrink-0" style={{ color: "var(--slate)" }}>{fmtTime(date)}</span>
+        <span className="text-xs" style={{ color: "var(--ink-soft)" }}>{userName(data.user)} alterou status: <strong>{data.from}</strong> → <strong>{data.to}</strong></span>
+      </div>
+    );
+  }
+  if (type === "followup") {
+    const isFuture = new Date(data.dueDate) > new Date();
+    return (
+      <div className="flex items-start gap-2.5 py-2">
+        <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--surface-sunken)", color: "var(--slate)" }}><Clock size={11} /></span>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-xs" style={{ color: "var(--slate)" }}>
+            <span className="gc-mono">{fmtTime(date)}</span>
+            <span>{isFuture ? "Follow-up agendado" : "Follow-up"}</span>
+            <Pill tone={data.status === "concluido" ? "green" : data.status === "cancelado" ? "slate" : "amber"}>{data.status}</Pill>
+          </div>
+          <div className="text-sm mt-0.5">{data.note}</div>
+        </div>
+      </div>
+    );
+  }
+  if (type === "demo_created" || type === "demo_sent") {
+    return (
+      <div className="flex items-center gap-2.5 py-2">
+        <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
+          {type === "demo_sent" ? <Send size={11} /> : <Timer size={11} />}
+        </span>
+        <span className="text-xs gc-mono shrink-0" style={{ color: "var(--slate)" }}>{fmtTime(date)}</span>
+        <span className="text-xs" style={{ color: "var(--ink-soft)" }}>{type === "demo_sent" ? "Demo enviada ao cliente" : "Demo criada"} — {userName(data.owner)}</span>
+      </div>
+    );
+  }
+  if (type === "proposal") {
+    return (
+      <div className="flex items-center gap-2.5 py-2">
+        <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}><FileText size={11} /></span>
+        <span className="text-xs gc-mono shrink-0" style={{ color: "var(--slate)" }}>{fmtTime(date)}</span>
+        <span className="text-xs" style={{ color: "var(--ink-soft)" }}>Proposta enviada — {data.plan} · {fmtMoney(data.implementationValue)}</span>
+      </div>
+    );
+  }
+  const Icon = CHANNEL_ICON[data.channel] || MoreHorizontal;
+  return (
+    <div className="relative py-3" style={{ borderLeft: "2px solid var(--line-strong)", paddingLeft: 14, marginLeft: 11 }}>
+      <span className="absolute -left-[7px] top-3.5 w-3 h-3 rounded-full" style={{ background: "var(--accent)", border: "2px solid var(--paper)" }} />
+      <div className="flex items-center gap-2 text-xs" style={{ color: "var(--slate)" }}>
+        <span className="gc-mono">{fmtTime(date)}</span>
+        <span className="font-medium" style={{ color: "var(--ink-soft)" }}>{userName(data.user)}</span>
+        <span className="flex items-center gap-1"><Icon size={12} />{data.channel}</span>
+        <Pill tone="slate">{data.result}</Pill>
+      </div>
+      {data.note && <div className="text-sm mt-1.5">{data.note}</div>}
+    </div>
+  );
+}
+
+function UnifiedTimeline({ leadId, db, onAdd }) {
+  const events = useMemo(() => buildLeadTimeline(leadId, db), [leadId, db]);
+  const grouped = useMemo(() => {
+    const groups = [];
+    events.forEach(e => {
+      const label = dayLabel(e.date);
+      let g = groups.find(g => g.label === label);
+      if (!g) { g = { label, events: [] }; groups.push(g); }
+      g.events.push(e);
+    });
+    return groups;
+  }, [events]);
+
+  return (
+    <div className="space-y-4">
+      <AddInteractionForm onSave={onAdd} />
+      {events.length === 0 ? (
+        <EmptyState icon={Clock} title="Nenhum evento registrado" hint="Interações, follow-ups, demos e propostas aparecem aqui em ordem cronológica." />
+      ) : (
+        <div className="space-y-4">
+          {grouped.map((g, gi) => (
+            <div key={gi}>
+              <div className="text-xs font-semibold mb-1.5" style={{ color: "var(--slate)" }}>{g.label}</div>
+              <div className="rounded-xl px-3" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+                {g.events.map((e, i) => <TimelineEvent key={i} event={e} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NewFollowupForm({ onSave }) {
+  const [preset, setPreset] = useState("hoje");
+  const [customDate, setCustomDate] = useState("");
+  const [note, setNote] = useState("");
+  const resolveDate = () => {
+    if (preset === "hoje") return daysFromNow(0, 17, 0);
+    if (preset === "amanha") return daysFromNow(1, 9, 0);
+    if (preset === "3dias") return daysFromNow(3, 9, 0);
+    return customDate ? new Date(customDate).toISOString() : daysFromNow(0, 17, 0);
+  };
+  return (
+    <div className="rounded-xl p-4 space-y-2.5" style={{ background: "var(--surface-sunken)" }}>
+      <Field label="Quando">
+        <div className="flex gap-2 flex-wrap">
+          {[["hoje", "Hoje"], ["amanha", "Amanhã"], ["3dias", "Em 3 dias"], ["custom", "Data específica"]].map(([id, label]) => (
+            <FilterChip key={id} label={label} active={preset === id} onClick={() => setPreset(id)} />
+          ))}
+        </div>
+      </Field>
+      {preset === "custom" && <Field label="Data"><TextInput type="datetime-local" value={customDate} onChange={(e) => setCustomDate(e.target.value)} /></Field>}
+      <Field label="Lembrete"><TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ex.: Cobrar resposta da proposta" /></Field>
+      <div className="flex justify-end">
+        <Button size="sm" icon={Plus} onClick={() => { onSave({ dueDate: resolveDate(), note }); setNote(""); }}>Criar follow-up</Button>
+      </div>
+    </div>
+  );
+}
+
+function FollowupRow({ f, onComplete, onReschedule, onCancel }) {
+  const bucket = actionBucket(f.dueDate);
+  const done = f.status !== "pendente";
+  return (
+    <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: "1px solid var(--line)", opacity: done ? 0.55 : 1 }}>
+      <span className="gc-mono text-xs w-24 shrink-0" style={{ color: bucket === "atrasado" && !done ? "var(--danger)" : "var(--slate)" }}>{fmtDateTime(f.dueDate)}</span>
+      <span className={`text-sm flex-1 min-w-0 truncate ${done ? "line-through" : ""}`}>{f.note}</span>
+      {!done ? (
+        <div className="flex items-center gap-1 shrink-0">
+          <button onClick={() => onComplete(f.id)} className="w-7 h-7 rounded-lg flex items-center justify-center gc-focus" style={{ color: "var(--success)" }} aria-label="Concluir"><CheckCircle2 size={16} /></button>
+          <button onClick={() => onReschedule(f.id)} className="w-7 h-7 rounded-lg flex items-center justify-center gc-focus" style={{ color: "var(--accent-ink)" }} aria-label="Reagendar"><RotateCcw size={15} /></button>
+          <button onClick={() => onCancel(f.id)} className="w-7 h-7 rounded-lg flex items-center justify-center gc-focus" style={{ color: "var(--slate)" }} aria-label="Cancelar"><Ban size={15} /></button>
+        </div>
+      ) : <Pill tone={f.status === "concluido" ? "green" : f.status === "cancelado" ? "slate" : "amber"}>{f.status}</Pill>}
+    </div>
+  );
+}
+
+function DemoCard({ demo, onDeactivate, onMarkSent }) {
+  const urgency = demoUrgency(demo);
+  const LABEL = { ativa: "Enviada", atencao: "Próxima de expirar", critica: "Expirando", expirada: "Expirada", desativada: "Desativada", criada: "Criada — não enviada" };
+  const TONE = { ativa: "green", atencao: "amber", critica: "amber", expirada: "red", desativada: "slate", criada: "blue" };
+  return (
+    <div className="rounded-xl p-4 space-y-2.5 gc-card gc-card-hover" style={{ background: "var(--surface-sunken)", border: "1px solid transparent" }}>
+      <div className="flex items-center justify-between">
+        <Pill tone={TONE[urgency]} dot>{LABEL[urgency]}</Pill>
+        {urgency !== "criada" && (
+          <span className="gc-mono text-xs" style={{ color: urgency === "ativa" ? "var(--success)" : urgency === "expirada" ? "var(--danger)" : "var(--warn)" }}>{remainingLabel(demo)}</span>
+        )}
+      </div>
+      <a href={demo.url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-sm gc-focus rounded" style={{ color: "var(--accent-ink)" }}>
+        <Link2 size={14} /> <span className="truncate">{demo.url}</span> <ExternalLink size={12} className="shrink-0" />
+      </a>
+      <div className="text-xs" style={{ color: "var(--slate)" }}>
+        Criada {fmtDateTime(demo.createdAt)} por {userName(demo.owner)}{demo.sentAt ? ` · Enviada ${fmtDateTime(demo.sentAt)}` : ""}
+      </div>
+      <div className="flex items-center justify-between gap-2 text-xs pt-2" style={{ borderTop: "1px solid var(--line)" }}>
+        <span className="flex items-center gap-1.5 min-w-0" style={{ color: "var(--slate)" }}>
+          <Eye size={12} className="shrink-0" />
+          <span className="truncate">{demo.views ? `${demo.views} acesso(s) · último em ${fmtDateTime(demo.lastViewedAt)}` : "Sem dados de visualização ainda"}</span>
+        </span>
+        {urgency === "criada" ? (
+          <button onClick={() => onMarkSent(demo)} className="font-medium gc-focus gc-pressable flex items-center gap-1 shrink-0" style={{ color: "var(--accent-ink)" }}><Send size={12} />Marcar enviada</button>
+        ) : !demo.deactivated && (
+          <button onClick={() => onDeactivate(demo.id)} className="font-medium gc-focus gc-pressable shrink-0" style={{ color: "var(--danger)" }}>Desativar</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NewDemoForm({ onSave }) {
+  const [url, setUrl] = useState("");
+  const [hours, setHours] = useState(24);
+  return (
+    <div className="rounded-xl p-4 space-y-2.5" style={{ background: "var(--surface-sunken)" }}>
+      <Field label="URL da demonstração"><TextInput value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://demo.estudio.com/empresa" /></Field>
+      <Field label="Validade após o envio (horas)" hint="Contagem de 24h começa quando for marcada como enviada"><TextInput type="number" value={hours} onChange={(e) => setHours(e.target.value)} /></Field>
+      <div className="flex justify-end gap-2 flex-wrap">
+        <Button size="sm" variant="secondary" disabled={!url.trim()} onClick={() => { onSave({ url, hours: Number(hours) || 24, sendNow: false }); setUrl(""); }}>Salvar rascunho</Button>
+        <Button size="sm" icon={Send} disabled={!url.trim()} onClick={() => { onSave({ url, hours: Number(hours) || 24, sendNow: true }); setUrl(""); }}>Criar e enviar agora</Button>
+      </div>
+    </div>
+  );
+}
+
+
+function ProposalCard({ proposal, onUpdateStatus }) {
+  const staleDays = daysSince(proposal.proposalDate);
+  return (
+    <div className="rounded-xl p-4 space-y-2" style={{ background: "var(--surface-sunken)" }}>
+      <div className="flex items-center justify-between">
+        <span className="font-medium text-sm">{proposal.plan}</span>
+        <Select value={proposal.status} onChange={(e) => onUpdateStatus(proposal.id, e.target.value)} style={{ width: "auto", padding: "4px 8px", fontSize: 12 }}>
+          {["Rascunho", "Enviada", "Em negociação", "Aprovada", "Recusada", "Expirada"].map(s => <option key={s}>{s}</option>)}
+        </Select>
+      </div>
+      <div className="flex gap-4 text-sm gc-mono">
+        <span>Implantação: {fmtMoney(proposal.implementationValue)}</span>
+        <span>Mensalidade: {fmtMoney(proposal.monthlyValue)}</span>
+      </div>
+      <div className="text-xs" style={{ color: "var(--slate)" }}>
+        Enviada em {fmtDateFull(proposal.proposalDate)} · Válida até {fmtDateFull(proposal.validUntil)}
+      </div>
+      {["Enviada", "Em negociação"].includes(proposal.status) && staleDays >= 4 && (
+        <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: "var(--warn)" }}>
+          <AlertTriangle size={12} /> Sem retorno há {staleDays} dias
+        </div>
+      )}
+      {proposal.notes && <div className="text-sm">{proposal.notes}</div>}
+    </div>
+  );
+}
+
+function NewProposalForm({ onSave }) {
+  const [form, setForm] = useState({ plan: PLANS[0], implementationValue: "", monthlyValue: "", validDays: 7, notes: "" });
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+  return (
+    <div className="rounded-xl p-4 space-y-2.5" style={{ background: "var(--surface-sunken)" }}>
+      <Field label="Plano"><Select value={form.plan} onChange={set("plan")}>{PLANS.map(p => <option key={p}>{p}</option>)}</Select></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Valor de implantação"><TextInput type="number" value={form.implementationValue} onChange={set("implementationValue")} /></Field>
+        <Field label="Mensalidade"><TextInput type="number" value={form.monthlyValue} onChange={set("monthlyValue")} /></Field>
+      </div>
+      <Field label="Validade (dias)"><TextInput type="number" value={form.validDays} onChange={set("validDays")} /></Field>
+      <Field label="Observações"><TextArea value={form.notes} onChange={set("notes")} /></Field>
+      <div className="flex justify-end">
+        <Button size="sm" icon={Plus} onClick={() => onSave(form)}>Enviar proposta</Button>
+      </div>
+    </div>
+  );
+}
+
+function QuickActionsBar({ lead, demos, onGoTab }) {
+  const latestDemo = demos[0];
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap mb-4">
+      {lead.whatsapp && <QuickAction icon={MessageCircle} label="WhatsApp" href={waLink(lead.whatsapp)} tone="accent" />}
+      {lead.phone && <QuickAction icon={Phone} label="Ligar" href={telLink(lead.phone)} />}
+      {lead.instagram && <QuickAction icon={Instagram} label="Instagram" href={igLink(lead.instagram)} />}
+      {lead.currentSite && <QuickAction icon={Globe} label="Site" href={siteLink(lead.currentSite)} />}
+      <QuickAction icon={Clock} label="Marcar follow-up" onClick={() => onGoTab("followups")} />
+      <QuickAction icon={FileText} label="Criar proposta" onClick={() => onGoTab("proposta")} />
+      {latestDemo && latestDemo.url ? (
+        <QuickAction icon={ExternalLink} label="Abrir demo" href={latestDemo.url} />
+      ) : (
+        <QuickAction icon={Timer} label="Criar demo" onClick={() => onGoTab("demo")} />
+      )}
+    </div>
+  );
+}
+
+function NextActionBanner({ lead, onOpen }) {
+  const bucket = actionBucket(lead.nextAction?.date);
+  const bg = bucket === "atrasado" ? "var(--danger-bg)" : bucket === "hoje" ? "var(--warn-bg)" : "var(--surface-sunken)";
+  const fg = bucket === "atrasado" ? "var(--danger)" : bucket === "hoje" ? "var(--warn)" : "var(--ink)";
+  return (
+    <button onClick={onOpen} className="w-full flex items-center gap-2.5 rounded-xl px-4 py-2.5 mb-5 text-left gc-focus gc-pressable" style={{ background: bg }}>
+      <Clock size={14} style={{ color: bucket ? fg : "var(--slate)" }} className="shrink-0" />
+      {lead.nextAction ? (
+        <span className="text-sm min-w-0 truncate">
+          <strong className="gc-mono" style={{ color: fg }}>{fmtDateTime(lead.nextAction.date)}</strong>
+          <span style={{ color: "var(--ink-soft)" }}> — {lead.nextAction.note}</span>
+        </span>
+      ) : <span className="text-sm" style={{ color: "var(--slate)" }}>Nenhuma próxima ação definida — toque para definir</span>}
+    </button>
+  );
+}
+
+function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initialTab }) {
+  const [tab, setTab] = useState(initialTab || "geral");
+  useEffect(() => { setTab(initialTab || "geral"); }, [leadId]);
+  const [showLoss, setShowLoss] = useState(false);
+  const [showConvert, setShowConvert] = useState(false);
+  const lead = db.leads.find(l => l.id === leadId);
+  if (!lead) return null;
+
+  const interactions = db.interactions.filter(i => i.leadId === leadId);
+  const followups = db.followups.filter(f => f.leadId === leadId).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+  const demos = db.demos.filter(d => d.leadId === leadId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const proposals = db.proposals.filter(p => p.leadId === leadId).sort((a, b) => new Date(b.proposalDate) - new Date(a.proposalDate));
+  const client = db.clients.find(c => c.leadId === leadId);
+
+  const changeStatus = (status) => {
+    if (status === "Perdido") { setShowLoss(true); return; }
+    dispatch({ type: "CHANGE_STATUS", id: leadId, status, user: currentUser });
+    notify(`Status alterado para "${status}"`);
+    if (status === "Fechado" && !client) setShowConvert(true);
+  };
+
+  const addInteraction = (data) => {
+    dispatch({ type: "ADD_INTERACTION", leadId, interaction: { id: `i_${Date.now()}`, leadId, date: new Date().toISOString(), user: currentUser, ...data } });
+  };
+
+  const markDemoSent = (demo) => {
+    const now = new Date().toISOString();
+    dispatch({ type: "UPDATE_DEMO", id: demo.id, patch: { sentAt: now, expiresAt: hoursFromNow(demo.validityHours || 24) } });
+    addInteraction({ channel: "WhatsApp", result: "Demo enviada", note: "Demonstração enviada." });
+    if (lead.status !== "Demo enviada" && lead.status !== "Demo em análise") dispatch({ type: "CHANGE_STATUS", id: leadId, status: "Demo enviada", user: currentUser });
+    notify("Demo enviada.");
+  };
+
+  const scoreAvg = lead.score ? Math.round(((lead.score.dor + lead.score.facilidade + lead.score.pagamento + lead.score.recorrencia) / 4) * 10) / 10 : null;
+
+  return (
+    <Drawer
+      title={lead.company}
+      subtitle={`${lead.city}${lead.neighborhood ? " · " + lead.neighborhood : ""} · ${lead.segment}`}
+      onClose={onClose}
+      headerRight={lead.status === "Fechado" && !client ? <Button size="sm" onClick={() => setShowConvert(true)}>Converter em cliente</Button> : null}
+    >
+      <div className="flex items-center gap-3 flex-wrap mb-4">
+        <StatusChanger lead={lead} onChange={changeStatus} />
+        <TempPill temperature={lead.temperature} />
+        <PriorityMark priority={lead.priority} />
+        <span className="text-xs ml-auto" style={{ color: "var(--slate)" }}>Responsável: <strong style={{ color: "var(--ink-soft)" }}>{userName(lead.owner)}</strong></span>
+      </div>
+
+      <QuickActionsBar lead={lead} demos={demos} onGoTab={setTab} />
+      <NextActionBanner lead={lead} onOpen={() => setTab("geral")} />
+
+      {client && (
+        <div className="rounded-xl px-4 py-3 mb-5 flex items-center gap-2 text-sm" style={{ background: "var(--success-bg)", color: "var(--success)" }}>
+          <UserCheck size={16} /> Convertido em cliente ativo
+        </div>
+      )}
+      {lead.status === "Perdido" && lead.lossReason && (
+        <div className="rounded-xl px-4 py-3 mb-5 flex items-center gap-2 text-sm" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>
+          <Ban size={16} /> Perdido — {lead.lossReason}
+        </div>
+      )}
+
+      <div className="flex items-center gap-1 overflow-x-auto gc-scroll mb-5" style={{ borderBottom: "1px solid var(--line)" }}>
+        {LEAD_TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} className="px-3 py-2.5 text-sm font-medium whitespace-nowrap gc-focus"
+            style={{ color: tab === t.id ? "var(--accent-ink)" : "var(--slate)", borderBottom: tab === t.id ? "2px solid var(--accent)" : "2px solid transparent", transition: "color 0.15s ease, border-color 0.15s ease" }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "geral" && (
+        <div className="space-y-5 gc-fade-in">
+          <SectionCard title="Próxima ação">
+            <div className="p-4"><NextActionEditor lead={lead} onSave={(na) => dispatch({ type: "SET_NEXT_ACTION", leadId, nextAction: na })} /></div>
+          </SectionCard>
+          <SectionCard title="Contato">
+            <div className="px-5 py-2">
+              <InfoRow icon={Users} label="Responsável" value={lead.contactName} />
+              <InfoRow icon={Phone} label="Telefone" value={lead.phone} />
+              <InfoRow icon={MessageCircle} label="WhatsApp" value={lead.whatsapp} href={waLink(lead.whatsapp)} />
+              <InfoRow icon={Instagram} label="Instagram" value={lead.instagram} href={igLink(lead.instagram)} />
+              <InfoRow icon={Globe} label="Site atual" value={lead.currentSite} href={siteLink(lead.currentSite)} />
+              <InfoRow icon={MapPin} label="Google Maps" value={lead.gmaps ? "Ver localização" : ""} href={lead.gmaps} />
+            </div>
+          </SectionCard>
+          <SectionCard title="Classificação">
+            <div className="px-5 py-4 grid grid-cols-2 gap-y-2 text-sm">
+              <span style={{ color: "var(--slate)" }}>Origem</span><span>{lead.source}</span>
+              <span style={{ color: "var(--slate)" }}>Cadastrado em</span><span className="gc-mono">{fmtDateFull(lead.createdAt)}</span>
+              <span style={{ color: "var(--slate)" }}>Último contato</span><span className="gc-mono">{lead.lastContactAt ? fmtDateTime(lead.lastContactAt) : "—"}</span>
+            </div>
+            {lead.notes && <div className="px-5 pb-4 text-sm">{lead.notes}</div>}
+          </SectionCard>
+          {lead.score && (
+            <SectionCard title={`Score comercial${scoreAvg !== null ? ` · ${scoreAvg}/5` : ""}`}>
+              <div className="px-5 py-4 space-y-3">
+                <ScoreBar label="Dor" value={lead.score.dor} onChange={(v) => dispatch({ type: "UPDATE_LEAD", id: leadId, patch: { score: { ...lead.score, dor: v } } })} />
+                <ScoreBar label="Facilidade de contato" value={lead.score.facilidade} onChange={(v) => dispatch({ type: "UPDATE_LEAD", id: leadId, patch: { score: { ...lead.score, facilidade: v } } })} />
+                <ScoreBar label="Capacidade de pagamento" value={lead.score.pagamento} onChange={(v) => dispatch({ type: "UPDATE_LEAD", id: leadId, patch: { score: { ...lead.score, pagamento: v } } })} />
+                <ScoreBar label="Potencial de recorrência" value={lead.score.recorrencia} onChange={(v) => dispatch({ type: "UPDATE_LEAD", id: leadId, patch: { score: { ...lead.score, recorrencia: v } } })} />
+              </div>
+            </SectionCard>
+          )}
+        </div>
+      )}
+
+      {tab === "historico" && <div className="gc-fade-in"><UnifiedTimeline leadId={leadId} db={db} onAdd={addInteraction} /></div>}
+
+      {tab === "followups" && (
+        <div className="space-y-4 gc-fade-in">
+          <NewFollowupForm onSave={(data) => { dispatch({ type: "ADD_FOLLOWUP", followup: { id: `f_${Date.now()}`, leadId, status: "pendente", createdBy: currentUser, ...data } }); notify("Follow-up criado."); }} />
+          {followups.length === 0 ? <EmptyState icon={Clock} title="Nenhum follow-up para este lead" /> : (
+            <SectionCard>
+              {followups.map(f => (
+                <FollowupRow key={f.id} f={f}
+                  onComplete={(id) => dispatch({ type: "UPDATE_FOLLOWUP", id, patch: { status: "concluido" } })}
+                  onReschedule={(id) => dispatch({ type: "UPDATE_FOLLOWUP", id, patch: { dueDate: daysFromNow(1, 9, 0), status: "pendente" } })}
+                  onCancel={(id) => dispatch({ type: "UPDATE_FOLLOWUP", id, patch: { status: "cancelado" } })} />
+              ))}
+            </SectionCard>
+          )}
+        </div>
+      )}
+
+      {tab === "demo" && (
+        <div className="space-y-4 gc-fade-in">
+          <NewDemoForm onSave={({ url, hours, sendNow }) => {
+            const now = new Date().toISOString();
+            const id = `d_${Date.now()}`;
+            if (sendNow) {
+              dispatch({ type: "ADD_DEMO", demo: { id, leadId, url, createdAt: now, sentAt: now, validityHours: hours, expiresAt: hoursFromNow(hours), owner: currentUser, deactivated: false, views: null, lastViewedAt: null } });
+              addInteraction({ channel: "WhatsApp", result: "Demo enviada", note: "Demonstração enviada." });
+              if (lead.status !== "Demo enviada" && lead.status !== "Demo em análise") dispatch({ type: "CHANGE_STATUS", id: leadId, status: "Demo enviada", user: currentUser });
+              notify("Demo enviada.");
+            } else {
+              dispatch({ type: "ADD_DEMO", demo: { id, leadId, url, createdAt: now, sentAt: null, validityHours: hours, expiresAt: null, owner: currentUser, deactivated: false, views: null, lastViewedAt: null } });
+              notify("Demo salva como rascunho.");
+            }
+          }} />
+          {demos.length === 0 ? <EmptyState icon={Timer} title="Nenhuma demo criada" hint="Prévias ficam disponíveis por até 24h após o envio." /> : (
+            <div className="space-y-3">{demos.map(d => <DemoCard key={d.id} demo={d} onDeactivate={(id) => { dispatch({ type: "UPDATE_DEMO", id, patch: { deactivated: true } }); notify("Demo desativada."); }} onMarkSent={markDemoSent} />)}</div>
+          )}
+        </div>
+      )}
+
+      {tab === "proposta" && (
+        <div className="space-y-4 gc-fade-in">
+          <NewProposalForm onSave={(form) => {
+            const now = new Date().toISOString();
+            dispatch({ type: "ADD_PROPOSAL", proposal: { id: `p_${Date.now()}`, leadId, plan: form.plan, implementationValue: Number(form.implementationValue) || 0, monthlyValue: Number(form.monthlyValue) || 0, proposalDate: now, validUntil: daysFromNow(Number(form.validDays) || 7), notes: form.notes, status: "Enviada" } });
+            if (!["Proposta enviada", "Negociação", "Fechado"].includes(lead.status)) dispatch({ type: "CHANGE_STATUS", id: leadId, status: "Proposta enviada", user: currentUser });
+            notify("Proposta atualizada.");
+          }} />
+          {proposals.length === 0 ? <EmptyState icon={FileText} title="Nenhuma proposta enviada" /> : (
+            <div className="space-y-3">{proposals.map(p => <ProposalCard key={p.id} proposal={p} onUpdateStatus={(id, status) => { dispatch({ type: "UPDATE_PROPOSAL", id, patch: { status } }); notify("Proposta atualizada."); }} />)}</div>
+          )}
+        </div>
+      )}
+
+      {showLoss && <LossReasonModal onClose={() => setShowLoss(false)} onSave={(reason) => { dispatch({ type: "CHANGE_STATUS", id: leadId, status: "Perdido", user: currentUser }); dispatch({ type: "SET_LOSS_REASON", id: leadId, reason }); notify("Status alterado para \"Perdido\""); setShowLoss(false); }} />}
+      {showConvert && (
+        <ConvertClientModal lead={lead} onClose={() => setShowConvert(false)} onSave={(form) => {
+          dispatch({
+            type: "CONVERT_TO_CLIENT", client: {
+              id: `c_${Date.now()}`, leadId, company: lead.company, contactName: lead.contactName, plan: form.plan,
+              contractedValue: Number(form.contractedValue) || 0, monthlyValue: Number(form.monthlyValue) || 0,
+              closingDate: new Date().toISOString(), publishDate: form.publishDate ? new Date(form.publishDate).toISOString() : null,
+              domain: form.domain, owner: lead.owner, notes: "", status: "Ativo",
+            }
+          });
+          notify("Cliente convertido!");
+          setShowConvert(false);
+        }} />
+      )}
+    </Drawer>
+  );
+}
+
+/* =========================================================================
+   FOLLOW-UPS VIEW
+   ========================================================================= */
+
+function GlobalFollowupRow({ f, lead, onOpenLead, onComplete, onReschedule, onCancel }) {
+  const bucket = actionBucket(f.dueDate);
+  return (
+    <div className="flex items-center gap-3 px-5 py-3.5 gc-row-hover flex-wrap sm:flex-nowrap" style={{ borderBottom: "1px solid var(--line)" }}>
+      <span className="gc-mono text-xs w-24 shrink-0" style={{ color: bucket === "atrasado" ? "var(--danger)" : "var(--slate)" }}>{fmtDateTime(f.dueDate)}</span>
+      <button onClick={() => onOpenLead(f.leadId, "followups")} className="min-w-0 flex-1 text-left gc-focus rounded">
+        <span className="block text-sm font-medium truncate">{lead?.company || "Lead removido"}</span>
+        <span className="block text-xs truncate" style={{ color: "var(--slate)" }}>{f.note}</span>
+      </button>
+      {lead?.whatsapp && <QuickAction icon={MessageCircle} label="WhatsApp" href={waLink(lead.whatsapp)} />}
+      <div className="flex items-center gap-1 shrink-0">
+        <button onClick={() => onComplete(f.id)} className="w-7 h-7 rounded-lg flex items-center justify-center gc-focus gc-pressable" style={{ color: "var(--success)" }} aria-label="Concluir"><CheckCircle2 size={16} /></button>
+        <button onClick={() => onReschedule(f.id)} className="w-7 h-7 rounded-lg flex items-center justify-center gc-focus gc-pressable" style={{ color: "var(--accent-ink)" }} aria-label="Reagendar"><RotateCcw size={15} /></button>
+        <button onClick={() => onCancel(f.id)} className="w-7 h-7 rounded-lg flex items-center justify-center gc-focus gc-pressable" style={{ color: "var(--slate)" }} aria-label="Cancelar"><Ban size={15} /></button>
+      </div>
+    </div>
+  );
+}
+
+function FollowupGroup({ title, items, sel, onOpenLead, dispatch, notify }) {
+  return (
+    <SectionCard title={`${title} · ${items.length}`}>
+      {items.length === 0 ? (
+        <div className="px-5 py-6 text-sm" style={{ color: "var(--slate)" }}>Nenhum follow-up aqui.</div>
+      ) : items
+        .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+        .map(f => (
+          <GlobalFollowupRow key={f.id} f={f} lead={sel.leadById[f.leadId]} onOpenLead={onOpenLead}
+            onComplete={(id) => { dispatch({ type: "UPDATE_FOLLOWUP", id, patch: { status: "concluido" } }); notify("Follow-up concluído."); }}
+            onReschedule={(id) => { dispatch({ type: "UPDATE_FOLLOWUP", id, patch: { dueDate: daysFromNow(1, 9, 0) } }); notify("Follow-up reagendado."); }}
+            onCancel={(id) => dispatch({ type: "UPDATE_FOLLOWUP", id, patch: { status: "cancelado" } })} />
+        ))}
+    </SectionCard>
+  );
+}
+
+function FollowupsView({ sel, onOpenLead, dispatch, notify }) {
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="gc-display text-xl font-semibold">Follow-ups</h1>
+        <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>{sel.pendingFollowups.length} pendentes no total</p>
+      </div>
+      <FollowupGroup title="Atrasados" items={sel.followupsOverdue} sel={sel} onOpenLead={onOpenLead} dispatch={dispatch} notify={notify} />
+      <FollowupGroup title="Hoje" items={sel.followupsToday} sel={sel} onOpenLead={onOpenLead} dispatch={dispatch} notify={notify} />
+      <FollowupGroup title="Próximos" items={sel.followupsUpcoming} sel={sel} onOpenLead={onOpenLead} dispatch={dispatch} notify={notify} />
+    </div>
+  );
+}
+
+/* =========================================================================
+   DEMOS VIEW
+   ========================================================================= */
+
+const DEMO_URGENCY_LABEL = { ativa: "Enviada", atencao: "Próxima de expirar", critica: "Expirando", expirada: "Expirada", desativada: "Desativada", criada: "Criada — não enviada" };
+const DEMO_URGENCY_TONE = { ativa: "green", atencao: "amber", critica: "amber", expirada: "red", desativada: "slate", criada: "blue" };
+
+function DemosView({ db, sel, onOpenLead, notify, dispatch }) {
+  const [filter, setFilter] = useState(null);
+  const list = useMemo(() => {
+    let l = [...db.demos].sort((a, b) => new Date(a.expiresAt || a.createdAt) - new Date(b.expiresAt || b.createdAt));
+    if (filter) l = l.filter(d => demoUrgency(d) === filter);
+    return l;
+  }, [db.demos, filter]);
+
+  const markSent = (demo) => {
+    const now = new Date().toISOString();
+    dispatch({ type: "UPDATE_DEMO", id: demo.id, patch: { sentAt: now, expiresAt: hoursFromNow(demo.validityHours || 24) } });
+    dispatch({ type: "ADD_INTERACTION", leadId: demo.leadId, interaction: { id: `i_${Date.now()}`, leadId: demo.leadId, date: now, user: sel.leadById[demo.leadId]?.owner, channel: "WhatsApp", result: "Demo enviada", note: "Demonstração enviada." } });
+    notify("Demo enviada.");
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="gc-display text-xl font-semibold">Demonstrações</h1>
+        <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>{sel.demosDraft.length > 0 ? `${sel.demosDraft.length} aguardando envio · v` : "V"}alidade padrão de 24 horas após o envio.</p>
+      </div>
+      <div className="flex items-center gap-2 overflow-x-auto gc-scroll pb-1">
+        <FilterChip label="Todas" active={!filter} onClick={() => setFilter(null)} />
+        {["criada", "ativa", "atencao", "critica", "expirada", "desativada"].map(u => (
+          <FilterChip key={u} label={DEMO_URGENCY_LABEL[u]} active={filter === u} onClick={() => setFilter(f => f === u ? null : u)} />
+        ))}
+      </div>
+      {list.length === 0 ? <EmptyState icon={Timer} title="Nenhuma demo encontrada" /> : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {list.map(d => {
+            const lead = sel.leadById[d.leadId];
+            const urgency = demoUrgency(d);
+            return (
+              <div key={d.id} className="rounded-xl p-4 gc-card gc-card-hover space-y-2" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+                <button onClick={() => onOpenLead(d.leadId, "demo")} className="w-full text-left gc-focus rounded space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-sm truncate">{lead?.company}</span>
+                    <Pill tone={DEMO_URGENCY_TONE[urgency]} dot>{DEMO_URGENCY_LABEL[urgency]}</Pill>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs truncate" style={{ color: "var(--slate)" }}>
+                    <Link2 size={12} /> {d.url}
+                  </div>
+                  {urgency !== "criada" && (
+                    <div className="gc-mono text-sm font-medium" style={{ color: urgency === "ativa" ? "var(--success)" : urgency === "expirada" ? "var(--danger)" : "var(--warn)" }}>
+                      {remainingLabel(d)}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--slate)" }}>
+                    <Eye size={11} />
+                    {d.views ? `${d.views} acesso(s) · último em ${fmtDateTime(d.lastViewedAt)}` : "Sem dados de visualização ainda"}
+                  </div>
+                  <div className="text-xs" style={{ color: "var(--slate)" }}>Responsável: {userName(d.owner)}</div>
+                </button>
+                {urgency === "criada" && (
+                  <Button size="sm" icon={Send} onClick={() => markSent(d)}>Marcar como enviada</Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   PROPOSALS VIEW
+   ========================================================================= */
+
+function ProposalsView({ db, sel, onOpenLead, dispatch, notify }) {
+  const [filter, setFilter] = useState(null);
+  const statuses = ["Rascunho", "Enviada", "Em negociação", "Aprovada", "Recusada", "Expirada"];
+  const list = useMemo(() => {
+    let l = [...db.proposals].sort((a, b) => new Date(b.proposalDate) - new Date(a.proposalDate));
+    if (filter) l = l.filter(p => p.status === filter);
+    return l;
+  }, [db.proposals, filter]);
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="gc-display text-xl font-semibold">Propostas</h1>
+        <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>{sel.proposalsStale.length} sem retorno há 4 dias ou mais · {fmtMoney(sel.negotiationValue)} em negociação</p>
+      </div>
+      <div className="flex items-center gap-2 overflow-x-auto gc-scroll pb-1">
+        <FilterChip label="Todas" active={!filter} onClick={() => setFilter(null)} />
+        {statuses.map(s => <FilterChip key={s} label={s} active={filter === s} onClick={() => setFilter(f => f === s ? null : s)} />)}
+      </div>
+      <SectionCard>
+        {list.length === 0 ? <EmptyState icon={FileText} title="Nenhuma proposta encontrada" /> : list.map(p => {
+          const lead = sel.leadById[p.leadId];
+          const stale = ["Enviada", "Em negociação"].includes(p.status) && daysSince(p.proposalDate) >= 4;
+          return (
+            <div key={p.id} className="flex items-center gap-3 px-5 py-3.5 gc-row-hover" style={{ borderBottom: "1px solid var(--line)" }}>
+              <button onClick={() => onOpenLead(p.leadId, "proposta")} className="min-w-0 flex-1 text-left gc-focus rounded">
+                <span className="block text-sm font-medium truncate">{lead?.company}</span>
+                <span className="block text-xs truncate" style={{ color: "var(--slate)" }}>{p.plan} · {fmtMoney(p.implementationValue)} + {fmtMoney(p.monthlyValue)}/mês</span>
+              </button>
+              {stale && <Pill tone="amber">Sem retorno há {daysSince(p.proposalDate)}d</Pill>}
+              <Select value={p.status} onChange={(e) => { dispatch({ type: "UPDATE_PROPOSAL", id: p.id, patch: { status: e.target.value } }); notify("Proposta atualizada."); }} style={{ width: "auto", padding: "6px 8px", fontSize: 12 }}>
+                {statuses.map(s => <option key={s}>{s}</option>)}
+              </Select>
+            </div>
+          );
+        })}
+      </SectionCard>
+    </div>
+  );
+}
+
+/* =========================================================================
+   CLIENTS VIEW
+   ========================================================================= */
+
+function ClientsView({ db, onOpenLead }) {
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="gc-display text-xl font-semibold">Clientes</h1>
+        <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>{db.clients.length} clientes ativos</p>
+      </div>
+      {db.clients.length === 0 ? <EmptyState icon={UserCheck} title="Nenhum cliente ainda" hint="Quando um lead for fechado, converta-o em cliente pela ficha do lead." /> : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {db.clients.map(c => (
+            <button key={c.id} onClick={() => onOpenLead(c.leadId)} className="text-left rounded-xl p-4 gc-focus gc-card gc-card-hover space-y-2.5" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-sm">{c.company}</span>
+                <Pill tone="green" dot>Ativo</Pill>
+              </div>
+              <div className="text-xs" style={{ color: "var(--slate)" }}>{c.plan} · Responsável: {userName(c.owner)}</div>
+              <div className="flex gap-4 text-sm gc-mono">
+                <span>{fmtMoney(c.contractedValue)}</span>
+                <span>{c.monthlyValue ? `${fmtMoney(c.monthlyValue)}/mês` : "Sem mensalidade"}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs" style={{ color: "var(--slate)" }}>
+                <span>Fechado em {fmtDateFull(c.closingDate)}</span>
+                {c.domain && <span className="flex items-center gap-1"><Globe size={11} />{c.domain}</span>}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   REPORTS VIEW
+   ========================================================================= */
+
+function BreakdownList({ title, data }) {
+  const max = Math.max(1, ...data.map(d => d.value));
+  return (
+    <SectionCard title={title}>
+      <div className="px-5 py-4 space-y-3">
+        {data.length === 0 ? <div className="text-sm" style={{ color: "var(--slate)" }}>Sem dados suficientes.</div> : data.slice(0, 8).map((d, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <span className="text-sm w-28 md:w-32 shrink-0 truncate">{d.label}</span>
+            <div className="flex-1"><Bar value={d.value} max={max} /></div>
+            <span className="gc-mono text-sm w-6 text-right shrink-0">{d.value}</span>
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
+
+function FunnelReport({ funnel }) {
+  const max = Math.max(1, ...funnel.map(f => f.value));
+  return (
+    <SectionCard title="Conversão do funil">
+      <div className="px-5 py-4 space-y-3">
+        {funnel.map((f, i) => {
+          const prev = i > 0 ? funnel[i - 1].value : null;
+          const rate = prev ? Math.round((f.value / prev) * 100) : null;
+          return (
+            <div key={i} className="flex items-center gap-3">
+              <span className="text-sm w-28 shrink-0">{f.label}</span>
+              <div className="flex-1"><Bar value={f.value} max={max} /></div>
+              <span className="gc-mono text-sm w-8 text-right shrink-0">{f.value}</span>
+              <span className="gc-mono text-xs w-12 text-right shrink-0" style={{ color: "var(--slate)" }}>{rate !== null ? `${rate}%` : "—"}</span>
+            </div>
+          );
+        })}
+      </div>
+    </SectionCard>
+  );
+}
+
+function ChannelReport({ stats }) {
+  return (
+    <SectionCard title="Contatos por canal">
+      <div className="px-5 py-2">
+        <div className="grid gap-2 py-2 text-xs font-medium" style={{ gridTemplateColumns: "1fr 0.6fr 0.6fr 0.6fr", color: "var(--slate)" }}>
+          <span>Canal</span><span className="text-right">Contatos</span><span className="text-right">Respostas</span><span className="text-right">Taxa</span>
+        </div>
+        {stats.map((c, i) => (
+          <div key={i} className="grid gap-2 py-2.5 text-sm items-center" style={{ gridTemplateColumns: "1fr 0.6fr 0.6fr 0.6fr", borderTop: "1px solid var(--line)" }}>
+            <span className="flex items-center gap-1.5">{React.createElement(CHANNEL_ICON[c.channel] || MoreHorizontal, { size: 13, style: { color: "var(--slate)" } })}{c.channel}</span>
+            <span className="text-right gc-mono">{c.total}</span>
+            <span className="text-right gc-mono">{c.responded}</span>
+            <span className="text-right gc-mono">{Math.round((c.responded / c.total) * 100)}%</span>
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
+
+function OwnerReport({ perOwner }) {
+  return (
+    <SectionCard title="Comparativo por responsável">
+      <div className="px-5 py-2 gc-scroll overflow-x-auto">
+        <div className="grid gap-2 py-2 text-xs font-medium min-w-[520px]" style={{ gridTemplateColumns: "1fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr", color: "var(--slate)" }}>
+          <span>Responsável</span><span className="text-right">Leads</span><span className="text-right">Contatos</span><span className="text-right">Respostas</span><span className="text-right">Propostas</span><span className="text-right">Fechados</span><span className="text-right">Conversão</span>
+        </div>
+        {perOwner.map((o, i) => (
+          <div key={i} className="grid gap-2 py-2.5 text-sm items-center min-w-[520px]" style={{ gridTemplateColumns: "1fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr", borderTop: "1px solid var(--line)" }}>
+            <span className="font-medium">{o.user}</span>
+            <span className="text-right gc-mono">{o.leads}</span>
+            <span className="text-right gc-mono">{o.contacts}</span>
+            <span className="text-right gc-mono">{o.responses}</span>
+            <span className="text-right gc-mono">{o.proposals}</span>
+            <span className="text-right gc-mono">{o.closed}</span>
+            <span className="text-right gc-mono font-medium" style={{ color: "var(--accent-ink)" }}>{o.conversion}%</span>
+          </div>
+        ))}
+      </div>
+      <div className="px-5 pb-4 pt-1 text-xs" style={{ color: "var(--slate)" }}>Comparativo para gestão do processo — não é um placar de competição.</div>
+    </SectionCard>
+  );
+}
+
+function ReportsView({ db, sel }) {
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="gc-display text-xl font-semibold">Relatórios</h1>
+        <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>Como estamos vendendo e onde estamos perdendo oportunidades.</p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatTile label="Total de leads" value={db.leads.length} />
+        <StatTile label="Leads novos (3d)" value={sel.newLeads.length} />
+        <StatTile label="Clientes fechados" value={sel.closedLeads.length} tone="success" />
+        <StatTile label="Leads perdidos" value={sel.lostLeads.length} />
+      </div>
+
+      <FunnelReport funnel={sel.funnel} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <BreakdownList title="Leads por segmento" data={sel.bySegment} />
+        <BreakdownList title="Leads por cidade" data={sel.byCity} />
+        <BreakdownList title="Leads por origem" data={sel.bySource} />
+        <BreakdownList title="Motivos de perda" data={sel.lossByReason} />
+      </div>
+
+      <ChannelReport stats={sel.channelStats} />
+      <OwnerReport perOwner={sel.perOwner} />
+    </div>
+  );
+}
+
+/* =========================================================================
+   ROOT APP
+   ========================================================================= */
+
+function App() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [db, rawDispatch] = useReducer(dbReducer, initialDb);
+  const [apiStatus, setApiStatus] = useState("checking");
+  const [view, setView] = useState("dashboard");
+  const [search, setSearch] = useState("");
+  const [leadsFilter, setLeadsFilter] = useState({});
+  const [leadsViewMode, setLeadsViewMode] = useState("list");
+  const [selectedLeadId, setSelectedLeadId] = useState(null);
+  const [initialTab, setInitialTab] = useState("geral");
+  const [showLeadForm, setShowLeadForm] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [, forceTick] = useState(0);
+  const searchInputRef = useRef(null);
+  const { toasts, notify } = useToastStack();
+
+  /* Sincronização inicial com o Supabase via API backend */
+  useEffect(() => {
+    let mounted = true;
+    async function loadData() {
+      const health = await crmApi.health();
+      if (!mounted) return;
+      if (!health.ok) {
+        setApiStatus("offline");
+        return;
+      }
+      setApiStatus("connected");
+      try {
+        const remoteDb = await crmApi.loadAll();
+        if (!mounted) return;
+        if (remoteDb && remoteDb.leads && remoteDb.leads.length > 0) {
+          rawDispatch({ type: "SET_DB", db: remoteDb });
+        }
+      } catch (err) {
+        console.error("Falha ao carregar dados do Supabase:", err);
+      }
+    }
+    loadData();
+    return () => { mounted = false; };
+  }, []);
+
+  const handleSeedDemo = async () => {
+    notify("Importando dados de exemplo para o Supabase...");
+    try {
+      const freshDb = await crmApi.seedDemoData();
+      rawDispatch({ type: "SET_DB", db: freshDb });
+      notify("Dados salvos no Supabase com sucesso!");
+    } catch (err) {
+      notify("Erro na importação: " + err.message, "danger");
+    }
+  };
+
+  const dispatch = useCallback((action) => {
+    // 1. Atualização otimista imediata na interface local
+    rawDispatch(action);
+
+    // 2. Persistência assíncrona na API do backend -> Supabase
+    (async () => {
+      try {
+        switch (action.type) {
+          case "ADD_LEAD": {
+            const res = await crmApi.leads.create(action.lead);
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao gravar lead");
+            break;
+          }
+          case "UPDATE_LEAD": {
+            const res = await crmApi.leads.update(action.id, action.patch);
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao atualizar lead");
+            break;
+          }
+          case "CHANGE_STATUS": {
+            const res = await crmApi.leads.changeStatus(action.id, action.status, action.user);
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao alterar status");
+            break;
+          }
+          case "SET_LOSS_REASON": {
+            const res = await crmApi.leads.update(action.id, { lossReason: action.reason });
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao salvar motivo");
+            break;
+          }
+          case "SET_NEXT_ACTION": {
+            const res = await crmApi.leads.update(action.leadId, { nextAction: action.nextAction });
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao salvar próxima ação");
+            break;
+          }
+          case "ADD_INTERACTION": {
+            const res = await crmApi.leads.addInteraction(action.leadId, action.interaction);
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao salvar contato");
+            break;
+          }
+          case "ADD_FOLLOWUP": {
+            const res = await crmApi.followups.create(action.followup);
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao salvar follow-up");
+            break;
+          }
+          case "UPDATE_FOLLOWUP": {
+            const res = await crmApi.followups.update(action.id, action.patch);
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao atualizar follow-up");
+            break;
+          }
+          case "ADD_DEMO": {
+            const res = await crmApi.demos.create(action.demo);
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao salvar demonstração");
+            break;
+          }
+          case "UPDATE_DEMO": {
+            const res = await crmApi.demos.update(action.id, action.patch);
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao atualizar demonstração");
+            break;
+          }
+          case "ADD_PROPOSAL": {
+            const res = await crmApi.proposals.create(action.proposal);
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao salvar proposta");
+            break;
+          }
+          case "UPDATE_PROPOSAL": {
+            const res = await crmApi.proposals.update(action.id, action.patch);
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao atualizar proposta");
+            break;
+          }
+          case "CONVERT_TO_CLIENT": {
+            const res = await crmApi.clients.create(action.client);
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao salvar cliente");
+            break;
+          }
+          case "ADD_CLIENT_UPDATE": {
+            const res = await crmApi.clientUpdates.create(action.update);
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao salvar alteração do cliente");
+            break;
+          }
+          default:
+            break;
+        }
+      } catch (err) {
+        console.error("Erro de persistência no Supabase:", err);
+        notify("Aviso Supabase: " + (err.message || "Erro ao persistir"), "danger");
+      }
+    })();
+  }, [notify]);
+
+  /* Re-render periodically so demo countdowns and "atrasado" badges stay live
+     without the person needing to refresh. */
+  useEffect(() => {
+    const id = setInterval(() => forceTick(t => t + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  /* Ctrl/Cmd+K jumps straight into the global search — a modern, low-click
+     way to reach any lead, client or proposal from anywhere in the app. */
+  useEffect(() => {
+    function handleKey(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, []);
+
+  const sel = useSelectors(db);
+
+  if (!currentUser) return <LoginScreen onLogin={setCurrentUser} />;
+
+  const openLead = (id, tab) => { setSelectedLeadId(id); setInitialTab(tab || "geral"); };
+
+  const handleCreateLead = (form) => {
+    const id = `l_${Date.now()}`;
+    const company = (form.company || "").trim();
+    const contactName = (form.contactName && form.contactName.trim()) ? form.contactName.trim() : company;
+    const leadData = {
+      id,
+      ...form,
+      company,
+      contactName,
+      status: "Novo",
+      createdAt: new Date().toISOString(),
+      lastContactAt: null,
+      nextAction: { date: daysFromNow(0, 17, 0), note: "Primeiro contato" },
+      score: { dor: 0, facilidade: 0, pagamento: 0, recorrencia: 0 },
+    };
+    dispatch({
+      type: "ADD_LEAD",
+      lead: leadData,
+    });
+    setShowLeadForm(false);
+    setView("leads");
+    notify("Lead salvo no Supabase.");
+    openLead(id);
+  };
+
+  const setLeadsFilterAndGo = (patch) => setLeadsFilter(f => ({ ...f, ...patch }));
+
+  let body;
+  if (view === "dashboard") {
+    body = <Dashboard db={db} sel={sel} currentUser={currentUser} onOpenLead={openLead} setView={setView} setLeadsFilter={setLeadsFilterAndGo} setLeadsViewMode={setLeadsViewMode} dispatch={dispatch} notify={notify} />;
+  } else if (view === "leads") {
+    body = <LeadsView db={db} sel={sel} search={search} filter={leadsFilter} setFilter={setLeadsFilter} onOpenLead={openLead} onCreateLead={() => setShowLeadForm(true)} currentUser={currentUser} viewMode={leadsViewMode} setViewMode={setLeadsViewMode} />;
+  } else if (view === "followups") {
+    body = <FollowupsView sel={sel} onOpenLead={openLead} dispatch={dispatch} notify={notify} />;
+  } else if (view === "demos") {
+    body = <DemosView db={db} sel={sel} onOpenLead={openLead} dispatch={dispatch} notify={notify} />;
+  } else if (view === "proposals") {
+    body = <ProposalsView db={db} sel={sel} onOpenLead={openLead} dispatch={dispatch} notify={notify} />;
+  } else if (view === "clients") {
+    body = <ClientsView db={db} onOpenLead={openLead} />;
+  } else if (view === "reports") {
+    body = <ReportsView db={db} sel={sel} />;
+  }
+
+  return (
+    <div className="gc-root flex">
+      <Tokens />
+      <Sidebar view={view} setView={setView} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+      <div className="flex-1 min-w-0">
+        <Topbar
+          db={db}
+          currentUser={currentUser}
+          setCurrentUser={setCurrentUser}
+          search={search}
+          onSearch={setSearch}
+          attention={sel.attention}
+          onOpenLead={openLead}
+          onMenu={() => setMobileOpen(true)}
+          onLogout={() => setCurrentUser(null)}
+          searchInputRef={searchInputRef}
+          apiStatus={apiStatus}
+          onSeedDemo={handleSeedDemo}
+        />
+        <main className="px-4 md:px-6 py-5 max-w-[1200px] mx-auto">{body}</main>
+      </div>
+
+      {selectedLeadId && (
+        <LeadDetail leadId={selectedLeadId} db={db} onClose={() => setSelectedLeadId(null)} currentUser={currentUser} dispatch={dispatch} notify={notify} initialTab={initialTab} />
+      )}
+      {showLeadForm && <LeadFormModal onClose={() => setShowLeadForm(false)} onSave={handleCreateLead} currentUser={currentUser} />}
+      <ToastStack toasts={toasts} />
+    </div>
+  );
+}
+
+
+const __root = ReactDOM.createRoot(document.getElementById("root"));
+__root.render(<App />);
+
+  </script>
+
+<script src="js/boot.js"></script>
+</body>
+</html>

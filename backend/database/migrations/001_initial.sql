@@ -1,0 +1,43 @@
+-- ============================================================================
+--  Migração 001 - estrutura inicial do banco do CRM
+--  Arquivo: backend/database/migrations/001_initial.sql
+--  ---------------------------------------------------------------------------
+--  Esta é a versão INICIAL: cria 9 tabelas, 2 funções RPC, o trigger de
+--  updated_at e as permissões de acesso.
+--
+--  Para não existir duas cópias da mesma DDL (risco clássico de divergência),
+--  o SQL canônico fica em arquivos por responsabilidade, que devem ser
+--  executados NA ORDEM:
+--
+--    1) ../schema.sql    -> tabelas, constraints, índices, trigger updated_at
+--    2) ../functions.sql -> change_lead_status, add_lead_interaction
+--    3) ../rls.sql       -> RLS + revoke/grant
+--
+--  Migrações FUTURAS (002_*.sql, 003_*.sql, ...) devem ser arquivos SQL reais,
+--  contendo apenas o delta daquela mudança, e nunca DROP TABLE/DATABASE nem
+--  TRUNCATE. Se uma tabela já existir com estrutura diferente: PARE, analise e
+--  informe antes de alterar qualquer coisa.
+--
+--  Objetos criados por esta migração:
+--    tabelas  : users, leads, lead_status_history, lead_interactions,
+--               lead_followups, lead_demos, lead_proposals, clients,
+--               client_updates
+--    funções  : public.change_lead_status(text, text, text, text)
+--               public.add_lead_interaction(text, text, text, text, text)
+--               public.set_updated_at()
+--    índices  : leads_status_idx, leads_owner_idx, leads_temperature_idx,
+--               leads_priority_idx, leads_created_at_idx,
+--               leads_last_contact_idx, leads_next_action_idx,
+--               lsh_lead_date_idx, li_lead_date_idx, li_channel_idx,
+--               li_user_idx, lf_lead_idx, lf_status_due_idx, ld_lead_idx,
+--               ld_expires_idx, lp_lead_idx, lp_status_idx, lp_date_idx,
+--               lp_valid_until_idx, cl_status_idx, cl_owner_idx,
+--               cu_client_date_idx
+--    triggers : leads_set_updated_at, lead_followups_set_updated_at,
+--               lead_demos_set_updated_at
+--    RLS      : habilitado nas 9 tabelas, sem policy permissiva
+--               (acesso somente por service_role, via backend)
+-- ============================================================================
+
+-- (Esta migração não contém SQL executável próprio: rode os 3 arquivos
+--  listados acima, na ordem. Este arquivo é o registro versionado da 001.)

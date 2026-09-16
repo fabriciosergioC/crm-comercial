@@ -1,0 +1,19 @@
+# Backups locais
+/_backup_original/
+
+# Arquivos de sistema
+Thumbs.db
+.DS_Store
+
+# Configuração local de ferramentas
+/.kilo/
+
+# Credenciais de ambiente (nunca versionar: contém a service_role key)
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# Dependências e artefatos do backend
+backend/node_modules/
+backend/install.log
