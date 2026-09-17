@@ -119,4 +119,10 @@ router.post('/:id/interactions', asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data });
 }));
 
+/* DELETE /api/leads/:id — bloqueado quando há cliente vinculado. */
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const data = await leadsService.remove(req.params.id);
+  res.json({ success: true, data });
+}));
+
 module.exports = router;

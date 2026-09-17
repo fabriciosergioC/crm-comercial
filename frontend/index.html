@@ -72,6 +72,7 @@ const Send = (p) => <Icon {...p}><path d="M21 3 3 10.5l7.5 3L13.5 21 21 3z" /><l
 const Eye = (p) => <Icon {...p}><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></Icon>;
 const ArrowRight = (p) => <Icon {...p}><line x1="4" y1="12" x2="20" y2="12" /><polyline points="13 5 20 12 13 19" /></Icon>;
 const ChevronDown = (p) => <Icon {...p}><polyline points="6 9 12 15 18 9" /></Icon>;
+const Edit = (p) => <Icon {...p}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></Icon>;
 
 
 /* =========================================================================
@@ -487,6 +488,8 @@ const crmApi = {
   },
 
   leads: {
+    remove: (id) =>
+      fetch(`${CRM_API_BASE}/leads/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => r.json()),
     create: (lead) =>
       fetch(`${CRM_API_BASE}/leads`, {
         method: "POST",
@@ -601,16 +604,41 @@ const crmApi = {
    mirrored asynchronously by crmApi to Supabase.
    ========================================================================= */
 
+// Os dados cadastrais vêm do lead; os dados do contrato continuam no cliente.
+function syncClientsWithLeads(db) {
+  const leadsById = new Map(db.leads.map(lead => [lead.id, lead]));
+  return {
+    ...db,
+    clients: db.clients.map(client => {
+      const lead = leadsById.get(client.leadId);
+      if (!lead) return client;
+      const patch = {};
+      for (const field of ["company", "contactName", "owner"]) {
+        if (lead[field] !== undefined) patch[field] = lead[field];
+      }
+      return { ...client, ...patch };
+    }),
+  };
+}
+
 function dbReducer(db, action) {
   switch (action.type) {
     case "SET_DB": {
-      return { ...db, ...action.db };
+      return syncClientsWithLeads({ ...db, ...action.db });
     }
     case "ADD_LEAD": {
       return { ...db, leads: [action.lead, ...db.leads] };
     }
+    case "DELETE_LEAD": {
+      if (db.clients.some(c => c.leadId === action.id)) return db;
+      const next = { ...db, leads: db.leads.filter(l => l.id !== action.id) };
+      for (const collection of ["statusHistory", "interactions", "followups", "demos", "proposals"]) {
+        next[collection] = db[collection].filter(item => item.leadId !== action.id);
+      }
+      return next;
+    }
     case "UPDATE_LEAD": {
-      return { ...db, leads: db.leads.map(l => l.id === action.id ? { ...l, ...action.patch } : l) };
+      return syncClientsWithLeads({ ...db, leads: db.leads.map(l => l.id === action.id ? { ...l, ...action.patch } : l) });
     }
     case "CHANGE_STATUS": {
       const lead = db.leads.find(l => l.id === action.id);
@@ -1402,10 +1430,17 @@ function FilterChip({ label, active, onClick }) {
   );
 }
 
-function LeadRow({ lead, onClick }) {
+function LeadRow({ lead, onClick, onEdit, onDelete, deleting }) {
   const bucket = actionBucket(lead.nextAction?.date);
   return (
-    <button onClick={onClick} className="w-full text-left gc-row-hover px-5 py-3.5" style={{ borderBottom: "1px solid var(--line)" }}>
+    <div
+      onClick={onClick}
+      className="w-full text-left gc-row-hover px-5 py-3.5 cursor-pointer block"
+      style={{ borderBottom: "1px solid var(--line)" }}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(); } }}
+    >
       {/* Mobile: stacked card */}
       <div className="md:hidden space-y-2">
         <div className="flex items-start justify-between gap-2">
@@ -1413,7 +1448,28 @@ function LeadRow({ lead, onClick }) {
             <span className="block text-sm font-medium truncate">{lead.company}</span>
             <span className="block text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{lead.city} · {lead.segment}</span>
           </span>
-          <span className="shrink-0"><TempPill temperature={lead.temperature} /></span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <TempPill temperature={lead.temperature} />
+            {onEdit && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onEdit(lead); }}
+                className="p-1.5 rounded-md gc-focus hover:opacity-75 transition-opacity"
+                style={{ color: "var(--slate)", background: "var(--surface-sunken)" }}
+                title="Editar lead"
+                aria-label="Editar lead"
+              >
+                <Edit size={13} />
+              </button>
+            )}
+            {onDelete && <button type="button" disabled={deleting}
+              onClick={(e) => { e.stopPropagation(); onDelete(lead); }}
+              className="p-1.5 rounded-md text-xs gc-focus disabled:opacity-40"
+              style={{ color: "var(--danger)", background: "var(--danger-bg)" }}
+              aria-label={`Excluir lead ${lead.company}`}>
+              {deleting ? "Excluindo..." : "Excluir"}
+            </button>}
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <StatusPill status={lead.status} />
@@ -1428,7 +1484,7 @@ function LeadRow({ lead, onClick }) {
         )}
       </div>
       {/* Desktop: grid row */}
-      <div className="hidden md:grid items-center gap-3" style={{ gridTemplateColumns: "1.6fr 1fr 0.7fr 1fr 1.3fr 0.9fr" }}>
+      <div className="hidden md:grid items-center gap-3" style={{ gridTemplateColumns: "1.5fr 1fr 0.7fr 0.9fr 1.2fr 0.9fr 150px" }}>
         <span className="min-w-0">
           <span className="block text-sm font-medium truncate">{lead.company}</span>
           <span className="block text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{lead.city} · {lead.segment}</span>
@@ -1447,8 +1503,29 @@ function LeadRow({ lead, onClick }) {
           ) : <span className="text-sm" style={{ color: "var(--slate)" }}>—</span>}
         </span>
         <span className="gc-mono text-xs" style={{ color: "var(--slate)" }}>{lead.lastContactAt ? fmtDateTime(lead.lastContactAt) : "Sem contato"}</span>
+        <span className="flex justify-end items-center">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onEdit(lead); }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium gc-focus hover:opacity-80 transition-opacity"
+              style={{ background: "var(--surface-sunken)", color: "var(--ink-soft)", border: "1px solid var(--line)" }}
+              title="Editar lead"
+            >
+              <Edit size={12} />
+              <span>Editar</span>
+            </button>
+          )}
+          {onDelete && <button type="button" disabled={deleting}
+            onClick={(e) => { e.stopPropagation(); onDelete(lead); }}
+            className="ml-1 px-2 py-1 rounded-md text-xs font-medium gc-focus disabled:opacity-40"
+            style={{ color: "var(--danger)", background: "var(--danger-bg)" }}
+            aria-label={`Excluir lead ${lead.company}`}>
+            {deleting ? "Excluindo..." : "Excluir"}
+          </button>}
+        </span>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -1527,7 +1604,7 @@ function PipelineBoard({ leads, statusHistory, proposalValueByLead, onOpenLead }
   );
 }
 
-function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onCreateLead, currentUser, viewMode, setViewMode }) {
+function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead, onDeleteLead, deletingLeadId, onCreateLead, currentUser, viewMode, setViewMode }) {
   const [sortBy, setSortBy] = useState("next_action");
 
   const filtered = useMemo(() => {
@@ -1606,32 +1683,49 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onCreateLea
         )
       ) : (
         <SectionCard>
-          <div className="hidden md:grid gap-3 px-5 py-2.5 text-xs font-medium" style={{ gridTemplateColumns: "1.6fr 1fr 0.7fr 1fr 1.3fr 0.9fr", color: "var(--slate)", borderBottom: "1px solid var(--line)" }}>
-            <span>Empresa</span><span>Status</span><span>Temp.</span><span>Responsável</span><span>Próxima ação</span><span>Último contato</span>
+          <div className="hidden md:grid gap-3 px-5 py-2.5 text-xs font-medium" style={{ gridTemplateColumns: "1.5fr 1fr 0.7fr 0.9fr 1.2fr 0.9fr 150px", color: "var(--slate)", borderBottom: "1px solid var(--line)" }}>
+            <span>Empresa</span><span>Status</span><span>Temp.</span><span>Responsável</span><span>Próxima ação</span><span>Último contato</span><span className="text-right">Ação</span>
           </div>
           {filtered.length === 0 ? (
             <EmptyState icon={Search} title="Nenhum lead encontrado" hint="Ajuste os filtros ou a busca para ver mais resultados." />
-          ) : filtered.map(l => <LeadRow key={l.id} lead={l} onClick={() => onOpenLead(l.id)} />)}
+          ) : filtered.map(l => <LeadRow key={l.id} lead={l} onClick={() => onOpenLead(l.id)} onEdit={onEditLead} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} />)}
         </SectionCard>
       )}
     </div>
   );
 }
 
-function LeadFormModal({ onClose, onSave, currentUser }) {
-  const [expanded, setExpanded] = useState(false);
+function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
+  const isEditing = !!initialLead;
+  const [expanded, setExpanded] = useState(isEditing);
   const [form, setForm] = useState({
-    company: "", contactName: "", phone: "", whatsapp: "", instagram: "", gmaps: "", currentSite: "",
-    city: "", neighborhood: "", segment: SEGMENTS[0], notes: "",
-    owner: currentUser || USERS[0].id, priority: "Média", temperature: "Frio", source: SOURCES[0],
+    company: initialLead?.company || "",
+    contactName: initialLead?.contactName || "",
+    phone: initialLead?.phone || "",
+    whatsapp: initialLead?.whatsapp || "",
+    instagram: initialLead?.instagram || "",
+    gmaps: initialLead?.gmaps || "",
+    currentSite: initialLead?.currentSite || "",
+    city: initialLead?.city || "",
+    neighborhood: initialLead?.neighborhood || "",
+    segment: initialLead?.segment || SEGMENTS[0],
+    notes: initialLead?.notes || "",
+    owner: initialLead?.owner || currentUser || USERS[0].id,
+    priority: initialLead?.priority || "Média",
+    temperature: initialLead?.temperature || "Frio",
+    source: initialLead?.source || SOURCES[0],
   });
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
   const canSave = form.company.trim().length > 0;
   return (
-    <Modal title="Novo lead" onClose={onClose} width={520}>
+    <Modal title={isEditing ? `Editar lead — ${initialLead.company}` : "Novo lead"} onClose={onClose} width={520}>
       <div className="space-y-4">
-        <p className="text-xs -mt-1" style={{ color: "var(--slate)" }}>Cadastro rápido — complete os outros dados depois, na ficha do lead.</p>
-        <Field label="Nome da empresa" required><TextInput autoFocus value={form.company} onChange={set("company")} placeholder="Ex.: Padaria Ponto Doce" /></Field>
+        {!isEditing ? (
+          <p className="text-xs -mt-1" style={{ color: "var(--slate)" }}>Cadastro rápido — complete os outros dados depois, na ficha do lead.</p>
+        ) : (
+          <p className="text-xs -mt-1" style={{ color: "var(--slate)" }}>Edite as informações cadastrais e comerciais do lead.</p>
+        )}
+        <Field label="Nome da empresa" required><TextInput autoFocus={!isEditing} value={form.company} onChange={set("company")} placeholder="Ex.: Padaria Ponto Doce" /></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Contato"><TextInput value={form.contactName} onChange={set("contactName")} placeholder="Nome do responsável" /></Field>
           <Field label="Segmento"><Select value={form.segment} onChange={set("segment")}>{SEGMENTS.map(s => <option key={s}>{s}</option>)}</Select></Field>
@@ -1640,34 +1734,35 @@ function LeadFormModal({ onClose, onSave, currentUser }) {
           <Field label="WhatsApp"><TextInput value={form.whatsapp} onChange={set("whatsapp")} placeholder="(31) 90000-0000" /></Field>
           <Field label="Instagram"><TextInput value={form.instagram} onChange={set("instagram")} placeholder="@empresa" /></Field>
         </div>
-        <Field label="Cidade"><TextInput value={form.city} onChange={set("city")} /></Field>
+        <Field label="Cidade"><TextInput value={form.city} onChange={set("city")} placeholder="Ex.: Ipatinga" /></Field>
 
         {!expanded ? (
           <button type="button" onClick={() => setExpanded(true)} className="text-xs font-medium gc-focus flex items-center gap-1" style={{ color: "var(--accent-ink)" }}>
             <ChevronDown size={13} /> Mostrar mais campos
           </button>
         ) : (
-          <div className="space-y-4 pt-1 gc-fade-in" style={{ borderTop: "1px solid var(--line)" }}>
+          <div className="space-y-4 pt-1 gc-fade-in" style={{ borderTop: isEditing ? "none" : "1px solid var(--line)" }}>
             <div className="grid grid-cols-2 gap-3 pt-3">
-              <Field label="Telefone"><TextInput value={form.phone} onChange={set("phone")} /></Field>
-              <Field label="Site atual"><TextInput value={form.currentSite} onChange={set("currentSite")} /></Field>
+              <Field label="Telefone"><TextInput value={form.phone} onChange={set("phone")} placeholder="(31) 3000-0000" /></Field>
+              <Field label="Site atual"><TextInput value={form.currentSite} onChange={set("currentSite")} placeholder="https://exemplo.com.br" /></Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Bairro"><TextInput value={form.neighborhood} onChange={set("neighborhood")} /></Field>
-              <Field label="Google Maps (link)"><TextInput value={form.gmaps} onChange={set("gmaps")} /></Field>
+              <Field label="Bairro"><TextInput value={form.neighborhood} onChange={set("neighborhood")} placeholder="Bairro" /></Field>
+              <Field label="Google Maps (link)"><TextInput value={form.gmaps} onChange={set("gmaps")} placeholder="https://maps.app.goo.gl/..." /></Field>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <Field label="Responsável interno"><Select value={form.owner} onChange={set("owner")}>{USERS.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></Field>
               <Field label="Prioridade"><Select value={form.priority} onChange={set("priority")}>{PRIORITIES.map(p => <option key={p}>{p}</option>)}</Select></Field>
-              <Field label="Origem"><Select value={form.source} onChange={set("source")}>{SOURCES.map(s => <option key={s}>{s}</option>)}</Select></Field>
+              <Field label="Temperatura"><Select value={form.temperature} onChange={set("temperature")}>{TEMPERATURES.map(t => <option key={t}>{t}</option>)}</Select></Field>
             </div>
-            <Field label="Observações"><TextArea value={form.notes} onChange={set("notes")} /></Field>
+            <Field label="Origem"><Select value={form.source} onChange={set("source")}>{SOURCES.map(s => <option key={s}>{s}</option>)}</Select></Field>
+            <Field label="Observações"><TextArea value={form.notes} onChange={set("notes")} placeholder="Anotações gerais..." /></Field>
           </div>
         )}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={!canSave} onClick={() => onSave(form)}>Salvar lead</Button>
+          <Button disabled={!canSave} onClick={() => onSave(form)}>{isEditing ? "Salvar alterações" : "Salvar lead"}</Button>
         </div>
       </div>
     </Modal>
@@ -2121,7 +2216,7 @@ function NextActionBanner({ lead, onOpen }) {
   );
 }
 
-function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initialTab }) {
+function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initialTab, onEditLead }) {
   const [tab, setTab] = useState(initialTab || "geral");
   useEffect(() => { setTab(initialTab || "geral"); }, [leadId]);
   const [showLoss, setShowLoss] = useState(false);
@@ -2161,7 +2256,16 @@ function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initia
       title={lead.company}
       subtitle={`${lead.city}${lead.neighborhood ? " · " + lead.neighborhood : ""} · ${lead.segment}`}
       onClose={onClose}
-      headerRight={lead.status === "Fechado" && !client ? <Button size="sm" onClick={() => setShowConvert(true)}>Converter em cliente</Button> : null}
+      headerRight={
+        <div className="flex items-center gap-2">
+          {onEditLead && (
+            <Button size="sm" variant="secondary" icon={Edit} onClick={() => onEditLead(lead)}>
+              Editar
+            </Button>
+          )}
+          {lead.status === "Fechado" && !client ? <Button size="sm" onClick={() => setShowConvert(true)}>Converter em cliente</Button> : null}
+        </div>
+      }
     >
       <div className="flex items-center gap-3 flex-wrap mb-4">
         <StatusChanger lead={lead} onChange={changeStatus} />
@@ -2198,7 +2302,14 @@ function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initia
           <SectionCard title="Próxima ação">
             <div className="p-4"><NextActionEditor lead={lead} onSave={(na) => dispatch({ type: "SET_NEXT_ACTION", leadId, nextAction: na })} /></div>
           </SectionCard>
-          <SectionCard title="Contato">
+          <SectionCard
+            title="Contato"
+            action={onEditLead ? (
+              <button type="button" onClick={() => onEditLead(lead)} className="text-xs font-medium gc-focus flex items-center gap-1 hover:underline" style={{ color: "var(--accent-ink)" }}>
+                <Edit size={12} /> Editar
+              </button>
+            ) : null}
+          >
             <div className="px-5 py-2">
               <InfoRow icon={Users} label="Responsável" value={lead.contactName} />
               <InfoRow icon={Phone} label="Telefone" value={lead.phone} />
@@ -2208,7 +2319,14 @@ function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initia
               <InfoRow icon={MapPin} label="Google Maps" value={lead.gmaps ? "Ver localização" : ""} href={lead.gmaps} />
             </div>
           </SectionCard>
-          <SectionCard title="Classificação">
+          <SectionCard
+            title="Classificação"
+            action={onEditLead ? (
+              <button type="button" onClick={() => onEditLead(lead)} className="text-xs font-medium gc-focus flex items-center gap-1 hover:underline" style={{ color: "var(--accent-ink)" }}>
+                <Edit size={12} /> Editar
+              </button>
+            ) : null}
+          >
             <div className="px-5 py-4 grid grid-cols-2 gap-y-2 text-sm">
               <span style={{ color: "var(--slate)" }}>Origem</span><span>{lead.source}</span>
               <span style={{ color: "var(--slate)" }}>Cadastrado em</span><span className="gc-mono">{fmtDateFull(lead.createdAt)}</span>
@@ -2640,6 +2758,9 @@ function App() {
   const [selectedLeadId, setSelectedLeadId] = useState(null);
   const [initialTab, setInitialTab] = useState("geral");
   const [showLeadForm, setShowLeadForm] = useState(false);
+  const [editingLead, setEditingLead] = useState(null);
+  const [deletingLeadId, setDeletingLeadId] = useState(null);
+  const deleteInProgress = useRef(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [, forceTick] = useState(0);
   const searchInputRef = useRef(null);
@@ -2696,7 +2817,7 @@ function App() {
           }
           case "UPDATE_LEAD": {
             const res = await crmApi.leads.update(action.id, action.patch);
-            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao atualizar lead");
+            if (!res || !res.success) throw new Error(res?.message || res?.error?.message || "Falha ao atualizar lead");
             break;
           }
           case "CHANGE_STATUS": {
@@ -2764,7 +2885,7 @@ function App() {
         }
       } catch (err) {
         console.error("Erro de persistência no Supabase:", err);
-        notify("Aviso Supabase: " + (err.message || "Erro ao persistir"), "danger");
+        notify("Aviso Supabase: " + (err.message || "Erro ao persistir"), "error");
       }
     })();
   }, [notify]);
@@ -2821,13 +2942,59 @@ function App() {
     openLead(id);
   };
 
+  const handleDeleteLead = async (lead) => {
+    if (deleteInProgress.current) return;
+    if (db.clients.some(c => c.leadId === lead.id)) {
+      notify("Este lead possui um cliente vinculado e não pode ser excluído.", "error");
+      return;
+    }
+    if (!window.confirm(`Excluir definitivamente o lead "${lead.company}"?\n\nO histórico, follow-ups, demos e propostas deste lead também serão apagados. Esta ação não pode ser desfeita.`)) return;
+    deleteInProgress.current = true;
+    setDeletingLeadId(lead.id);
+    try {
+      const res = await crmApi.leads.remove(lead.id);
+      if (!res?.success) throw new Error(res?.message || "Não foi possível excluir o lead.");
+      rawDispatch({ type: "DELETE_LEAD", id: lead.id });
+      setSelectedLeadId(id => id === lead.id ? null : id);
+      setEditingLead(current => current?.id === lead.id ? null : current);
+      notify("Lead excluído definitivamente.");
+    } catch (err) {
+      notify(err.message || "Não foi possível excluir o lead.", "error");
+    } finally {
+      deleteInProgress.current = false;
+      setDeletingLeadId(null);
+    }
+  };
+
+  const handleEditLead = (lead) => {
+    setEditingLead(lead);
+  };
+
+  const handleSaveEditedLead = (form) => {
+    if (!editingLead) return;
+    const company = (form.company || "").trim();
+    const contactName = (form.contactName && form.contactName.trim()) ? form.contactName.trim() : company;
+    const patch = {
+      ...form,
+      company,
+      contactName,
+    };
+    dispatch({
+      type: "UPDATE_LEAD",
+      id: editingLead.id,
+      patch,
+    });
+    setEditingLead(null);
+    notify("Lead atualizado com sucesso.");
+  };
+
   const setLeadsFilterAndGo = (patch) => setLeadsFilter(f => ({ ...f, ...patch }));
 
   let body;
   if (view === "dashboard") {
     body = <Dashboard db={db} sel={sel} currentUser={currentUser} onOpenLead={openLead} setView={setView} setLeadsFilter={setLeadsFilterAndGo} setLeadsViewMode={setLeadsViewMode} dispatch={dispatch} notify={notify} />;
   } else if (view === "leads") {
-    body = <LeadsView db={db} sel={sel} search={search} filter={leadsFilter} setFilter={setLeadsFilter} onOpenLead={openLead} onCreateLead={() => setShowLeadForm(true)} currentUser={currentUser} viewMode={leadsViewMode} setViewMode={setLeadsViewMode} />;
+    body = <LeadsView db={db} sel={sel} search={search} filter={leadsFilter} setFilter={setLeadsFilter} onOpenLead={openLead} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} deletingLeadId={deletingLeadId} onCreateLead={() => setShowLeadForm(true)} currentUser={currentUser} viewMode={leadsViewMode} setViewMode={setLeadsViewMode} />;
   } else if (view === "followups") {
     body = <FollowupsView sel={sel} onOpenLead={openLead} dispatch={dispatch} notify={notify} />;
   } else if (view === "demos") {
@@ -2863,9 +3030,10 @@ function App() {
       </div>
 
       {selectedLeadId && (
-        <LeadDetail leadId={selectedLeadId} db={db} onClose={() => setSelectedLeadId(null)} currentUser={currentUser} dispatch={dispatch} notify={notify} initialTab={initialTab} />
+        <LeadDetail leadId={selectedLeadId} db={db} onClose={() => setSelectedLeadId(null)} currentUser={currentUser} dispatch={dispatch} notify={notify} initialTab={initialTab} onEditLead={handleEditLead} />
       )}
       {showLeadForm && <LeadFormModal onClose={() => setShowLeadForm(false)} onSave={handleCreateLead} currentUser={currentUser} />}
+      {editingLead && <LeadFormModal initialLead={editingLead} onClose={() => setEditingLead(null)} onSave={handleSaveEditedLead} currentUser={currentUser} />}
       <ToastStack toasts={toasts} />
     </div>
   );

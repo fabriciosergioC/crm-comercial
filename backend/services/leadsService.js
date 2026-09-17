@@ -91,6 +91,18 @@ async function update(id, patch) {
   if (Object.keys(row).length === 0) return getById(id);
   const { data, error } = await supabase.from('leads').update(row).eq('id', id).select().single();
   if (error) throw new ApiError(502, 'Falha ao atualizar o lead no banco.');
+
+  // Sincroniza somente dados cadastrais. Contrato e status do cliente são independentes.
+  if (['company', 'contact_name', 'owner'].some(field => row[field] !== undefined)) {
+    const { error: clientError } = await supabase.from('clients').update({
+      company: data.company,
+      contact_name: data.contact_name,
+      owner: data.owner,
+    }).eq('lead_id', id);
+    if (clientError) {
+      throw new ApiError(502, 'Lead salvo, mas não foi possível atualizar o cliente vinculado. Tente salvar novamente.');
+    }
+  }
   return fromRow(data);
 }
 
@@ -146,4 +158,18 @@ async function addInteraction(leadId, interaction) {
   return { interaction: created, lead: fromRow(data && data.lead ? data.lead : data) };
 }
 
-module.exports = { list, getById, create, update, changeStatus, addInteraction, toRow, fromRow, COLUMNS, JSONB_FIELDS, TEMP_RANK, HOT_RESULTS, WARM_RESULTS };
+async function remove(id) {
+  assertReady();
+  await getById(id);
+  const { data: client, error: clientError } = await supabase.from('clients')
+    .select('id').eq('lead_id', id).maybeSingle();
+  if (clientError) throw new ApiError(502, 'Não foi possível verificar o cliente vinculado.');
+  if (client) throw new ApiError(409, 'Este lead possui um cliente vinculado e não pode ser excluído.');
+  const { data, error } = await supabase.from('leads').delete().eq('id', id).select('id').maybeSingle();
+  if (error && error.code === '23503') throw new ApiError(409, 'Este lead possui registros protegidos e não pode ser excluído.');
+  if (error) throw new ApiError(502, 'Não foi possível excluir o lead.');
+  if (!data) throw new ApiError(404, 'Lead não encontrado.');
+  return { id: data.id };
+}
+
+module.exports = { list, getById, create, update, remove, changeStatus, addInteraction, toRow, fromRow, COLUMNS, JSONB_FIELDS, TEMP_RANK, HOT_RESULTS, WARM_RESULTS };

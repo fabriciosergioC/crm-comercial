@@ -34,6 +34,7 @@ app.use(
 app.use(express.json({ limit: '1mb' }));
 
 app.use('/api', routes);
+app.use('/', routes);
 
 app.use(notFound);
 app.use(errorHandler);
