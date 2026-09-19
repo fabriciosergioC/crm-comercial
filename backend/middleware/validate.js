@@ -138,7 +138,8 @@ function score(body, field = 'score') {
 /* nextAction: { date, note } - a próxima ação combinada com o lead. */
 function nextAction(body, field = 'nextAction') {
   const v = body[field];
-  if (v === undefined || v === null) return undefined;
+  if (v === undefined) return undefined;
+  if (v === null) return null;
   if (typeof v !== 'object' || Array.isArray(v)) {
     throw new ApiError(400, field + ' deve ser um objeto { date, note }.');
   }
@@ -153,7 +154,7 @@ function nextAction(body, field = 'nextAction') {
     out.date = null;
   }
   out.note = isBlank(v.note) ? '' : String(v.note).slice(0, 500);
-  return out;
+  return out.date === null && out.note === '' ? null : out;
 }
 
 module.exports = {
