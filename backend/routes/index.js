@@ -15,6 +15,7 @@ const router = express.Router();
 
 /* Infraestrutura */
 router.use('/health', require('./healthRoute'));
+router.use('/auth', require('./authRoutes'));
 
 /* Núcleo comercial */
 router.use('/leads', require('./leadsRoutes'));

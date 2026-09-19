@@ -12,6 +12,7 @@ Estrutura do banco do CRM. **Nada aqui apaga dados**: só existem
 | 1 | `schema.sql` | 9 tabelas, constraints, índices e trigger de `updated_at` |
 | 2 | `functions.sql` | 2 funções RPC: `change_lead_status`, `add_lead_interaction` |
 | 3 | `rls.sql` | Habilita RLS, tira acesso de `anon`/`authenticated`, libera `service_role` |
+| 4 | `migrations/002_auth.sql` | adiciona hash, indicador de troca obrigatória e data da senha em `users` |
 
 **Como aplicar:** cole o conteúdo de cada arquivo, na ordem acima, no **SQL
 Editor** do painel do Supabase.
@@ -38,7 +39,7 @@ Se você preferir aplicar de forma automatizada (script Node com o pacote `pg` +
 
 | Tabela | Papel | Relações |
 |---|---|---|
-| `users` | Vendedores/donos (espelha a constante `USERS`) | pai de `leads.owner`, `lead_interactions."user"`, `lead_followups.created_by`, `lead_demos.owner`, `clients.owner` |
+| `users` | Vendedores/donos (espelha a constante `USERS`) e credenciais de acesso | pai de `leads.owner`, `lead_interactions."user"`, `lead_followups.created_by`, `lead_demos.owner`, `clients.owner` |
 | `leads` | Oportunidade comercial (entidade central) | `owner → users` |
 | `lead_status_history` | Auditoria de mudança de status | `lead_id → leads` (cascade) |
 | `lead_interactions` | Contatos realizados | `lead_id → leads` (cascade) |
@@ -68,9 +69,9 @@ Se você preferir aplicar de forma automatizada (script Node com o pacote `pg` +
    e nenhum `using (true)` foi criado.
 6. **`client_updates`** existe no modelo do front (`initialDb.clientUpdates`)
    mas a UI ainda não lê — mantida por paridade, sem uso hoje.
-7. **`users`** espelha `USERS` (`erick`, `fabricio`). O login atual é "escolher
-   usuário" (sem senha): **nenhuma autenticação foi migrada** (e o Supabase Auth
-   não foi ativado).
+7. **`users`** espelha `USERS` (`erick`, `fabricio`) e armazena apenas o hash da
+   senha. Usuários sem hash recebem a senha padrão configurada no backend e
+   precisam trocá-la no primeiro acesso.
 8. **Sem `DELETE`** — a aplicação não exclui nada: follow-up vira `cancelado`,
    demo vira `deactivated`, proposta vira `Recusada`. Os `on delete cascade`
    existem só para integridade referencial.

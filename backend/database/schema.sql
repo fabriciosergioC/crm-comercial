@@ -18,14 +18,18 @@
 --         ({ id: "erick" }, { id: "fabricio" }).
 --         Referenciado por leads.owner, lead_interactions."user",
 --         lead_followups.created_by, lead_demos.owner e clients.owner.
---         O login atual é apenas "escolher usuário" (sem senha): nenhuma
---         autenticação é migrada nesta etapa.
+--         password_hash armazena apenas o hash seguro da senha. Um usuário sem
+--         hash usa a senha padrão configurada no backend e precisa trocá-la no
+--         primeiro acesso.
 -- ----------------------------------------------------------------------------
 create table if not exists public.users (
-  id         text primary key,
-  name       text        not null,
-  active     boolean     not null default true,
-  created_at timestamptz not null default now()
+  id                    text        primary key,
+  name                  text        not null,
+  active                boolean     not null default true,
+  password_hash         text,
+  must_change_password  boolean     not null default true,
+  password_updated_at   timestamptz,
+  created_at            timestamptz not null default now()
 );
 
 -- ----------------------------------------------------------------------------

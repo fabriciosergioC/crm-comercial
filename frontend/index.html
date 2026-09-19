@@ -139,6 +139,51 @@ const Tokens = () => (
     .gc-row-hover:hover { background: var(--surface-sunken); }
     .gc-focus:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
     .gc-focus:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .gc-cell-tooltip {
+      position: fixed;
+      z-index: 1000;
+      max-width: min(480px, calc(100vw - 16px));
+      padding: 8px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      box-shadow: 0 10px 28px rgba(23,25,28,0.16);
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      pointer-events: none;
+    }
+    .gc-cell-tooltip.above { transform: translateY(-100%); }
+    .gc-table-scroll { overflow-x: auto; }
+    .gc-column-resize-handle {
+      position: absolute;
+      top: 0;
+      right: -6px;
+      z-index: 2;
+      width: 12px;
+      height: 100%;
+      cursor: col-resize;
+      touch-action: none;
+    }
+    .gc-column-resize-handle::after {
+      content: "";
+      position: absolute;
+      top: 20%;
+      left: 5px;
+      width: 2px;
+      height: 60%;
+      border-radius: 2px;
+      background: var(--line-strong);
+      transition: background 0.15s ease, width 0.15s ease;
+    }
+    .gc-column-resize-handle:hover::after,
+    .gc-column-resize-handle:focus-visible::after {
+      width: 3px;
+      background: var(--accent);
+    }
+    .gc-column-resize-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
     .gc-card { transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease; }
     .gc-card-hover:hover { border-color: var(--line-strong); box-shadow: 0 4px 16px rgba(23,25,28,0.06); }
@@ -174,6 +219,137 @@ const USERS = [
   { id: "erick", name: "Erick" },
   { id: "fabricio", name: "Fabrício" },
 ];
+
+const DEFAULT_PASSWORD = "Crm@2026!Inicial";
+const AUTH_STORAGE_PREFIX = "crm_auth_";
+const AUTH_SESSION_KEY = "crm_auth_session";
+
+function readAuthRecord(userId) {
+  try {
+    const value = window.localStorage.getItem(AUTH_STORAGE_PREFIX + userId);
+    return value ? JSON.parse(value) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeAuthRecord(userId, record) {
+  try {
+    window.localStorage.setItem(AUTH_STORAGE_PREFIX + userId, JSON.stringify(record));
+  } catch (error) {
+    return null;
+  }
+}
+
+function readSessionUserId() {
+  try {
+    const value = window.localStorage.getItem(AUTH_SESSION_KEY);
+    const session = value ? JSON.parse(value) : null;
+    return session && USERS.some((user) => user.id === session.userId) ? session.userId : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeSessionUserId(userId) {
+  try {
+    window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ userId }));
+  } catch (error) {
+    return null;
+  }
+}
+
+function clearSessionUserId() {
+  try {
+    window.localStorage.removeItem(AUTH_SESSION_KEY);
+  } catch (error) {
+    return;
+  }
+}
+
+function createAuthSalt() {
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function hashPassword(password, salt) {
+  const data = new TextEncoder().encode(`${salt}:${password}`);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function ensureAuthRecord(userId) {
+  const current = readAuthRecord(userId);
+  if (current && typeof current.salt === "string" && typeof current.passwordHash === "string") {
+    return {
+      salt: current.salt,
+      passwordHash: current.passwordHash,
+      mustChangePassword: current.mustChangePassword !== false,
+    };
+  }
+
+  const salt = createAuthSalt();
+  const record = {
+    salt,
+    passwordHash: await hashPassword(DEFAULT_PASSWORD, salt),
+    mustChangePassword: true,
+  };
+  writeAuthRecord(userId, record);
+  return record;
+}
+
+async function verifyPassword(userId, password) {
+  const record = await ensureAuthRecord(userId);
+  const hash = await hashPassword(password, record.salt);
+  return { record, matches: hash === record.passwordHash };
+}
+
+async function savePermanentPassword(userId, password) {
+  const current = await ensureAuthRecord(userId);
+  const record = {
+    salt: current.salt,
+    passwordHash: await hashPassword(password, current.salt),
+    mustChangePassword: false,
+  };
+  writeAuthRecord(userId, record);
+  return record;
+}
+
+async function saveLocalPassword(userId, password, mustChangePassword) {
+  const current = await ensureAuthRecord(userId);
+  const record = {
+    salt: current.salt,
+    passwordHash: await hashPassword(password, current.salt),
+    mustChangePassword,
+  };
+  writeAuthRecord(userId, record);
+  return record;
+}
+
+async function authStatusThroughApi(userId) {
+  const response = await crmApi.auth.status(userId);
+  if (!response.ok || !response.data) return null;
+  return response.data;
+}
+
+async function loginThroughApi(userId, password) {
+  const response = await crmApi.auth.login(userId, password);
+  if (response.status === 401 || response.status === 403) {
+    return { ok: false, message: response.message || "Usuário ou senha incorretos." };
+  }
+  if (!response.ok || !response.data) return null;
+  return { ok: true, data: response.data };
+}
+
+async function changePasswordThroughApi(userId, currentPassword, newPassword) {
+  const response = await crmApi.auth.changePassword(userId, currentPassword, newPassword);
+  if (response.status === 401 || response.status === 403) {
+    return { ok: false, message: response.message || "Não foi possível alterar a senha." };
+  }
+  if (!response.ok || !response.data) return null;
+  return { ok: true, data: response.data };
+}
 
 const STATUS_LIST = ["Novo","Contato pendente","Contatado","Respondeu","Demo enviada","Demo em análise","Interessado","Proposta enviada","Negociação","Fechado","Perdido"];
 const TEMPERATURES = ["Frio","Morno","Quente"];
@@ -457,6 +633,33 @@ const crmApi = {
     }
   },
 
+  async authRequest(path, body, method = "POST") {
+    try {
+      const res = await fetch(`${CRM_API_BASE}${path}`, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: body === null ? undefined : JSON.stringify(body),
+      });
+      let json = null;
+      try { json = await res.json(); } catch (error) { json = null; }
+      return {
+        status: res.status,
+        ok: res.ok,
+        data: json && json.data ? json.data : null,
+        message: json && json.message ? json.message : "",
+      };
+    } catch (error) {
+      return { status: 0, ok: false, data: null, message: error.message };
+    }
+  },
+
+  auth: {
+    status: (userId) => crmApi.authRequest("/auth/status/" + encodeURIComponent(userId), null, "GET"),
+    login: (userId, password) => crmApi.authRequest("/auth/login", { userId, password }),
+    changePassword: (userId, currentPassword, newPassword) =>
+      crmApi.authRequest("/auth/change-password", { userId, currentPassword, newPassword }),
+  },
+
   async loadAll() {
     const fetchJson = (path) =>
       fetch(`${CRM_API_BASE}${path}`)
@@ -512,7 +715,12 @@ const crmApi = {
       fetch(`${CRM_API_BASE}/leads/${id}/interactions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(interaction),
+        body: JSON.stringify({
+          channel: interaction.channel,
+          result: interaction.result,
+          note: interaction.note || "",
+          user: interaction.user,
+        }),
       }).then((r) => r.json()),
   },
 
@@ -1095,6 +1303,116 @@ const NAV_ITEMS = [
 ];
 
 function LoginScreen({ onLogin }) {
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [changeError, setChangeError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
+
+  const chooseUser = async (user) => {
+    setSelectedUser(user);
+    setPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setError("");
+    setChangeError("");
+    setChangingPassword(false);
+    setRequiresPasswordChange(false);
+    if (!user) return;
+    try {
+      const apiStatus = await authStatusThroughApi(user.id);
+      if (apiStatus) {
+        setRequiresPasswordChange(apiStatus.mustChangePassword);
+      } else {
+        const record = await ensureAuthRecord(user.id);
+        setRequiresPasswordChange(record.mustChangePassword);
+          }
+    } catch (err) {
+      const record = await ensureAuthRecord(user.id);
+      setRequiresPasswordChange(record.mustChangePassword);
+      }
+  };
+
+  const handleLogin = async (event) => {
+    event.preventDefault();
+    if (!selectedUser) return;
+    setLoading(true);
+    setError("");
+    try {
+      const apiResult = await loginThroughApi(selectedUser.id, password);
+      if (apiResult === null) {
+        const result = await verifyPassword(selectedUser.id, password);
+        if (!result.matches) {
+          setError("Senha incorreta.");
+          return;
+        }
+        if (result.record.mustChangePassword) {
+          setRequiresPasswordChange(true);
+          setChangingPassword(true);
+          return;
+        }
+        writeSessionUserId(selectedUser.id);
+        onLogin(selectedUser.id);
+        return;
+      }
+      if (!apiResult.ok) {
+        setError(apiResult.message || "Usuário ou senha incorretos.");
+        return;
+      }
+      if (apiResult.data.mustChangePassword) {
+        await saveLocalPassword(selectedUser.id, password, true);
+        setRequiresPasswordChange(true);
+        setChangingPassword(true);
+        return;
+      }
+      await saveLocalPassword(selectedUser.id, password, false);
+      writeSessionUserId(selectedUser.id);
+      onLogin(selectedUser.id);
+    } catch (err) {
+      setError("Não foi possível validar o acesso. Tente novamente.");
+      console.error("Erro no login:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChangePassword = async (event) => {
+    event.preventDefault();
+    if (!selectedUser) return;
+    if (newPassword.length < 8) {
+      setChangeError("A nova senha deve ter pelo menos 8 caracteres.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setChangeError("A confirmação da senha não coincide.");
+      return;
+    }
+    setLoading(true);
+    setChangeError("");
+    try {
+      const apiResult = await changePasswordThroughApi(selectedUser.id, password, newPassword);
+      if (apiResult === null) {
+        await savePermanentPassword(selectedUser.id, newPassword);
+      } else if (!apiResult.ok) {
+        setChangeError(apiResult.message || "Não foi possível alterar a senha.");
+        return;
+      } else {
+        await saveLocalPassword(selectedUser.id, newPassword, false);
+      }
+      writeSessionUserId(selectedUser.id);
+      onLogin(selectedUser.id);
+    } catch (err) {
+      setChangeError("Não foi possível salvar a nova senha. Tente novamente.");
+      console.error("Erro ao trocar senha:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="gc-root min-h-screen flex items-center justify-center px-4">
       <Tokens />
@@ -1102,23 +1420,65 @@ function LoginScreen({ onLogin }) {
         <div className="mb-8 text-center">
           <div className="w-11 h-11 rounded-xl mx-auto mb-4 flex items-center justify-center gc-display font-semibold text-white" style={{ background: "var(--accent)" }}>GC</div>
           <h1 className="gc-display text-xl font-semibold">Gestão Comercial</h1>
-          <p className="text-sm mt-1" style={{ color: "var(--slate)" }}>Quem está acessando?</p>
+          <p className="text-sm mt-1" style={{ color: "var(--slate)" }}>
+            {selectedUser ? "Informe seus dados de acesso" : "Quem está acessando?"}
+          </p>
         </div>
-        <div className="space-y-2">
-          {USERS.map(u => (
-            <button key={u.id} onClick={() => onLogin(u.id)}
-              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl gc-focus text-left transition-colors"
-              style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
-              <span className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-sm" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
-                {u.name[0]}
-              </span>
-              <span className="font-medium text-sm">{u.name}</span>
-              <ChevronRight size={16} className="ml-auto" style={{ color: "var(--slate)" }} />
+
+        {!selectedUser ? (
+          <div className="space-y-2">
+            {USERS.map((user) => (
+              <button key={user.id} onClick={() => chooseUser(user)}
+                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl gc-focus text-left transition-colors"
+                style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+                <span className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-sm" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
+                  {user.name[0]}
+                </span>
+                <span className="font-medium text-sm">{user.name}</span>
+                <ChevronRight size={16} className="ml-auto" style={{ color: "var(--slate)" }} />
+              </button>
+            ))}
+          </div>
+        ) : !changingPassword ? (
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)", border: "1px solid var(--accent-soft-strong)" }}>
+              <strong>{selectedUser.name}</strong>
+              {requiresPasswordChange && <span className="block text-xs mt-1">Depois de acessar, crie sua senha permanente.</span>}
+            </div>
+            <Field label={requiresPasswordChange ? "Senha inicial" : "Senha"} required>
+              <TextInput type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus placeholder={requiresPasswordChange ? "Digite a senha inicial" : "Digite sua senha"} autoComplete="current-password" />
+            </Field>
+            {error && <div className="text-sm text-center" style={{ color: "var(--danger)" }}>{error}</div>}
+            <Button type="submit" className="w-full" disabled={loading || !password}>
+              {loading ? "Validando..." : "Acessar"}
+            </Button>
+            <button type="button" onClick={() => chooseUser(null)} className="w-full text-center text-sm gc-focus rounded py-1" style={{ color: "var(--slate)" }}>
+              Escolher outro usuário
             </button>
-          ))}
-        </div>
+          </form>
+        ) : (
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "var(--warn-bg)", color: "var(--warn)", border: "1px solid var(--line)" }}>
+              Primeiro acesso confirmado. Crie uma senha permanente para continuar.
+            </div>
+            <Field label="Nova senha" required hint="Mínimo de 8 caracteres.">
+              <TextInput type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoFocus placeholder="Digite a nova senha" autoComplete="new-password" />
+            </Field>
+            <Field label="Confirmar nova senha" required>
+              <TextInput type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repita a nova senha" autoComplete="new-password" />
+            </Field>
+            {changeError && <div className="text-sm text-center" style={{ color: "var(--danger)" }}>{changeError}</div>}
+            <Button type="submit" className="w-full" disabled={loading || !newPassword || !confirmPassword}>
+              {loading ? "Salvando..." : "Salvar senha e acessar"}
+            </Button>
+            <button type="button" onClick={() => { setChangingPassword(false); setPassword(""); setError(""); }} className="w-full text-center text-sm gc-focus rounded py-1" style={{ color: "var(--slate)" }}>
+              Voltar para a senha
+            </button>
+          </form>
+        )}
+
         <p className="text-xs text-center mt-6" style={{ color: "var(--slate)" }}>
-          Versão de demonstração com dados fictícios. A autenticação real entra na conexão com o Supabase.
+          Não há cadastro nesta tela. O acesso é liberado apenas para usuários existentes.
         </p>
       </div>
     </div>
@@ -1270,10 +1630,12 @@ function Topbar({ db, currentUser, setCurrentUser, onSearch, search, attention, 
         {notifOpen && <NotificationPanel items={attention} onClose={() => setNotifOpen(false)} onOpenLead={onOpenLead} />}
       </div>
       <div className="flex items-center gap-2 pl-2 ml-1" style={{ borderLeft: "1px solid var(--line)" }}>
-        <span className="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
-          {userName(currentUser)[0]}
-        </span>
-        <span className="text-sm font-medium hidden sm:block">{userName(currentUser)}</span>
+        <button onClick={onLogout} className="flex items-center gap-2 gc-focus rounded-lg px-1 py-1" style={{ background: "transparent", border: "none" }} aria-label="Sair e escolher outro usuário">
+          <span className="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
+            {userName(currentUser)[0]}
+          </span>
+          <span className="text-sm font-medium hidden sm:block">{userName(currentUser)}</span>
+        </button>
         <button onClick={onLogout} className="w-8 h-8 rounded-lg flex items-center justify-center gc-focus" style={{ color: "var(--slate)" }} aria-label="Trocar usuário">
           <LogOut size={15} />
         </button>
@@ -1430,8 +1792,32 @@ function FilterChip({ label, active, onClick }) {
   );
 }
 
-function LeadRow({ lead, onClick, onEdit, onDelete, deleting }) {
+function TooltipText({ value, className = "", style = {}, children, nativeTooltip = true, ...props }) {
+  const text = value == null ? "" : String(value);
+  return (
+    <span
+      {...props}
+      className={className}
+      style={style}
+      title={nativeTooltip && text ? text : undefined}
+      aria-label={text || undefined}
+      data-tooltip={text || undefined}
+    >
+      {children !== undefined ? children : (text || "—")}
+    </span>
+  );
+}
+
+function LeadRow({ lead, onClick, onEdit, onDelete, deleting, onCellMouseEnter, onCellMouseMove, onCellMouseLeave, onCellFocus, onCellBlur, gridTemplateColumns }) {
   const bucket = actionBucket(lead.nextAction?.date);
+  const cellTooltipProps = {
+    nativeTooltip: false,
+    onMouseEnter: onCellMouseEnter,
+    onMouseMove: onCellMouseMove,
+    onMouseLeave: onCellMouseLeave,
+    onFocus: onCellFocus,
+    onBlur: onCellBlur,
+  };
   return (
     <div
       onClick={onClick}
@@ -1445,8 +1831,8 @@ function LeadRow({ lead, onClick, onEdit, onDelete, deleting }) {
       <div className="md:hidden space-y-2">
         <div className="flex items-start justify-between gap-2">
           <span className="min-w-0">
-            <span className="block text-sm font-medium truncate">{lead.company}</span>
-            <span className="block text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{lead.city} · {lead.segment}</span>
+            <TooltipText {...cellTooltipProps} value={lead.company} className="block text-sm font-medium truncate" />
+            <TooltipText {...cellTooltipProps} value={`${lead.city} · ${lead.segment}`} className="block text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }} />
           </span>
           <div className="flex items-center gap-1.5 shrink-0">
             <TempPill temperature={lead.temperature} />
@@ -1473,37 +1859,42 @@ function LeadRow({ lead, onClick, onEdit, onDelete, deleting }) {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <StatusPill status={lead.status} />
-          <span className="text-xs" style={{ color: "var(--slate)" }}>{userName(lead.owner)}</span>
+          <TooltipText {...cellTooltipProps} value={userName(lead.owner)} className="text-xs" style={{ color: "var(--slate)" }} />
         </div>
         {lead.nextAction && (
           <div className="flex items-center gap-1.5 text-xs">
             {bucket === "atrasado" && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--danger)" }} />}
             <span className="gc-mono shrink-0" style={{ color: bucket === "atrasado" ? "var(--danger)" : "var(--slate)" }}>{fmtDate(lead.nextAction.date)}</span>
-            <span className="truncate" style={{ color: "var(--ink-soft)" }}>{lead.nextAction.note}</span>
+            <TooltipText {...cellTooltipProps} value={lead.nextAction.note} className="truncate" style={{ color: "var(--ink-soft)" }} />
           </div>
         )}
       </div>
       {/* Desktop: grid row */}
-      <div className="hidden md:grid items-center gap-3" style={{ gridTemplateColumns: "1.5fr 1fr 0.7fr 0.9fr 1.2fr 0.9fr 150px" }}>
+      <div className="hidden md:grid items-center gap-3 min-w-0" style={{ gridTemplateColumns }}>
         <span className="min-w-0">
-          <span className="block text-sm font-medium truncate">{lead.company}</span>
-          <span className="block text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{lead.city} · {lead.segment}</span>
+          <TooltipText {...cellTooltipProps} value={lead.company} className="block text-sm font-medium truncate" />
+          <TooltipText {...cellTooltipProps} value={`${lead.city} · ${lead.segment}`} className="block text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }} />
         </span>
-        <span><StatusPill status={lead.status} /></span>
-        <span><TempPill temperature={lead.temperature} /></span>
-        <span className="text-sm" style={{ color: "var(--ink-soft)" }}>{userName(lead.owner)}</span>
+        <span className="min-w-0"><StatusPill status={lead.status} /></span>
+        <span className="min-w-0"><TempPill temperature={lead.temperature} /></span>
+        <TooltipText {...cellTooltipProps} value={userName(lead.owner)} className="text-sm truncate min-w-0" style={{ color: "var(--ink-soft)" }} />
         <span className="min-w-0">
           {lead.nextAction ? (
             <span className="flex items-center gap-1.5 text-sm truncate">
               {bucket === "atrasado" && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--danger)" }} />}
               {bucket === "hoje" && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--warn)" }} />}
               <span className="gc-mono text-xs shrink-0" style={{ color: bucket === "atrasado" ? "var(--danger)" : "var(--slate)" }}>{fmtDate(lead.nextAction.date)}</span>
-              <span className="truncate" style={{ color: "var(--ink-soft)" }}>{lead.nextAction.note}</span>
+              <TooltipText {...cellTooltipProps} value={lead.nextAction.note} className="truncate" style={{ color: "var(--ink-soft)" }} />
             </span>
           ) : <span className="text-sm" style={{ color: "var(--slate)" }}>—</span>}
         </span>
-        <span className="gc-mono text-xs" style={{ color: "var(--slate)" }}>{lead.lastContactAt ? fmtDateTime(lead.lastContactAt) : "Sem contato"}</span>
-        <span className="flex justify-end items-center">
+        <TooltipText
+          {...cellTooltipProps}
+          value={lead.lastContactAt ? fmtDateTime(lead.lastContactAt) : "Sem contato"}
+          className="gc-mono text-xs truncate min-w-0"
+          style={{ color: "var(--slate)" }}
+        />
+        <span className="min-w-0 flex justify-end items-center">
           {onEdit && (
             <button
               type="button"
@@ -1550,8 +1941,8 @@ function KanbanCard({ lead, proposal, daysInStage, onClick }) {
     <button onClick={onClick} className="w-full text-left rounded-xl p-3.5 gc-focus gc-card gc-card-hover gc-pressable space-y-2" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
       <div className="flex items-start justify-between gap-2">
         <span className="min-w-0">
-          <span className="block text-sm font-semibold truncate">{lead.company}</span>
-          <span className="block text-xs truncate" style={{ color: "var(--slate)" }}>{lead.contactName || lead.segment}</span>
+          <TooltipText value={lead.company} className="block text-sm font-semibold truncate" />
+          <TooltipText value={lead.contactName || lead.segment} className="block text-xs truncate" style={{ color: "var(--slate)" }} />
         </span>
         <TempPill temperature={lead.temperature} />
       </div>
@@ -1566,7 +1957,7 @@ function KanbanCard({ lead, proposal, daysInStage, onClick }) {
         <div className="flex items-center gap-1.5 text-xs">
           {bucket === "atrasado" && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--danger)" }} />}
           <span className="gc-mono shrink-0" style={{ color: bucket === "atrasado" ? "var(--danger)" : "var(--slate)" }}>{fmtDate(lead.nextAction.date)}</span>
-          <span className="truncate" style={{ color: "var(--ink-soft)" }}>{lead.nextAction.note}</span>
+          <TooltipText value={lead.nextAction.note} className="truncate" style={{ color: "var(--ink-soft)" }} />
         </div>
       ) : (
         <div className="text-xs" style={{ color: "var(--slate)" }}>Sem próxima ação</div>
@@ -1604,8 +1995,155 @@ function PipelineBoard({ leads, statusHistory, proposalValueByLead, onOpenLead }
   );
 }
 
+function SortableHeader({ label, sortKey, sortBy, sortDirection, onSort }) {
+  const active = sortBy === sortKey;
+  const indicator = active ? (sortDirection === "asc" ? "↑" : "↓") : "↕";
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      className="flex items-center gap-1 text-left gc-focus"
+      style={{ color: active ? "var(--accent-ink)" : "var(--slate)" }}
+      title={`Ordenar por ${label}`}
+      aria-label={`Ordenar por ${label}`}
+    >
+      <span>{label}</span>
+      <span className="gc-mono text-[10px]" style={{ color: active ? "var(--accent)" : "var(--slate)" }}>{indicator}</span>
+    </button>
+  );
+}
+
+function ResizableHeader({ label, sortKey, sortBy, sortDirection, onSort, columnIndex, onResizeStart, onResizeKeyDown }) {
+  return (
+    <div className="relative min-w-0">
+      <SortableHeader label={label} sortKey={sortKey} sortBy={sortBy} sortDirection={sortDirection} onSort={onSort} />
+      <div
+        className="gc-column-resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={`Redimensionar coluna ${label}`}
+        title="Arraste para redimensionar"
+        tabIndex={0}
+        onPointerDown={(event) => onResizeStart(event, columnIndex)}
+        onKeyDown={(event) => onResizeKeyDown(event, columnIndex)}
+      />
+    </div>
+  );
+}
+
 function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead, onDeleteLead, deletingLeadId, onCreateLead, currentUser, viewMode, setViewMode }) {
   const [sortBy, setSortBy] = useState("next_action");
+  const [sortDirection, setSortDirection] = useState("asc");
+  const [cellTooltip, setCellTooltip] = useState(null);
+  const [columnWidths, setColumnWidths] = useState([240, 150, 100, 150, 220, 160, 150]);
+  const columnWidthsRef = useRef([240, 150, 100, 150, 220, 160, 150]);
+  const minColumnWidth = 90;
+  const maxColumnWidth = 600;
+  const gridTemplateColumns = useMemo(() => {
+    const fixedColumns = columnWidths.slice(0, -1).map(width => `${width}px`);
+    return [...fixedColumns, `minmax(${columnWidths[columnWidths.length - 1]}px, 1fr)`].join(" ");
+  }, [columnWidths]);
+  const resizeColumn = useCallback((columnIndex, delta) => {
+    setColumnWidths(previous => {
+      if (columnIndex >= previous.length - 1) return previous;
+      const next = [...previous];
+      next[columnIndex] = Math.round(Math.min(maxColumnWidth, Math.max(minColumnWidth, previous[columnIndex] + delta)));
+      columnWidthsRef.current = next;
+      return next;
+    });
+  }, []);
+  const startColumnResize = useCallback((event, columnIndex) => {
+    if (event.button !== 0 || columnIndex >= columnWidthsRef.current.length - 1) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const target = event.currentTarget;
+    const handleMove = (moveEvent) => {
+      resizeColumn(columnIndex, moveEvent.clientX - startX);
+    };
+    const handleStop = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleStop);
+      window.removeEventListener("pointercancel", handleStop);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleStop);
+    window.addEventListener("pointercancel", handleStop);
+    if (target.setPointerCapture) {
+      target.setPointerCapture(event.pointerId);
+    }
+  }, [resizeColumn]);
+  const handleResizeKeyDown = useCallback((event, columnIndex) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    event.stopPropagation();
+    resizeColumn(columnIndex, event.key === "ArrowRight" ? 16 : -16);
+  }, [resizeColumn]);
+  const bucketRank = { atrasado: 0, hoje: 1, proximo: 2 };
+
+  const showCellTooltip = useCallback((event) => {
+    const target = event.currentTarget;
+    const text = target.getAttribute("data-tooltip");
+    const isTruncated = target.scrollWidth > target.clientWidth + 1;
+    if (!text || !isTruncated) {
+      setCellTooltip(null);
+      return;
+    }
+
+    const rect = target.getBoundingClientRect();
+    const margin = 8;
+    const maxLeft = Math.max(margin, window.innerWidth - 496);
+    const left = Math.max(margin, Math.min(rect.left, maxLeft));
+    const above = rect.top > 120;
+    setCellTooltip({
+      text,
+      left,
+      top: above ? rect.top - margin : rect.bottom + margin,
+      above,
+    });
+  }, []);
+  const hideCellTooltip = useCallback(() => setCellTooltip(null), []);
+
+  const getSortValue = (lead, key) => {
+    switch (key) {
+      case "company":
+        return (lead.company || "").toLocaleLowerCase("pt-BR");
+      case "status":
+        return STATUS_LIST.indexOf(lead.status);
+      case "temperature":
+        return TEMP_RANK[lead.temperature] ?? -1;
+      case "owner":
+        return userName(lead.owner).toLocaleLowerCase("pt-BR");
+      case "next_action": {
+        const date = lead.nextAction?.date;
+        if (!date) return null;
+        const timestamp = new Date(date).getTime();
+        if (Number.isNaN(timestamp)) return null;
+        return [bucketRank[actionBucket(date)] ?? 3, timestamp];
+      }
+      case "last_contact": {
+        const timestamp = lead.lastContactAt ? new Date(lead.lastContactAt).getTime() : NaN;
+        return Number.isNaN(timestamp) ? null : timestamp;
+      }
+      default:
+        return null;
+    }
+  };
+
+  const compareSortValues = (a, b) => {
+    if (Array.isArray(a) && Array.isArray(b)) return a[0] - b[0] || a[1] - b[1];
+    if (typeof a === "number" && typeof b === "number") return a - b;
+    return String(a).localeCompare(String(b), "pt-BR", { numeric: true, sensitivity: "base" });
+  };
+
+  const handleSort = (key) => {
+    if (sortBy === key) {
+      setSortDirection(direction => direction === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(key);
+      setSortDirection("asc");
+    }
+  };
 
   const filtered = useMemo(() => {
     let list = db.leads.filter(l => matchesLead(l, search));
@@ -1617,18 +2155,17 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
     if (filter.noMovement) list = list.filter(l => sel.noMovement.some(nm => nm.id === l.id));
     if (filter.open) list = list.filter(l => l.status !== "Fechado" && l.status !== "Perdido");
 
-    const bucketRank = { atrasado: 0, hoje: 1, proximo: 2, null: 3 };
-    if (sortBy === "next_action") {
-      list = [...list].sort((a, b) => bucketRank[actionBucket(a.nextAction?.date)] - bucketRank[actionBucket(b.nextAction?.date)]);
-    } else if (sortBy === "priority") {
-      list = [...list].sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]);
-    } else if (sortBy === "temperature") {
-      list = [...list].sort((a, b) => TEMP_RANK[b.temperature] - TEMP_RANK[a.temperature]);
-    } else if (sortBy === "last_contact") {
-      list = [...list].sort((a, b) => new Date(b.lastContactAt || 0) - new Date(a.lastContactAt || 0));
-    }
+    list = [...list].sort((a, b) => {
+      const aValue = getSortValue(a, sortBy);
+      const bValue = getSortValue(b, sortBy);
+      if (aValue === null && bValue === null) return 0;
+      if (aValue === null) return 1;
+      if (bValue === null) return -1;
+      const comparison = compareSortValues(aValue, bValue);
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
     return list;
-  }, [db.leads, search, filter, sortBy, sel.noMovement]);
+  }, [db.leads, search, filter, sortBy, sortDirection, sel.noMovement]);
 
   const clearable = Object.values(filter).some(Boolean);
 
@@ -1662,17 +2199,29 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
         ))}
         <span className="w-px h-5 shrink-0" style={{ background: "var(--line-strong)" }} />
         <FilterChip label="Sem movimentação" active={!!filter.noMovement} onClick={() => setFilter(f => ({ ...f, noMovement: !f.noMovement }))} />
-        {viewMode === "list" && (
-          <div className="ml-auto flex items-center gap-1.5 shrink-0 pl-2">
-            <span className="text-xs" style={{ color: "var(--slate)" }}>Ordenar:</span>
-            <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ width: "auto", padding: "6px 10px", fontSize: 12 }}>
-              <option value="next_action">Próxima ação</option>
-              <option value="priority">Prioridade</option>
-              <option value="temperature">Temperatura</option>
-              <option value="last_contact">Último contato</option>
-            </Select>
-          </div>
-        )}
+        <div className="ml-auto flex items-center gap-1.5 shrink-0 pl-2">
+          <span className="text-xs" style={{ color: "var(--slate)" }}>Ordenar:</span>
+          <Select
+            value={sortBy}
+            onChange={(e) => { setSortBy(e.target.value); setSortDirection("asc"); }}
+            style={{ width: "auto", padding: "6px 10px", fontSize: 12 }}
+            aria-label="Selecionar coluna para ordenação"
+          >
+            <option value="company">Empresa</option>
+            <option value="status">Status</option>
+            <option value="temperature">Temperatura</option>
+            <option value="owner">Responsável</option>
+            <option value="next_action">Próxima ação</option>
+            <option value="last_contact">Último contato</option>
+          </Select>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setSortDirection(direction => direction === "asc" ? "desc" : "asc")}
+          >
+            {sortDirection === "asc" ? "Crescente" : "Decrescente"}
+          </Button>
+        </div>
       </div>
 
       {viewMode === "pipeline" ? (
@@ -1683,13 +2232,30 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
         )
       ) : (
         <SectionCard>
-          <div className="hidden md:grid gap-3 px-5 py-2.5 text-xs font-medium" style={{ gridTemplateColumns: "1.5fr 1fr 0.7fr 0.9fr 1.2fr 0.9fr 150px", color: "var(--slate)", borderBottom: "1px solid var(--line)" }}>
-            <span>Empresa</span><span>Status</span><span>Temp.</span><span>Responsável</span><span>Próxima ação</span><span>Último contato</span><span className="text-right">Ação</span>
+          <div className="gc-table-scroll">
+            <div className="hidden md:grid gap-3 px-5 py-2.5 text-xs font-medium" style={{ gridTemplateColumns, color: "var(--slate)", borderBottom: "1px solid var(--line)" }}>
+              <ResizableHeader label="Empresa" sortKey="company" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={0} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Status" sortKey="status" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={1} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Temp." sortKey="temperature" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={2} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Responsável" sortKey="owner" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={3} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Próxima ação" sortKey="next_action" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={4} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Último contato" sortKey="last_contact" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={5} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <span className="min-w-0 text-right">Ação</span>
+            </div>
+            {filtered.length === 0 ? (
+              <EmptyState icon={Search} title="Nenhum lead encontrado" hint="Ajuste os filtros ou a busca para ver mais resultados." />
+            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onClick={() => onOpenLead(l.id)} onEdit={onEditLead} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} />)}
           </div>
-          {filtered.length === 0 ? (
-            <EmptyState icon={Search} title="Nenhum lead encontrado" hint="Ajuste os filtros ou a busca para ver mais resultados." />
-          ) : filtered.map(l => <LeadRow key={l.id} lead={l} onClick={() => onOpenLead(l.id)} onEdit={onEditLead} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} />)}
         </SectionCard>
+      )}
+      {cellTooltip && (
+        <div
+          className={`gc-cell-tooltip${cellTooltip.above ? " above" : ""}`}
+          style={{ left: cellTooltip.left, top: cellTooltip.top }}
+          role="tooltip"
+        >
+          {cellTooltip.text}
+        </div>
       )}
     </div>
   );
@@ -1830,6 +2396,11 @@ function NextActionEditor({ lead, onSave }) {
   const [editing, setEditing] = useState(false);
   const [date, setDate] = useState(lead.nextAction?.date ? new Date(lead.nextAction.date).toISOString().slice(0, 16) : "");
   const [note, setNote] = useState(lead.nextAction?.note || "");
+  const hasDate = Boolean(date && date.trim());
+  const hasNote = Boolean(note && note.trim());
+  const nextActionPayload = !hasDate && !hasNote
+    ? null
+    : { date: hasDate ? new Date(date).toISOString() : null, note: hasNote ? note.trim() : "" };
   if (!editing) {
     const bucket = actionBucket(lead.nextAction?.date);
     return (
@@ -1855,7 +2426,7 @@ function NextActionEditor({ lead, onSave }) {
       <Field label="O que fazer"><TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ex.: Retornar amanhã às 10h" /></Field>
       <div className="flex justify-end gap-2 pt-1">
         <Button size="sm" variant="secondary" onClick={() => setEditing(false)}>Cancelar</Button>
-        <Button size="sm" onClick={() => { onSave(date ? { date: new Date(date).toISOString(), note } : null); setEditing(false); }}>Salvar</Button>
+        <Button size="sm" onClick={() => { onSave(nextActionPayload); setEditing(false); }}>Salvar</Button>
       </div>
     </div>
   );
@@ -2748,7 +3319,7 @@ function ReportsView({ db, sel }) {
    ========================================================================= */
 
 function App() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => readSessionUserId());
   const [db, rawDispatch] = useReducer(dbReducer, initialDb);
   const [apiStatus, setApiStatus] = useState("checking");
   const [view, setView] = useState("dashboard");
@@ -2765,6 +3336,11 @@ function App() {
   const [, forceTick] = useState(0);
   const searchInputRef = useRef(null);
   const { toasts, notify } = useToastStack();
+
+  const handleLogout = () => {
+    clearSessionUserId();
+    setCurrentUser(null);
+  };
 
   /* Sincronização inicial com o Supabase via API backend */
   useEffect(() => {
@@ -3021,7 +3597,7 @@ function App() {
           attention={sel.attention}
           onOpenLead={openLead}
           onMenu={() => setMobileOpen(true)}
-          onLogout={() => setCurrentUser(null)}
+          onLogout={handleLogout}
           searchInputRef={searchInputRef}
           apiStatus={apiStatus}
           onSeedDemo={handleSeedDemo}
