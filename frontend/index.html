@@ -3319,7 +3319,7 @@ function ReportsView({ db, sel }) {
    ========================================================================= */
 
 function App() {
-  const [currentUser, setCurrentUser] = useState(() => readSessionUserId());
+  const [currentUser, setCurrentUser] = useState(null);
   const [db, rawDispatch] = useReducer(dbReducer, initialDb);
   const [apiStatus, setApiStatus] = useState("checking");
   const [view, setView] = useState("dashboard");
