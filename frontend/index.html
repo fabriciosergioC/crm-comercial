@@ -2061,7 +2061,9 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
   const [columnWidths, setColumnWidths] = useState([110, 240, 150, 100, 150, 220, 160, 150]);
   const [selectedLeads, setSelectedLeads] = useState(new Set());
   const [showMassMessageModal, setShowMassMessageModal] = useState(false);
+  const [massMessageVariant, setMassMessageVariant] = useState("sites");
   const [massMessageText, setMassMessageText] = useState("Bom dia OU Boa tarde, {{nome}}! Tudo bem? 😊 Aqui é o Erick, trabalho com desenvolvimento de sites e sou de Ipatinga.");
+  const [clinicaMessageText, setClinicaMessageText] = useState("Olá, bom dia/boa tarde!!\nConsigo falar com a proprietária da clínica por esse número?");
 
   const columnWidthsRef = useRef([110, 240, 150, 100, 150, 220, 160, 150]);
   const minColumnWidth = 90;
@@ -2190,8 +2192,11 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
     }
   };
 
-  const openMassMessageModal = () => {
-    if (selectedLeads.size > 0) setShowMassMessageModal(true);
+  const openMassMessageModal = (variant) => {
+    if (selectedLeads.size > 0) {
+      setMassMessageVariant(variant);
+      setShowMassMessageModal(true);
+    }
   };
 
   const closeMassMessageModal = () => {
@@ -2200,10 +2205,11 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
   };
 
   const sendMassMessage = () => {
+    const text = massMessageVariant === "clinica" ? clinicaMessageText : massMessageText;
     selectedLeads.forEach(leadId => {
       const lead = db.leads.find(l => l.id === leadId);
       if (lead && lead.whatsapp) {
-        const message = massMessageText.replace("{{nome}}", lead.contactName || lead.company);
+        const message = text.replace("{{nome}}", lead.contactName || lead.company);
         const encodedMessage = encodeURIComponent(message);
         window.open(`https://wa.me/${lead.whatsapp.replace(/\D/g, "")}?text=${encodedMessage}`, "_blank");
       }
@@ -2246,9 +2252,14 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
         <div className="flex items-center gap-2">
           <ViewToggle mode={viewMode} setMode={setViewMode} />
           {selectedLeads.size > 0 && (
-            <Button icon={MessageCircle} variant="primary" onClick={openMassMessageModal}>
-              Enviar WhatsApp ({selectedLeads.size})
-            </Button>
+            <>
+              <Button icon={MessageCircle} variant="primary" onClick={() => openMassMessageModal("sites")}>
+                Enviar WhatsApp ({selectedLeads.size})
+              </Button>
+              <Button icon={MessageCircle} onClick={() => openMassMessageModal("clinica")}>
+                Falar c/ proprietária ({selectedLeads.size})
+              </Button>
+            </>
           )}
           <Button icon={Plus} onClick={onCreateLead}>Novo lead</Button>
         </div>
@@ -2344,8 +2355,8 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
         isOpen={showMassMessageModal}
         onClose={closeMassMessageModal}
         onSend={sendMassMessage}
-        messageText={massMessageText}
-        setMessageText={setMassMessageText}
+        messageText={massMessageVariant === "clinica" ? clinicaMessageText : massMessageText}
+        setMessageText={massMessageVariant === "clinica" ? setClinicaMessageText : setMassMessageText}
         selectedCount={selectedLeads}
         leads={db.leads}
         notify={notify}
