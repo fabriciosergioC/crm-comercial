@@ -170,18 +170,20 @@ const Tokens = () => (
     .gc-column-resize-handle::after {
       content: "";
       position: absolute;
-      top: 20%;
-      left: 5px;
-      width: 2px;
-      height: 60%;
+      top: 50%;
+      left: 50%;
+      width: 7px;
+      height: 16px;
+      transform: translate(-50%, -50%);
+      border-left: 2px solid var(--line-strong);
+      border-right: 2px solid var(--line-strong);
       border-radius: 2px;
-      background: var(--line-strong);
-      transition: background 0.15s ease, width 0.15s ease;
+      transition: border-color 0.15s ease, height 0.15s ease;
     }
     .gc-column-resize-handle:hover::after,
     .gc-column-resize-handle:focus-visible::after {
-      width: 3px;
-      background: var(--accent);
+      border-color: var(--accent);
+      height: 22px;
     }
     .gc-column-resize-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
@@ -1426,19 +1428,20 @@ function LoginScreen({ onLogin }) {
         </div>
 
         {!selectedUser ? (
-          <div className="space-y-2">
-            {USERS.map((user) => (
-              <button key={user.id} onClick={() => chooseUser(user)}
-                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl gc-focus text-left transition-colors"
-                style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
-                <span className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-sm" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
-                  {user.name[0]}
-                </span>
-                <span className="font-medium text-sm">{user.name}</span>
-                <ChevronRight size={16} className="ml-auto" style={{ color: "var(--slate)" }} />
-              </button>
-            ))}
-          </div>
+          <>
+            <div className="space-y-2">
+              {USERS.map((user) => (
+                <label key={user.id} onClick={() => chooseUser(user)}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl gc-focus text-left transition-colors cursor-pointer"
+                  style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+                  <span className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-sm" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
+                    {user.name[0]}
+                  </span>
+                  <span className="font-medium text-sm flex-1">{user.name}</span>
+                </label>
+              ))}
+            </div>
+          </>
         ) : !changingPassword ? (
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)", border: "1px solid var(--accent-soft-strong)" }}>
@@ -1808,7 +1811,7 @@ function TooltipText({ value, className = "", style = {}, children, nativeToolti
   );
 }
 
-function LeadRow({ lead, onClick, onEdit, onDelete, deleting, onCellMouseEnter, onCellMouseMove, onCellMouseLeave, onCellFocus, onCellBlur, gridTemplateColumns }) {
+function LeadRow({ lead, onClick, onEdit, onDelete, deleting, onCellMouseEnter, onCellMouseMove, onCellMouseLeave, onCellFocus, onCellBlur, gridTemplateColumns, isSelected, onSelect }) {
   const bucket = actionBucket(lead.nextAction?.date);
   const cellTooltipProps = {
     nativeTooltip: false,
@@ -1820,20 +1823,30 @@ function LeadRow({ lead, onClick, onEdit, onDelete, deleting, onCellMouseEnter, 
   };
   return (
     <div
-      onClick={onClick}
+      onClick={() => onSelect(lead.id)}
       className="w-full text-left gc-row-hover px-5 py-3.5 cursor-pointer block"
       style={{ borderBottom: "1px solid var(--line)" }}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(); } }}
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onSelect(lead.id); } }}
     >
       {/* Mobile: stacked card */}
       <div className="md:hidden space-y-2">
         <div className="flex items-start justify-between gap-2">
-          <span className="min-w-0">
-            <TooltipText {...cellTooltipProps} value={lead.company} className="block text-sm font-medium truncate" />
-            <TooltipText {...cellTooltipProps} value={`${lead.city} · ${lead.segment}`} className="block text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }} />
-          </span>
+          <div className="flex items-center gap-2 min-w-0">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onClick={(e) => e.stopPropagation()}
+              onChange={() => onSelect(lead.id)}
+              className="w-4 h-4 rounded accent-accent shrink-0"
+              aria-label={`Selecionar ${lead.company}`}
+            />
+            <span className="min-w-0">
+              <TooltipText {...cellTooltipProps} value={lead.company} className="block text-sm font-medium truncate" />
+              <TooltipText {...cellTooltipProps} value={`${lead.city} · ${lead.segment}`} className="block text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }} />
+            </span>
+          </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <TempPill temperature={lead.temperature} />
             {onEdit && (
@@ -1871,6 +1884,16 @@ function LeadRow({ lead, onClick, onEdit, onDelete, deleting, onCellMouseEnter, 
       </div>
       {/* Desktop: grid row */}
       <div className="hidden md:grid items-center gap-3 min-w-0" style={{ gridTemplateColumns }}>
+        <span className="min-w-0 flex items-center">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onClick={(e) => e.stopPropagation()}
+            onChange={() => onSelect(lead.id)}
+            className="w-4 h-4 rounded accent-accent shrink-0"
+            aria-label={`Selecionar ${lead.company}`}
+          />
+        </span>
         <span className="min-w-0">
           <TooltipText {...cellTooltipProps} value={lead.company} className="block text-sm font-medium truncate" />
           <TooltipText {...cellTooltipProps} value={`${lead.city} · ${lead.segment}`} className="block text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }} />
@@ -2013,10 +2036,10 @@ function SortableHeader({ label, sortKey, sortBy, sortDirection, onSort }) {
   );
 }
 
-function ResizableHeader({ label, sortKey, sortBy, sortDirection, onSort, columnIndex, onResizeStart, onResizeKeyDown }) {
+function ResizableHeader({ label, sortKey, sortBy, sortDirection, onSort, columnIndex, onResizeStart, onResizeKeyDown, children }) {
   return (
-    <div className="relative min-w-0">
-      <SortableHeader label={label} sortKey={sortKey} sortBy={sortBy} sortDirection={sortDirection} onSort={onSort} />
+    <div className="relative min-w-0 flex items-center gap-2">
+      {children || <SortableHeader label={label} sortKey={sortKey} sortBy={sortBy} sortDirection={sortDirection} onSort={onSort} />}
       <div
         className="gc-column-resize-handle"
         role="separator"
@@ -2031,23 +2054,27 @@ function ResizableHeader({ label, sortKey, sortBy, sortDirection, onSort, column
   );
 }
 
-function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead, onDeleteLead, deletingLeadId, onCreateLead, currentUser, viewMode, setViewMode }) {
+function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead, onDeleteLead, deletingLeadId, onCreateLead, currentUser, viewMode, setViewMode, notify }) {
   const [sortBy, setSortBy] = useState("next_action");
   const [sortDirection, setSortDirection] = useState("asc");
   const [cellTooltip, setCellTooltip] = useState(null);
-  const [columnWidths, setColumnWidths] = useState([240, 150, 100, 150, 220, 160, 150]);
-  const columnWidthsRef = useRef([240, 150, 100, 150, 220, 160, 150]);
+  const [columnWidths, setColumnWidths] = useState([110, 240, 150, 100, 150, 220, 160, 150]);
+  const [selectedLeads, setSelectedLeads] = useState(new Set());
+  const [showMassMessageModal, setShowMassMessageModal] = useState(false);
+  const [massMessageText, setMassMessageText] = useState("Bom dia OU Boa tarde, {{nome}}! Tudo bem? 😊 Aqui é o Erick, trabalho com desenvolvimento de sites e sou de Ipatinga.");
+
+  const columnWidthsRef = useRef([110, 240, 150, 100, 150, 220, 160, 150]);
   const minColumnWidth = 90;
   const maxColumnWidth = 600;
   const gridTemplateColumns = useMemo(() => {
     const fixedColumns = columnWidths.slice(0, -1).map(width => `${width}px`);
     return [...fixedColumns, `minmax(${columnWidths[columnWidths.length - 1]}px, 1fr)`].join(" ");
   }, [columnWidths]);
-  const resizeColumn = useCallback((columnIndex, delta) => {
+  const setColumnWidth = useCallback((columnIndex, width) => {
     setColumnWidths(previous => {
       if (columnIndex >= previous.length - 1) return previous;
       const next = [...previous];
-      next[columnIndex] = Math.round(Math.min(maxColumnWidth, Math.max(minColumnWidth, previous[columnIndex] + delta)));
+      next[columnIndex] = Math.round(Math.min(maxColumnWidth, Math.max(minColumnWidth, width)));
       columnWidthsRef.current = next;
       return next;
     });
@@ -2057,9 +2084,10 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
     event.preventDefault();
     event.stopPropagation();
     const startX = event.clientX;
+    const startWidth = columnWidthsRef.current[columnIndex];
     const target = event.currentTarget;
     const handleMove = (moveEvent) => {
-      resizeColumn(columnIndex, moveEvent.clientX - startX);
+      setColumnWidth(columnIndex, startWidth + moveEvent.clientX - startX);
     };
     const handleStop = () => {
       window.removeEventListener("pointermove", handleMove);
@@ -2070,15 +2098,15 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
     window.addEventListener("pointerup", handleStop);
     window.addEventListener("pointercancel", handleStop);
     if (target.setPointerCapture) {
-      target.setPointerCapture(event.pointerId);
+      try { target.setPointerCapture(event.pointerId); } catch (err) { /* pointer sintético/sem captura disponível */ }
     }
-  }, [resizeColumn]);
+  }, [setColumnWidth]);
   const handleResizeKeyDown = useCallback((event, columnIndex) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
     event.stopPropagation();
-    resizeColumn(columnIndex, event.key === "ArrowRight" ? 16 : -16);
-  }, [resizeColumn]);
+    setColumnWidth(columnIndex, columnWidthsRef.current[columnIndex] + (event.key === "ArrowRight" ? 16 : -16));
+  }, [setColumnWidth]);
   const bucketRank = { atrasado: 0, hoje: 1, proximo: 2 };
 
   const showCellTooltip = useCallback((event) => {
@@ -2145,6 +2173,45 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
     }
   };
 
+  const toggleLeadSelection = (leadId) => {
+    setSelectedLeads(prev => {
+      const next = new Set(prev);
+      if (next.has(leadId)) next.delete(leadId);
+      else next.add(leadId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedLeads.size === filtered.length) {
+      setSelectedLeads(new Set());
+    } else {
+      setSelectedLeads(new Set(filtered.map(l => l.id)));
+    }
+  };
+
+  const openMassMessageModal = () => {
+    if (selectedLeads.size > 0) setShowMassMessageModal(true);
+  };
+
+  const closeMassMessageModal = () => {
+    setShowMassMessageModal(false);
+    setSelectedLeads(new Set());
+  };
+
+  const sendMassMessage = () => {
+    selectedLeads.forEach(leadId => {
+      const lead = db.leads.find(l => l.id === leadId);
+      if (lead && lead.whatsapp) {
+        const message = massMessageText.replace("{{nome}}", lead.contactName || lead.company);
+        const encodedMessage = encodeURIComponent(message);
+        window.open(`https://wa.me/${lead.whatsapp.replace(/\D/g, "")}?text=${encodedMessage}`, "_blank");
+      }
+    });
+    notify(`Mensagens abertas para ${selectedLeads.size} lead(s) no WhatsApp.`);
+    closeMassMessageModal();
+  };
+
   const filtered = useMemo(() => {
     let list = db.leads.filter(l => matchesLead(l, search));
     if (filter.status) list = list.filter(l => l.status === filter.status);
@@ -2178,6 +2245,11 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle mode={viewMode} setMode={setViewMode} />
+          {selectedLeads.size > 0 && (
+            <Button icon={MessageCircle} variant="primary" onClick={openMassMessageModal}>
+              Enviar WhatsApp ({selectedLeads.size})
+            </Button>
+          )}
           <Button icon={Plus} onClick={onCreateLead}>Novo lead</Button>
         </div>
       </div>
@@ -2234,17 +2306,28 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
         <SectionCard>
           <div className="gc-table-scroll">
             <div className="hidden md:grid gap-3 px-5 py-2.5 text-xs font-medium" style={{ gridTemplateColumns, color: "var(--slate)", borderBottom: "1px solid var(--line)" }}>
-              <ResizableHeader label="Empresa" sortKey="company" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={0} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <ResizableHeader label="Status" sortKey="status" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={1} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <ResizableHeader label="Temp." sortKey="temperature" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={2} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <ResizableHeader label="Responsável" sortKey="owner" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={3} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <ResizableHeader label="Próxima ação" sortKey="next_action" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={4} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <ResizableHeader label="Último contato" sortKey="last_contact" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={5} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Selecionar" columnIndex={0} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown}>
+                <input
+                  type="checkbox"
+                  checked={selectedLeads.size === filtered.length && filtered.length > 0}
+                  indeterminate={selectedLeads.size > 0 && selectedLeads.size < filtered.length}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 rounded accent-accent shrink-0"
+                  aria-label="Selecionar todos"
+                />
+                <span className="truncate">Selecionar</span>
+              </ResizableHeader>
+              <ResizableHeader label="Empresa" sortKey="company" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={1} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Status" sortKey="status" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={2} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Temp." sortKey="temperature" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={3} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Responsável" sortKey="owner" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={4} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Próxima ação" sortKey="next_action" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={5} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Último contato" sortKey="last_contact" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={6} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
               <span className="min-w-0 text-right">Ação</span>
             </div>
             {filtered.length === 0 ? (
               <EmptyState icon={Search} title="Nenhum lead encontrado" hint="Ajuste os filtros ou a busca para ver mais resultados." />
-            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onClick={() => onOpenLead(l.id)} onEdit={onEditLead} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} />)}
+            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onClick={() => onOpenLead(l.id)} onEdit={onEditLead} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} isSelected={selectedLeads.has(l.id)} onSelect={toggleLeadSelection} />)}
           </div>
         </SectionCard>
       )}
@@ -2257,6 +2340,16 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
           {cellTooltip.text}
         </div>
       )}
+      <MassMessageModal
+        isOpen={showMassMessageModal}
+        onClose={closeMassMessageModal}
+        onSend={sendMassMessage}
+        messageText={massMessageText}
+        setMessageText={setMassMessageText}
+        selectedCount={selectedLeads}
+        leads={db.leads}
+        notify={notify}
+      />
     </div>
   );
 }
@@ -2329,6 +2422,67 @@ function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button disabled={!canSave} onClick={() => onSave(form)}>{isEditing ? "Salvar alterações" : "Salvar lead"}</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* =========================================================================
+   MASS MESSAGE MODAL
+   ========================================================================= */
+
+function MassMessageModal({ isOpen, onClose, onSend, messageText, setMessageText, selectedCount, leads, notify }) {
+  if (!isOpen) return null;
+
+  const selectedLeads = leads.filter(l => selectedCount.has(l.id));
+  const leadsWithWhatsApp = selectedLeads.filter(l => l.whatsapp);
+
+  return (
+    <Modal title={`Enviar WhatsApp em massa — ${leadsWithWhatsApp.length} lead(s) com WhatsApp`} onClose={onClose} width={560}>
+      <div className="space-y-4">
+        <p className="text-xs -mt-1" style={{ color: "var(--slate)" }}>
+          A mensagem será aberta no WhatsApp Web/App para cada lead selecionado que tenha WhatsApp cadastrado.
+          Use <code className="gc-mono px-1.5 py-0.5 rounded" style={{ background: "var(--surface-sunken)" }}>{"{nome}"}</code> para personalizar com o nome do contato.
+        </p>
+
+        <Field label="Mensagem" required hint="Use {{nome}} para inserir o nome do contato automaticamente.">
+          <TextArea
+            value={messageText}
+            onChange={(e) => setMessageText(e.target.value)}
+            placeholder="Digite sua mensagem..."
+            style={{ minHeight: 120, fontFamily: "var(--font-body)" }}
+          />
+        </Field>
+
+        {leadsWithWhatsApp.length < selectedCount.size && (
+          <div className="rounded-lg p-3 text-sm" style={{ background: "var(--warn-bg)", color: "var(--warn)", border: "1px solid var(--line)" }}>
+            <strong>⚠ {selectedCount.size - leadsWithWhatsApp.length} lead(s) não têm WhatsApp cadastrado e serão ignorados.</strong>
+          </div>
+        )}
+
+        {leadsWithWhatsApp.length > 0 && (
+          <details className="text-xs" style={{ color: "var(--slate)" }}>
+            <summary className="cursor-pointer mb-2">Ver leads que receberão a mensagem</summary>
+            <ul className="space-y-1 max-h-40 overflow-y-auto">
+              {leadsWithWhatsApp.map(l => (
+                <li key={l.id} className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
+                    {l.contactName?.[0] || l.company?.[0] || "?"}
+                  </span>
+                  <span className="truncate">{l.contactName || l.company}</span>
+                  <span className="gc-mono text-[11px] text-right" style={{ color: "var(--slate)" }}>{l.whatsapp}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button icon={Send} onClick={onSend} disabled={leadsWithWhatsApp.length === 0}>
+            Abrir no WhatsApp ({leadsWithWhatsApp.length})
+          </Button>
         </div>
       </div>
     </Modal>
@@ -3571,7 +3725,7 @@ function App() {
   if (view === "dashboard") {
     body = <Dashboard db={db} sel={sel} currentUser={currentUser} onOpenLead={openLead} setView={setView} setLeadsFilter={setLeadsFilterAndGo} setLeadsViewMode={setLeadsViewMode} dispatch={dispatch} notify={notify} />;
   } else if (view === "leads") {
-    body = <LeadsView db={db} sel={sel} search={search} filter={leadsFilter} setFilter={setLeadsFilter} onOpenLead={openLead} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} deletingLeadId={deletingLeadId} onCreateLead={() => setShowLeadForm(true)} currentUser={currentUser} viewMode={leadsViewMode} setViewMode={setLeadsViewMode} />;
+    body = <LeadsView db={db} sel={sel} search={search} filter={leadsFilter} setFilter={setLeadsFilter} onOpenLead={openLead} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} deletingLeadId={deletingLeadId} onCreateLead={() => setShowLeadForm(true)} currentUser={currentUser} viewMode={leadsViewMode} setViewMode={setLeadsViewMode} notify={notify} />;
   } else if (view === "followups") {
     body = <FollowupsView sel={sel} onOpenLead={openLead} dispatch={dispatch} notify={notify} />;
   } else if (view === "demos") {
