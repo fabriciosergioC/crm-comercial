@@ -187,6 +187,16 @@ const Tokens = () => (
     }
     .gc-column-resize-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
+    .gc-spinner {
+      width: 28px;
+      height: 28px;
+      border-radius: 9999px;
+      border: 3px solid var(--line-strong);
+      border-top-color: var(--accent);
+      animation: gc-spin 0.8s linear infinite;
+    }
+    @keyframes gc-spin { to { transform: rotate(360deg); } }
+
     .gc-card { transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease; }
     .gc-card-hover:hover { border-color: var(--line-strong); box-shadow: 0 4px 16px rgba(23,25,28,0.06); }
     .gc-pressable { transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease; }
@@ -209,6 +219,24 @@ const Tokens = () => (
     @media (prefers-reduced-motion: reduce) {
       .gc-slide-in, .gc-fade-in, .gc-pop-in, .gc-toast-in, .gc-spin, .gc-pulse-soft { animation: none; }
       .gc-card, .gc-pressable, .gc-btn { transition: none; }
+    }
+
+    @media (max-width: 767px) {
+      .gc-root {
+        min-height: 100dvh;
+      }
+      html, body {
+        overflow-x: hidden;
+      }
+      body {
+        -webkit-tap-highlight-color: transparent;
+      }
+      .gc-cell-tooltip {
+        max-width: calc(100vw - 20px);
+      }
+      input, select, textarea, button {
+        font-size: 16px;
+      }
     }
   `}</style>
 );
@@ -998,8 +1026,8 @@ function Select({ children, className = "", style, ...props }) { return <select 
 
 function Modal({ title, onClose, children, width = 480 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 gc-fade-in" style={{ background: "rgba(23,25,28,0.4)" }} onClick={onClose}>
-      <div className="w-full rounded-2xl gc-scroll overflow-y-auto" style={{ maxWidth: width, maxHeight: "88vh", background: "var(--surface)" }} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 gc-fade-in" style={{ background: "rgba(23,25,28,0.4)" }} onClick={onClose}>
+      <div className="w-full rounded-2xl gc-scroll overflow-y-auto" style={{ maxWidth: width, width: `min(${width}px, calc(100vw - 24px))`, maxHeight: "88vh", background: "var(--surface)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10" style={{ background: "var(--surface)", borderBottom: "1px solid var(--line)" }}>
           <h3 className="gc-display font-semibold text-base">{title}</h3>
           <button onClick={onClose} className="w-8 h-8 rounded-lg inline-flex items-center justify-center gc-focus" style={{ color: "var(--slate)" }} aria-label="Fechar">
@@ -1015,8 +1043,8 @@ function Modal({ title, onClose, children, width = 480 }) {
 function Drawer({ title, subtitle, onClose, children, headerRight }) {
   return (
     <div className="fixed inset-0 z-40 flex justify-end gc-fade-in" style={{ background: "rgba(23,25,28,0.35)" }} onClick={onClose}>
-      <div className="h-full w-full gc-slide-in gc-scroll overflow-y-auto" style={{ maxWidth: 720, background: "var(--paper)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 z-10 px-6 py-4 flex items-start justify-between gap-3" style={{ background: "var(--surface)", borderBottom: "1px solid var(--line)" }}>
+      <div className="h-full w-full gc-slide-in gc-scroll overflow-y-auto" style={{ maxWidth: "min(720px, 100vw)", width: "min(720px, 100vw)", background: "var(--paper)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 px-4 sm:px-6 py-4 flex items-start justify-between gap-3" style={{ background: "var(--surface)", borderBottom: "1px solid var(--line)" }}>
           <div className="min-w-0">
             <h2 className="gc-display font-semibold text-lg truncate">{title}</h2>
             {subtitle && <div className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>{subtitle}</div>}
@@ -1028,7 +1056,7 @@ function Drawer({ title, subtitle, onClose, children, headerRight }) {
             </button>
           </div>
         </div>
-        <div className="px-6 py-5">{children}</div>
+        <div className="px-4 sm:px-6 py-5">{children}</div>
       </div>
     </div>
   );
@@ -1519,7 +1547,7 @@ function Sidebar({ view, setView, mobileOpen, setMobileOpen }) {
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0" style={{ background: "rgba(23,25,28,0.4)" }} onClick={() => setMobileOpen(false)} />
-          <div className="absolute left-0 top-0 h-full w-64 gc-slide-in" style={{ animation: "none" }}>{content}</div>
+          <div className="absolute left-0 top-0 h-full w-[84vw] max-w-[320px] gc-slide-in" style={{ animation: "none" }}>{content}</div>
         </div>
       )}
     </>
@@ -1529,7 +1557,7 @@ function Sidebar({ view, setView, mobileOpen, setMobileOpen }) {
 function NotificationPanel({ items, onClose, onOpenLead }) {
   const ICONS_BY_TYPE = { followup_overdue: Clock, followup_today: Clock, demo_expiring: Timer, proposal_stale: FileText, hot_no_action: Flame };
   return (
-    <div className="absolute right-0 top-11 w-80 rounded-xl z-30 gc-pop-in gc-scroll overflow-y-auto" style={{ maxHeight: 420, background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 12px 32px rgba(23,25,28,0.12)" }}>
+    <div className="absolute right-0 top-11 w-[calc(100vw-1.5rem)] sm:w-80 rounded-xl z-30 gc-pop-in gc-scroll overflow-y-auto" style={{ maxHeight: 420, background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 12px 32px rgba(23,25,28,0.12)" }}>
       <div className="px-4 py-3 font-semibold text-sm gc-display" style={{ borderBottom: "1px solid var(--line)" }}>Notificações</div>
       {items.length === 0 ? (
         <div className="p-6 text-sm text-center" style={{ color: "var(--slate)" }}>Tudo em dia por aqui.</div>
@@ -1562,16 +1590,16 @@ function Topbar({ db, currentUser, setCurrentUser, onSearch, search, attention, 
   const results = useMemo(() => globalSearch(search, db), [search, db]);
 
   return (
-    <div className="sticky top-0 z-20 flex items-center gap-3 px-4 md:px-6 py-3" style={{ background: "var(--paper)", borderBottom: "1px solid var(--line)" }}>
-      <button className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center" onClick={onMenu} style={{ color: "var(--ink-soft)" }}>
+    <div className="sticky top-0 z-20 flex items-center gap-2 md:gap-3 px-3 md:px-6 py-2 md:py-3" style={{ background: "var(--paper)", borderBottom: "1px solid var(--line)" }}>
+      <button className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center shrink-0" onClick={onMenu} style={{ color: "var(--ink-soft)" }}>
         <Menu size={20} />
       </button>
-      <div className="flex-1 max-w-md relative">
+      <div className="flex-1 max-w-md relative min-w-0">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--slate)" }} />
         <input ref={searchInputRef} value={search} onChange={(e) => onSearch(e.target.value)}
           onFocus={() => setSearchOpen(true)} onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
           placeholder="Buscar empresa, contato, cidade, telefone…"
-          className="w-full text-sm rounded-lg pl-9 pr-14 py-2 gc-focus" style={{ background: "var(--surface)", border: "1px solid var(--line-strong)" }} />
+          className="w-full text-sm rounded-lg pl-9 pr-10 py-2 gc-focus" style={{ background: "var(--surface)", border: "1px solid var(--line-strong)" }} />
         <Kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 hidden sm:inline-flex">Ctrl K</Kbd>
         {searchOpen && search.trim() && (
           <div className="absolute left-0 top-11 w-full rounded-xl z-30 gc-pop-in gc-scroll overflow-y-auto" style={{ maxHeight: 320, background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 12px 32px rgba(23,25,28,0.14)" }}>
@@ -1589,7 +1617,7 @@ function Topbar({ db, currentUser, setCurrentUser, onSearch, search, attention, 
           </div>
         )}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 sm:gap-2 min-w-0">
         <button
           onClick={() => {
             const current = crmApi.getBaseUrl();
@@ -1632,9 +1660,9 @@ function Topbar({ db, currentUser, setCurrentUser, onSearch, search, attention, 
         <IconButton icon={Bell} label="Notificações" active={notifOpen} badge={attention.length} onClick={() => setNotifOpen(v => !v)} />
         {notifOpen && <NotificationPanel items={attention} onClose={() => setNotifOpen(false)} onOpenLead={onOpenLead} />}
       </div>
-      <div className="flex items-center gap-2 pl-2 ml-1" style={{ borderLeft: "1px solid var(--line)" }}>
-        <button onClick={onLogout} className="flex items-center gap-2 gc-focus rounded-lg px-1 py-1" style={{ background: "transparent", border: "none" }} aria-label="Sair e escolher outro usuário">
-          <span className="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
+      <div className="flex items-center gap-1 sm:gap-2 pl-1 sm:pl-2 ml-0 sm:ml-1" style={{ borderLeft: "1px solid var(--line)" }}>
+        <button onClick={onLogout} className="flex items-center gap-2 gc-focus rounded-lg px-1 py-1 min-w-0" style={{ background: "transparent", border: "none" }} aria-label="Sair e escolher outro usuário">
+          <span className="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs shrink-0" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
             {userName(currentUser)[0]}
           </span>
           <span className="text-sm font-medium hidden sm:block">{userName(currentUser)}</span>
@@ -3487,6 +3515,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [db, rawDispatch] = useReducer(dbReducer, initialDb);
   const [apiStatus, setApiStatus] = useState("checking");
+  const [bootLoading, setBootLoading] = useState(true);
   const [view, setView] = useState("dashboard");
   const [search, setSearch] = useState("");
   const [leadsFilter, setLeadsFilter] = useState({});
@@ -3512,21 +3541,25 @@ function App() {
 
     let mounted = true;
     async function loadData() {
+      setBootLoading(true);
       const health = await crmApi.health();
       if (!mounted) return;
       if (!health.ok) {
         setApiStatus("offline");
+        setBootLoading(false);
         return;
       }
       setApiStatus("connected");
       try {
         const remoteDb = await crmApi.loadAll();
         if (!mounted) return;
-        if (remoteDb && remoteDb.leads && remoteDb.leads.length > 0) {
-          rawDispatch({ type: "SET_DB", db: remoteDb });
-        }
+        if (remoteDb) rawDispatch({ type: "SET_DB", db: remoteDb });
       } catch (err) {
         console.error("Falha ao carregar dados do Supabase:", err);
+        if (!mounted) return;
+        setApiStatus("offline");
+      } finally {
+        if (mounted) setBootLoading(false);
       }
     }
     loadData();
@@ -3657,6 +3690,18 @@ function App() {
 
   if (!currentUser) return <LoginScreen onLogin={setCurrentUser} />;
 
+  if (bootLoading) {
+    return (
+      <div className="gc-root flex items-center justify-center min-h-screen">
+        <Tokens />
+        <div className="flex flex-col items-center gap-3">
+          <span className="gc-spinner" aria-hidden="true" />
+          <p className="text-sm" style={{ color: "var(--ink-soft)" }}>Carregando dados...</p>
+        </div>
+      </div>
+    );
+  }
+
   const openLead = (id, tab) => { setSelectedLeadId(id); setInitialTab(tab || "geral"); };
 
   const handleCreateLead = (form) => {
@@ -3768,7 +3813,7 @@ function App() {
           apiStatus={apiStatus}
           onSeedDemo={handleSeedDemo}
         />
-        <main className="px-4 md:px-6 py-5 max-w-[1200px] mx-auto">{body}</main>
+        <main className="px-3 sm:px-4 md:px-6 py-4 sm:py-5 max-w-[1200px] mx-auto">{body}</main>
       </div>
 
       {selectedLeadId && (
