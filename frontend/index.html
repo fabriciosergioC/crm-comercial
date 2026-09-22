@@ -72,6 +72,9 @@ const Send = (p) => <Icon {...p}><path d="M21 3 3 10.5l7.5 3L13.5 21 21 3z" /><l
 const Eye = (p) => <Icon {...p}><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></Icon>;
 const ArrowRight = (p) => <Icon {...p}><line x1="4" y1="12" x2="20" y2="12" /><polyline points="13 5 20 12 13 19" /></Icon>;
 const ChevronDown = (p) => <Icon {...p}><polyline points="6 9 12 15 18 9" /></Icon>;
+const Filter = (p) => <Icon {...p}><path d="M3 5h18l-7 8v6.5l-4-2.5V13z" /></Icon>;
+const ChevronsLeft = (p) => <Icon {...p}><polyline points="11 17 6 12 11 7" /><polyline points="18 17 13 12 18 7" /></Icon>;
+const ChevronsRight = (p) => <Icon {...p}><polyline points="13 17 18 12 13 7" /><polyline points="6 17 11 12 6 7" /></Icon>;
 const Edit = (p) => <Icon {...p}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></Icon>;
 
 
@@ -216,9 +219,14 @@ const Tokens = () => (
     .gc-spin { animation: gc-spin 0.8s linear infinite; }
     @keyframes gc-pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
     .gc-pulse-soft { animation: gc-pulse-soft 1.8s ease-in-out infinite; }
+    .gc-collapse { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.25s ease; }
+    .gc-collapse > * { min-height: 0; overflow: hidden; visibility: visible; transition: visibility 0s; }
+    .gc-collapse.collapsed { grid-template-rows: 0fr; }
+    .gc-collapse.collapsed > * { visibility: hidden; transition: visibility 0s linear 0.25s; }
+    .gc-sidebar { transition: width 0.2s ease; }
     @media (prefers-reduced-motion: reduce) {
       .gc-slide-in, .gc-fade-in, .gc-pop-in, .gc-toast-in, .gc-spin, .gc-pulse-soft { animation: none; }
-      .gc-card, .gc-pressable, .gc-btn { transition: none; }
+      .gc-card, .gc-pressable, .gc-btn, .gc-collapse, .gc-collapse > *, .gc-sidebar { transition: none; }
     }
 
     @media (max-width: 767px) {
@@ -438,6 +446,12 @@ function fmtDate(d) { if (!d) return "—"; const dt = new Date(d); return `${pa
 function fmtDateFull(d) { if (!d) return "—"; const dt = new Date(d); return `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}/${dt.getFullYear()}`; }
 function fmtTime(d) { if (!d) return ""; const dt = new Date(d); return `${pad(dt.getHours())}:${pad(dt.getMinutes())}`; }
 function fmtDateTime(d) { if (!d) return "—"; return `${fmtDate(d)} · ${fmtTime(d)}`; }
+function toLocalDateTimeInput(iso) {
+  if (!iso) return "";
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return "";
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+}
 function fmtMoney(v) {
   if (v === null || v === undefined || v === "") return "—";
   return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -1129,6 +1143,42 @@ function telLink(phone) { return phone ? `tel:${phone.replace(/\D/g, "")}` : nul
 function igLink(instagram) { return instagram ? `https://instagram.com/${instagram.replace("@", "")}` : null; }
 function siteLink(site) { return site ? `https://${site.replace(/^https?:\/\//, "")}` : null; }
 
+function currentGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return { lower: "bom dia", upper: "Bom dia" };
+  if (hour < 18) return { lower: "boa tarde", upper: "Boa tarde" };
+  return { lower: "boa noite", upper: "Boa noite" };
+}
+
+function resolveGreeting(text) {
+  if (!text) return "";
+  const greeting = currentGreeting();
+  return text.replace(/bom dia\s*(?:\/|ou)\s*boa tarde(?:\s*(?:\/|ou)\s*boa noite)?/gi, (match) =>
+    match.charAt(0) === match.charAt(0).toUpperCase() ? greeting.upper : greeting.lower
+  );
+}
+
+function personalizeMessage(text, name) {
+  if (!text) return "";
+  const out = resolveGreeting(text);
+  const contact = (name || "").trim();
+  if (out.includes("{{nome}}")) return out.replace(/\{\{nome\}\}/g, contact);
+  if (!contact) return out;
+  const breakIdx = out.indexOf("\n");
+  const firstLine = breakIdx >= 0 ? out.slice(0, breakIdx) : out;
+  const rest = breakIdx >= 0 ? out.slice(breakIdx) : "";
+  if (/(ol[aá]|oi|bom dia|boa tarde|boa noite)/i.test(firstLine) && firstLine.includes(",")) {
+    const comma = firstLine.indexOf(",");
+    return `${firstLine.slice(0, comma)}, ${contact}${firstLine.slice(comma)}${rest}`;
+  }
+  return out;
+}
+
+function personalizeOverride(text, name) {
+  if (!text) return "";
+  return resolveGreeting(text).replace(/\{\{nome\}\}/g, (name || "").trim());
+}
+
 /* =========================================================================
    TOASTS — lightweight feedback after actions (lead salvo, status alterado,
    follow-up criado, proposta atualizada, demo enviada...). Plain prop
@@ -1516,38 +1566,49 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-function Sidebar({ view, setView, mobileOpen, setMobileOpen }) {
-  const content = (
+function Sidebar({ view, setView, mobileOpen, setMobileOpen, collapsed, onToggleCollapse }) {
+  const renderContent = (rail) => (
     <div className="h-full flex flex-col" style={{ background: "var(--surface)" }}>
-      <div className="px-5 py-5 flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center gc-display font-semibold text-sm text-white" style={{ background: "var(--accent)" }}>GC</div>
-        <span className="gc-display font-semibold text-[15px]">Gestão Comercial</span>
+      <div className={rail ? "py-4 flex flex-col items-center gap-1.5" : "px-5 py-5 flex items-center gap-2.5"}>
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center gc-display font-semibold text-sm text-white shrink-0" style={{ background: "var(--accent)" }}>GC</div>
+        {rail ? (
+          <IconButton icon={ChevronsRight} onClick={onToggleCollapse} label="Expandir menu" />
+        ) : (
+          <>
+            <span className="gc-display font-semibold text-[15px] whitespace-nowrap">Gestão Comercial</span>
+            <span className="ml-auto"><IconButton icon={ChevronsLeft} onClick={onToggleCollapse} label="Recolher menu" /></span>
+          </>
+        )}
       </div>
-      <nav className="flex-1 px-3 space-y-0.5">
+      <nav className={rail ? "flex-1 px-2 space-y-0.5" : "flex-1 px-3 space-y-0.5"}>
         {NAV_ITEMS.map(item => {
           const active = view === item.id;
           return (
-            <button key={item.id} onClick={() => { setView(item.id); setMobileOpen(false); }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium gc-focus transition-colors"
+            <button key={item.id} onClick={() => { setView(item.id); setMobileOpen(false); }} title={rail ? item.label : undefined}
+              className={`w-full flex items-center rounded-lg text-sm font-medium gc-focus transition-colors whitespace-nowrap ${rail ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"}`}
               style={{ background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent-ink)" : "var(--ink-soft)" }}>
-              <item.icon size={17} strokeWidth={active ? 2.4 : 2} />
-              {item.label}
+              <item.icon size={17} strokeWidth={active ? 2.4 : 2} className="shrink-0" />
+              {!rail && item.label}
             </button>
           );
         })}
       </nav>
-      <div className="px-5 py-4 text-xs" style={{ color: "var(--slate)", borderTop: "1px solid var(--line)" }}>
-        Dados de demonstração<br />prontos para Supabase
-      </div>
+      {!rail && (
+        <div className="px-5 py-4 text-xs" style={{ color: "var(--slate)", borderTop: "1px solid var(--line)" }}>
+          Dados de demonstração<br />prontos para Supabase
+        </div>
+      )}
     </div>
   );
   return (
     <>
-      <div className="hidden md:block w-60 shrink-0 h-screen sticky top-0" style={{ borderRight: "1px solid var(--line)" }}>{content}</div>
+      <div className="hidden md:block shrink-0 h-screen sticky top-0 overflow-hidden gc-sidebar" style={{ borderRight: "1px solid var(--line)", width: collapsed ? 68 : 240 }}>
+        {renderContent(collapsed)}
+      </div>
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0" style={{ background: "rgba(23,25,28,0.4)" }} onClick={() => setMobileOpen(false)} />
-          <div className="absolute left-0 top-0 h-full w-[84vw] max-w-[320px] gc-slide-in" style={{ animation: "none" }}>{content}</div>
+          <div className="absolute left-0 top-0 h-full w-[84vw] max-w-[320px] gc-slide-in" style={{ animation: "none" }}>{renderContent(false)}</div>
         </div>
       )}
     </>
@@ -1839,7 +1900,7 @@ function TooltipText({ value, className = "", style = {}, children, nativeToolti
   );
 }
 
-function LeadRow({ lead, onClick, onEdit, onDelete, deleting, onCellMouseEnter, onCellMouseMove, onCellMouseLeave, onCellFocus, onCellBlur, gridTemplateColumns, isSelected, onSelect }) {
+function LeadRow({ lead, onEdit, onDelete, deleting, onCellMouseEnter, onCellMouseMove, onCellMouseLeave, onCellFocus, onCellBlur, gridTemplateColumns, isSelected, onSelect }) {
   const bucket = actionBucket(lead.nextAction?.date);
   const cellTooltipProps = {
     nativeTooltip: false,
@@ -1851,12 +1912,13 @@ function LeadRow({ lead, onClick, onEdit, onDelete, deleting, onCellMouseEnter, 
   };
   return (
     <div
-      onClick={() => onSelect(lead.id)}
+      onClick={() => onEdit && onEdit(lead)}
       className="w-full text-left gc-row-hover px-5 py-3.5 cursor-pointer block"
       style={{ borderBottom: "1px solid var(--line)" }}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onSelect(lead.id); } }}
+      aria-label={`Editar lead ${lead.company}`}
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); if (onEdit) onEdit(lead); } }}
     >
       {/* Mobile: stacked card */}
       <div className="md:hidden space-y-2">
@@ -2053,7 +2115,7 @@ function SortableHeader({ label, sortKey, sortBy, sortDirection, onSort }) {
     <button
       type="button"
       onClick={() => onSort(sortKey)}
-      className="flex items-center gap-1 text-left gc-focus"
+      className="w-full flex items-center justify-center gap-1 text-center gc-focus"
       style={{ color: active ? "var(--accent-ink)" : "var(--slate)" }}
       title={`Ordenar por ${label}`}
       aria-label={`Ordenar por ${label}`}
@@ -2066,7 +2128,7 @@ function SortableHeader({ label, sortKey, sortBy, sortDirection, onSort }) {
 
 function ResizableHeader({ label, sortKey, sortBy, sortDirection, onSort, columnIndex, onResizeStart, onResizeKeyDown, children }) {
   return (
-    <div className="relative min-w-0 flex items-center gap-2">
+    <div className="relative min-w-0 flex items-center justify-center gap-2">
       {children || <SortableHeader label={label} sortKey={sortKey} sortBy={sortBy} sortDirection={sortDirection} onSort={onSort} />}
       <div
         className="gc-column-resize-handle"
@@ -2082,18 +2144,29 @@ function ResizableHeader({ label, sortKey, sortBy, sortDirection, onSort, column
   );
 }
 
-function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead, onDeleteLead, deletingLeadId, onCreateLead, currentUser, viewMode, setViewMode, notify }) {
+function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead, onDeleteLead, deletingLeadId, onCreateLead, currentUser, viewMode, setViewMode, dispatch, notify }) {
   const [sortBy, setSortBy] = useState("next_action");
   const [sortDirection, setSortDirection] = useState("asc");
   const [cellTooltip, setCellTooltip] = useState(null);
-  const [columnWidths, setColumnWidths] = useState([110, 240, 150, 100, 150, 220, 160, 150]);
+  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [columnWidths, setColumnWidths] = useState([44, 240, 150, 100, 150, 220, 160, 150]);
   const [selectedLeads, setSelectedLeads] = useState(new Set());
   const [showMassMessageModal, setShowMassMessageModal] = useState(false);
   const [massMessageVariant, setMassMessageVariant] = useState("sites");
   const [massMessageText, setMassMessageText] = useState("Bom dia OU Boa tarde, {{nome}}! Tudo bem? 😊 Aqui é o Erick, trabalho com desenvolvimento de sites e sou de Ipatinga.");
   const [clinicaMessageText, setClinicaMessageText] = useState("Olá, bom dia/boa tarde!!\nConsigo falar com a proprietária da clínica por esse número?");
+  const [personalMessages, setPersonalMessages] = useState({});
+  const [activeMassLeadId, setActiveMassLeadId] = useState(null);
+  const personalKey = (leadId) => `${massMessageVariant}:${leadId}`;
+  const getPersonal = (leadId) => personalMessages[personalKey(leadId)];
+  const setPersonal = (leadId, text) => setPersonalMessages(m => ({ ...m, [personalKey(leadId)]: text }));
+  const clearPersonal = (leadId) => setPersonalMessages(m => {
+    const next = { ...m };
+    delete next[personalKey(leadId)];
+    return next;
+  });
 
-  const columnWidthsRef = useRef([110, 240, 150, 100, 150, 220, 160, 150]);
+  const columnWidthsRef = useRef([44, 240, 150, 100, 150, 220, 160, 150]);
   const minColumnWidth = 90;
   const maxColumnWidth = 600;
   const gridTemplateColumns = useMemo(() => {
@@ -2104,7 +2177,8 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
     setColumnWidths(previous => {
       if (columnIndex >= previous.length - 1) return previous;
       const next = [...previous];
-      next[columnIndex] = Math.round(Math.min(maxColumnWidth, Math.max(minColumnWidth, width)));
+      const min = columnIndex === 0 ? 40 : minColumnWidth;
+      next[columnIndex] = Math.round(Math.min(maxColumnWidth, Math.max(min, width)));
       columnWidthsRef.current = next;
       return next;
     });
@@ -2223,26 +2297,40 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
   const openMassMessageModal = (variant) => {
     if (selectedLeads.size > 0) {
       setMassMessageVariant(variant);
+      setActiveMassLeadId(null);
       setShowMassMessageModal(true);
     }
   };
 
   const closeMassMessageModal = () => {
     setShowMassMessageModal(false);
+    setActiveMassLeadId(null);
     setSelectedLeads(new Set());
   };
 
   const sendMassMessage = () => {
     const text = massMessageVariant === "clinica" ? clinicaMessageText : massMessageText;
+    let updatedCount = 0;
     selectedLeads.forEach(leadId => {
       const lead = db.leads.find(l => l.id === leadId);
       if (lead && lead.whatsapp) {
-        const message = text.replace("{{nome}}", lead.contactName || lead.company);
+        const name = lead.contactName || lead.company;
+        const override = personalMessages[`${massMessageVariant}:${leadId}`];
+        const message = override !== undefined
+          ? personalizeOverride(override, name)
+          : personalizeMessage(text, name);
         const encodedMessage = encodeURIComponent(message);
         window.open(`https://wa.me/${lead.whatsapp.replace(/\D/g, "")}?text=${encodedMessage}`, "_blank");
+        if (lead.status === "Contato pendente") {
+          dispatch({ type: "CHANGE_STATUS", id: leadId, status: "Contatado", user: currentUser });
+          updatedCount += 1;
+        }
       }
     });
-    notify(`Mensagens abertas para ${selectedLeads.size} lead(s) no WhatsApp.`);
+    notify(updatedCount > 0
+      ? `Mensagens abertas para ${selectedLeads.size} lead(s) no WhatsApp. Status alterado para "Contatado" em ${updatedCount} lead(s).`
+      : `Mensagens abertas para ${selectedLeads.size} lead(s) no WhatsApp.`);
+    setPersonalMessages({});
     closeMassMessageModal();
   };
 
@@ -2269,6 +2357,7 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
   }, [db.leads, search, filter, sortBy, sortDirection, sel.noMovement]);
 
   const clearable = Object.values(filter).some(Boolean);
+  const activeFilterCount = Object.values(filter).filter(Boolean).length;
 
   return (
     <div className="space-y-4">
@@ -2277,7 +2366,25 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
           <h1 className="gc-display text-xl font-semibold">Leads</h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>{filtered.length} de {db.leads.length} leads</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <button
+            type="button"
+            onClick={() => setFiltersOpen(open => !open)}
+            aria-expanded={filtersOpen}
+            aria-controls="leads-filter-panel"
+            title={filtersOpen ? "Recolher filtros" : "Expandir filtros"}
+            className="inline-flex items-center justify-center gap-1.5 text-sm font-medium rounded-lg px-3.5 py-2 gc-focus"
+            style={{ background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line-strong)" }}
+          >
+            <Filter size={16} />
+            Filtros
+            {activeFilterCount > 0 && (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] leading-[18px] font-semibold text-center gc-mono" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
+                {activeFilterCount}
+              </span>
+            )}
+            <ChevronDown size={14} style={{ transform: filtersOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s ease" }} />
+          </button>
           <ViewToggle mode={viewMode} setMode={setViewMode} />
           {selectedLeads.size > 0 && (
             <>
@@ -2293,45 +2400,49 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
         </div>
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 gc-scroll">
-        <FilterChip label="Todos" active={!clearable} onClick={() => setFilter({})} />
-        <FilterChip label="Em andamento" active={!!filter.open} onClick={() => setFilter(f => ({ ...f, open: !f.open }))} />
-        {STATUS_LIST.map(s => (
-          <FilterChip key={s} label={s} active={filter.status === s} onClick={() => setFilter(f => ({ ...f, status: f.status === s ? null : s }))} />
-        ))}
-      </div>
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 gc-scroll">
-        {TEMPERATURES.map(t => (
-          <FilterChip key={t} label={t} active={filter.temperature === t} onClick={() => setFilter(f => ({ ...f, temperature: f.temperature === t ? null : t }))} />
-        ))}
-        <span className="w-px h-5 shrink-0" style={{ background: "var(--line-strong)" }} />
-        {USERS.map(u => (
-          <FilterChip key={u.id} label={u.name} active={filter.owner === u.id} onClick={() => setFilter(f => ({ ...f, owner: f.owner === u.id ? null : u.id }))} />
-        ))}
-        <span className="w-px h-5 shrink-0" style={{ background: "var(--line-strong)" }} />
-        <FilterChip label="Sem movimentação" active={!!filter.noMovement} onClick={() => setFilter(f => ({ ...f, noMovement: !f.noMovement }))} />
-        <div className="ml-auto flex items-center gap-1.5 shrink-0 pl-2">
-          <span className="text-xs" style={{ color: "var(--slate)" }}>Ordenar:</span>
-          <Select
-            value={sortBy}
-            onChange={(e) => { setSortBy(e.target.value); setSortDirection("asc"); }}
-            style={{ width: "auto", padding: "6px 10px", fontSize: 12 }}
-            aria-label="Selecionar coluna para ordenação"
-          >
-            <option value="company">Empresa</option>
-            <option value="status">Status</option>
-            <option value="temperature">Temperatura</option>
-            <option value="owner">Responsável</option>
-            <option value="next_action">Próxima ação</option>
-            <option value="last_contact">Último contato</option>
-          </Select>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => setSortDirection(direction => direction === "asc" ? "desc" : "asc")}
-          >
-            {sortDirection === "asc" ? "Crescente" : "Decrescente"}
-          </Button>
+      <div id="leads-filter-panel" className={`gc-collapse${filtersOpen ? "" : " collapsed"}`}>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 gc-scroll">
+            <FilterChip label="Todos" active={!clearable} onClick={() => setFilter({})} />
+            <FilterChip label="Em andamento" active={!!filter.open} onClick={() => setFilter(f => ({ ...f, open: !f.open }))} />
+            {STATUS_LIST.map(s => (
+              <FilterChip key={s} label={s} active={filter.status === s} onClick={() => setFilter(f => ({ ...f, status: f.status === s ? null : s }))} />
+            ))}
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 gc-scroll">
+            {TEMPERATURES.map(t => (
+              <FilterChip key={t} label={t} active={filter.temperature === t} onClick={() => setFilter(f => ({ ...f, temperature: f.temperature === t ? null : t }))} />
+            ))}
+            <span className="w-px h-5 shrink-0" style={{ background: "var(--line-strong)" }} />
+            {USERS.map(u => (
+              <FilterChip key={u.id} label={u.name} active={filter.owner === u.id} onClick={() => setFilter(f => ({ ...f, owner: f.owner === u.id ? null : u.id }))} />
+            ))}
+            <span className="w-px h-5 shrink-0" style={{ background: "var(--line-strong)" }} />
+            <FilterChip label="Sem movimentação" active={!!filter.noMovement} onClick={() => setFilter(f => ({ ...f, noMovement: !f.noMovement }))} />
+            <div className="ml-auto flex items-center gap-1.5 shrink-0 pl-2">
+              <span className="text-xs" style={{ color: "var(--slate)" }}>Ordenar:</span>
+              <Select
+                value={sortBy}
+                onChange={(e) => { setSortBy(e.target.value); setSortDirection("asc"); }}
+                style={{ width: "auto", padding: "6px 10px", fontSize: 12 }}
+                aria-label="Selecionar coluna para ordenação"
+              >
+                <option value="company">Empresa</option>
+                <option value="status">Status</option>
+                <option value="temperature">Temperatura</option>
+                <option value="owner">Responsável</option>
+                <option value="next_action">Próxima ação</option>
+                <option value="last_contact">Último contato</option>
+              </Select>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setSortDirection(direction => direction === "asc" ? "desc" : "asc")}
+              >
+                {sortDirection === "asc" ? "Crescente" : "Decrescente"}
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2354,7 +2465,6 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
                   className="w-4 h-4 rounded accent-accent shrink-0"
                   aria-label="Selecionar todos"
                 />
-                <span className="truncate">Selecionar</span>
               </ResizableHeader>
               <ResizableHeader label="Empresa" sortKey="company" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={1} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
               <ResizableHeader label="Status" sortKey="status" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={2} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
@@ -2362,11 +2472,11 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
               <ResizableHeader label="Responsável" sortKey="owner" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={4} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
               <ResizableHeader label="Próxima ação" sortKey="next_action" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={5} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
               <ResizableHeader label="Último contato" sortKey="last_contact" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={6} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <span className="min-w-0 text-right">Ação</span>
+              <span className="min-w-0 text-center">Ação</span>
             </div>
             {filtered.length === 0 ? (
               <EmptyState icon={Search} title="Nenhum lead encontrado" hint="Ajuste os filtros ou a busca para ver mais resultados." />
-            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onClick={() => onOpenLead(l.id)} onEdit={onEditLead} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} isSelected={selectedLeads.has(l.id)} onSelect={toggleLeadSelection} />)}
+            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onEdit={onEditLead} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} isSelected={selectedLeads.has(l.id)} onSelect={toggleLeadSelection} />)}
           </div>
         </SectionCard>
       )}
@@ -2387,11 +2497,17 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
         setMessageText={massMessageVariant === "clinica" ? setClinicaMessageText : setMassMessageText}
         selectedCount={selectedLeads}
         leads={db.leads}
-        notify={notify}
+        activeLeadId={activeMassLeadId}
+        setActiveLeadId={setActiveMassLeadId}
+        getPersonal={getPersonal}
+        setPersonal={setPersonal}
+        clearPersonal={clearPersonal}
       />
     </div>
   );
 }
+
+const LEAD_SCORE_FIELDS = [["dor", "Dor"], ["facilidade", "Facilidade de contato"], ["pagamento", "Capacidade de pagamento"], ["recorrencia", "Potencial de recorrência"]];
 
 function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
   const isEditing = !!initialLead;
@@ -2413,15 +2529,34 @@ function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
     temperature: initialLead?.temperature || "Frio",
     source: initialLead?.source || SOURCES[0],
   });
+  const [commercial, setCommercial] = useState({
+    status: initialLead?.status || STATUS_LIST[0],
+    lossReason: initialLead?.lossReason || LOSS_REASONS[0],
+    nextActionDate: toLocalDateTimeInput(initialLead?.nextAction?.date),
+    nextActionNote: initialLead?.nextAction?.note || "",
+    score: initialLead?.score || null,
+  });
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+  const setC = (k) => (e) => setCommercial(c => ({ ...c, [k]: e.target.value }));
   const canSave = form.company.trim().length > 0;
+  const save = () => {
+    if (!isEditing) { onSave(form); return; }
+    onSave({
+      ...form,
+      status: commercial.status,
+      lossReason: commercial.lossReason,
+      nextActionDate: commercial.nextActionDate,
+      nextActionNote: commercial.nextActionNote,
+      ...(commercial.score ? { score: commercial.score } : {}),
+    });
+  };
   return (
-    <Modal title={isEditing ? `Editar lead — ${initialLead.company}` : "Novo lead"} onClose={onClose} width={520}>
+    <Modal title={isEditing ? `Editar lead — ${initialLead.company}` : "Novo lead"} onClose={onClose} width={isEditing ? 560 : 520}>
       <div className="space-y-4">
         {!isEditing ? (
           <p className="text-xs -mt-1" style={{ color: "var(--slate)" }}>Cadastro rápido — complete os outros dados depois, na ficha do lead.</p>
         ) : (
-          <p className="text-xs -mt-1" style={{ color: "var(--slate)" }}>Edite as informações cadastrais e comerciais do lead.</p>
+          <p className="text-xs -mt-1" style={{ color: "var(--slate)" }}>Edite todos os dados do lead: cadastro, comercial, status e próxima ação.</p>
         )}
         <Field label="Nome da empresa" required><TextInput autoFocus={!isEditing} value={form.company} onChange={set("company")} placeholder="Ex.: Padaria Ponto Doce" /></Field>
         <div className="grid grid-cols-2 gap-3">
@@ -2455,12 +2590,35 @@ function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
             </div>
             <Field label="Origem"><Select value={form.source} onChange={set("source")}>{SOURCES.map(s => <option key={s}>{s}</option>)}</Select></Field>
             <Field label="Observações"><TextArea value={form.notes} onChange={set("notes")} placeholder="Anotações gerais..." /></Field>
+            {isEditing && (
+              <div className="space-y-4 pt-4" style={{ borderTop: "1px solid var(--line)" }}>
+                <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--slate)" }}>Comercial</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Status"><Select value={commercial.status} onChange={setC("status")}>{STATUS_LIST.map(s => <option key={s}>{s}</option>)}</Select></Field>
+                  {commercial.status === "Perdido" ? (
+                    <Field label="Motivo da perda"><Select value={commercial.lossReason} onChange={setC("lossReason")}>{LOSS_REASONS.map(r => <option key={r}>{r}</option>)}</Select></Field>
+                  ) : null}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Próxima ação — data e hora"><TextInput type="datetime-local" value={commercial.nextActionDate} onChange={setC("nextActionDate")} /></Field>
+                  <Field label="Próxima ação — o que fazer"><TextInput value={commercial.nextActionNote} onChange={setC("nextActionNote")} placeholder="Ex.: Retornar amanhã às 10h" /></Field>
+                </div>
+                {commercial.score && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--slate)" }}>Score comercial</div>
+                    {LEAD_SCORE_FIELDS.map(([key, label]) => (
+                      <ScoreBar key={key} label={label} value={commercial.score[key] || 0} onChange={(v) => setCommercial(c => ({ ...c, score: { ...c.score, [key]: v } }))} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button disabled={!canSave} onClick={() => onSave(form)}>{isEditing ? "Salvar alterações" : "Salvar lead"}</Button>
+          <Button disabled={!canSave} onClick={save}>{isEditing ? "Salvar alterações" : "Salvar lead"}</Button>
         </div>
       </div>
     </Modal>
@@ -2471,24 +2629,54 @@ function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
    MASS MESSAGE MODAL
    ========================================================================= */
 
-function MassMessageModal({ isOpen, onClose, onSend, messageText, setMessageText, selectedCount, leads, notify }) {
+function MassMessageModal({ isOpen, onClose, onSend, messageText, setMessageText, selectedCount, leads, activeLeadId, setActiveLeadId, getPersonal, setPersonal, clearPersonal }) {
   if (!isOpen) return null;
 
   const selectedLeads = leads.filter(l => selectedCount.has(l.id));
   const leadsWithWhatsApp = selectedLeads.filter(l => l.whatsapp);
+  const activeLead = leadsWithWhatsApp.find(l => l.id === activeLeadId) || null;
+  const activeName = activeLead ? (activeLead.contactName || activeLead.company) : "";
+  const activeOverride = activeLead ? getPersonal(activeLead.id) : undefined;
+  const displayText = !activeLead
+    ? messageText
+    : activeOverride !== undefined
+      ? personalizeOverride(activeOverride, activeName)
+      : personalizeMessage(messageText, activeName);
+
+  const handleTextChange = (value) => {
+    if (activeLead) setPersonal(activeLead.id, value);
+    else setMessageText(value);
+  };
 
   return (
     <Modal title={`Enviar WhatsApp em massa — ${leadsWithWhatsApp.length} lead(s) com WhatsApp`} onClose={onClose} width={560}>
       <div className="space-y-4">
         <p className="text-xs -mt-1" style={{ color: "var(--slate)" }}>
           A mensagem será aberta no WhatsApp Web/App para cada lead selecionado que tenha WhatsApp cadastrado.
-          Use <code className="gc-mono px-1.5 py-0.5 rounded" style={{ background: "var(--surface-sunken)" }}>{"{nome}"}</code> para personalizar com o nome do contato.
+          O nome do contato entra automaticamente na saudação; use <code className="gc-mono px-1.5 py-0.5 rounded" style={{ background: "var(--surface-sunken)" }}>{"{nome}"}</code> para escolher onde ele aparece.
+          Escrevendo <code className="gc-mono px-1.5 py-0.5 rounded" style={{ background: "var(--surface-sunken)" }}>bom dia/boa tarde</code>, a saudação vira bom dia (até 11:59), boa tarde (12:00–17:59) ou boa noite (a partir das 18:00) conforme a hora do envio.
         </p>
 
-        <Field label="Mensagem" required hint="Use {{nome}} para inserir o nome do contato automaticamente.">
+        {activeLead && (
+          <div className="rounded-lg px-3 py-2 text-xs flex items-center justify-between gap-3" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)", border: "1px solid var(--accent)" }}>
+            <span className="truncate">
+              Personalizando para <strong>{activeName}</strong>
+              {activeOverride !== undefined ? " — individual" : " — padrão com o nome"}
+            </span>
+            <Button variant="secondary" size="sm" className="shrink-0 whitespace-nowrap" onClick={() => clearPersonal(activeLead.id)} disabled={activeOverride === undefined}>Voltar ao padrão</Button>
+          </div>
+        )}
+
+        <Field
+          label={activeLead ? `Mensagem para ${activeName}` : "Mensagem"}
+          required
+          hint={activeLead
+            ? "Editando a mensagem individual deste lead. Clique no nome novamente na lista para voltar à mensagem padrão."
+            : "Use {{nome}} para inserir o nome do contato automaticamente. Clique em um nome da lista para personalizar individualmente."}
+        >
           <TextArea
-            value={messageText}
-            onChange={(e) => setMessageText(e.target.value)}
+            value={displayText}
+            onChange={(e) => handleTextChange(e.target.value)}
             placeholder="Digite sua mensagem..."
             style={{ minHeight: 120, fontFamily: "var(--font-body)" }}
           />
@@ -2501,20 +2689,39 @@ function MassMessageModal({ isOpen, onClose, onSend, messageText, setMessageText
         )}
 
         {leadsWithWhatsApp.length > 0 && (
-          <details className="text-xs" style={{ color: "var(--slate)" }}>
-            <summary className="cursor-pointer mb-2">Ver leads que receberão a mensagem</summary>
+          <div className="text-xs" style={{ color: "var(--slate)" }}>
+            <div className="mb-2">Leads que receberão a mensagem — clique no nome para personalizar a saudação:</div>
             <ul className="space-y-1 max-h-40 overflow-y-auto">
-              {leadsWithWhatsApp.map(l => (
-                <li key={l.id} className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
-                    {l.contactName?.[0] || l.company?.[0] || "?"}
-                  </span>
-                  <span className="truncate">{l.contactName || l.company}</span>
-                  <span className="gc-mono text-[11px] text-right" style={{ color: "var(--slate)" }}>{l.whatsapp}</span>
-                </li>
-              ))}
+              {leadsWithWhatsApp.map(l => {
+                const isActive = l.id === activeLeadId;
+                const isPersonalized = getPersonal(l.id) !== undefined;
+                return (
+                  <li key={l.id}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveLeadId(isActive ? null : l.id)}
+                      className="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left gc-focus"
+                      style={{
+                        background: isActive ? "var(--accent-soft)" : "transparent",
+                        border: `1px solid ${isActive ? "var(--accent)" : "transparent"}`,
+                        color: isActive ? "var(--accent-ink)" : "inherit",
+                      }}
+                      title="Clique para personalizar a mensagem para este lead"
+                    >
+                      <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium shrink-0" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
+                        {l.contactName?.[0] || l.company?.[0] || "?"}
+                      </span>
+                      <span className="truncate flex-1">{l.contactName || l.company}</span>
+                      {isPersonalized && (
+                        <span className="px-1.5 py-0.5 rounded shrink-0" style={{ background: "var(--surface-sunken)", color: "var(--ink-soft)" }}>personalizada</span>
+                      )}
+                      <span className="gc-mono text-[11px] shrink-0" style={{ color: "var(--slate)" }}>{l.whatsapp}</span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
-          </details>
+          </div>
         )}
 
         <div className="flex justify-end gap-2 pt-2">
@@ -2587,7 +2794,7 @@ function ScoreBar({ label, value, onChange }) {
 
 function NextActionEditor({ lead, onSave }) {
   const [editing, setEditing] = useState(false);
-  const [date, setDate] = useState(lead.nextAction?.date ? new Date(lead.nextAction.date).toISOString().slice(0, 16) : "");
+  const [date, setDate] = useState(toLocalDateTimeInput(lead.nextAction?.date));
   const [note, setNote] = useState(lead.nextAction?.note || "");
   const hasDate = Boolean(date && date.trim());
   const hasNote = Boolean(note && note.trim());
@@ -3527,6 +3734,22 @@ function App() {
   const [deletingLeadId, setDeletingLeadId] = useState(null);
   const deleteInProgress = useRef(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem("crm_sidebar_collapsed") === "1";
+    } catch (error) {
+      return false;
+    }
+  });
+  const toggleSidebar = () => setSidebarCollapsed(value => {
+    const next = !value;
+    try {
+      window.localStorage.setItem("crm_sidebar_collapsed", next ? "1" : "0");
+    } catch (error) {
+      return next;
+    }
+    return next;
+  });
   const [, forceTick] = useState(0);
   const searchInputRef = useRef(null);
   const { toasts, notify } = useToastStack();
@@ -3761,16 +3984,22 @@ function App() {
     if (!editingLead) return;
     const company = (form.company || "").trim();
     const contactName = (form.contactName && form.contactName.trim()) ? form.contactName.trim() : company;
-    const patch = {
-      ...form,
-      company,
-      contactName,
-    };
-    dispatch({
-      type: "UPDATE_LEAD",
-      id: editingLead.id,
-      patch,
-    });
+    const { status, lossReason, nextActionDate, nextActionNote, score, ...rest } = form;
+    const patch = { ...rest, company, contactName };
+    if (score) patch.score = score;
+    if (status === "Perdido" && lossReason) patch.lossReason = lossReason;
+    dispatch({ type: "UPDATE_LEAD", id: editingLead.id, patch });
+    if (status && status !== editingLead.status) {
+      dispatch({ type: "CHANGE_STATUS", id: editingLead.id, status, user: currentUser });
+    }
+    const dateStr = nextActionDate || "";
+    const noteStr = (nextActionNote || "").trim();
+    const prevDateStr = toLocalDateTimeInput(editingLead.nextAction?.date);
+    const prevNoteStr = (editingLead.nextAction?.note || "").trim();
+    if (dateStr !== prevDateStr || noteStr !== prevNoteStr) {
+      const nextAction = (!dateStr && !noteStr) ? null : { date: dateStr ? new Date(dateStr).toISOString() : null, note: noteStr };
+      dispatch({ type: "SET_NEXT_ACTION", leadId: editingLead.id, nextAction });
+    }
     setEditingLead(null);
     notify("Lead atualizado com sucesso.");
   };
@@ -3781,7 +4010,7 @@ function App() {
   if (view === "dashboard") {
     body = <Dashboard db={db} sel={sel} currentUser={currentUser} onOpenLead={openLead} setView={setView} setLeadsFilter={setLeadsFilterAndGo} setLeadsViewMode={setLeadsViewMode} dispatch={dispatch} notify={notify} />;
   } else if (view === "leads") {
-    body = <LeadsView db={db} sel={sel} search={search} filter={leadsFilter} setFilter={setLeadsFilter} onOpenLead={openLead} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} deletingLeadId={deletingLeadId} onCreateLead={() => setShowLeadForm(true)} currentUser={currentUser} viewMode={leadsViewMode} setViewMode={setLeadsViewMode} notify={notify} />;
+    body = <LeadsView db={db} sel={sel} search={search} filter={leadsFilter} setFilter={setLeadsFilter} onOpenLead={openLead} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} deletingLeadId={deletingLeadId} onCreateLead={() => setShowLeadForm(true)} currentUser={currentUser} viewMode={leadsViewMode} setViewMode={setLeadsViewMode} dispatch={dispatch} notify={notify} />;
   } else if (view === "followups") {
     body = <FollowupsView sel={sel} onOpenLead={openLead} dispatch={dispatch} notify={notify} />;
   } else if (view === "demos") {
@@ -3797,7 +4026,7 @@ function App() {
   return (
     <div className="gc-root flex">
       <Tokens />
-      <Sidebar view={view} setView={setView} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+      <Sidebar view={view} setView={setView} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
       <div className="flex-1 min-w-0">
         <Topbar
           db={db}
@@ -3813,7 +4042,7 @@ function App() {
           apiStatus={apiStatus}
           onSeedDemo={handleSeedDemo}
         />
-        <main className="px-3 sm:px-4 md:px-6 py-4 sm:py-5 max-w-[1200px] mx-auto">{body}</main>
+        <main className={`py-4 sm:py-5 ${view === "leads" ? "px-3 sm:px-4 md:px-4 max-w-none" : "px-3 sm:px-4 md:px-6 max-w-[1200px] mx-auto"}`}>{body}</main>
       </div>
 
       {selectedLeadId && (
