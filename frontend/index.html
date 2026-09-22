@@ -2154,7 +2154,7 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
   const [showMassMessageModal, setShowMassMessageModal] = useState(false);
   const [massMessageVariant, setMassMessageVariant] = useState("sites");
   const [massMessageText, setMassMessageText] = useState("Bom dia OU Boa tarde, {{nome}}! Tudo bem? 😊 Aqui é o Erick, trabalho com desenvolvimento de sites e sou de Ipatinga.");
-  const [clinicaMessageText, setClinicaMessageText] = useState("Olá, bom dia/boa tarde!!\nConsigo falar com a proprietária da clínica por esse número?");
+  const [clinicaMessageText, setClinicaMessageText] = useState("Olá, bom dia!!\nConsigo falar com a {{nome}} por esse número?");
   const [personalMessages, setPersonalMessages] = useState({});
   const [activeMassLeadId, setActiveMassLeadId] = useState(null);
   const personalKey = (leadId) => `${massMessageVariant}:${leadId}`;
@@ -2292,6 +2292,11 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
     } else {
       setSelectedLeads(new Set(filtered.map(l => l.id)));
     }
+  };
+
+  const openLeadForEdit = (lead) => {
+    onOpenLead(lead.id);
+    onEditLead(lead);
   };
 
   const openMassMessageModal = (variant) => {
@@ -2476,7 +2481,7 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
             </div>
             {filtered.length === 0 ? (
               <EmptyState icon={Search} title="Nenhum lead encontrado" hint="Ajuste os filtros ou a busca para ver mais resultados." />
-            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onEdit={onEditLead} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} isSelected={selectedLeads.has(l.id)} onSelect={toggleLeadSelection} />)}
+            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onEdit={openLeadForEdit} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} isSelected={selectedLeads.has(l.id)} onSelect={toggleLeadSelection} />)}
           </div>
         </SectionCard>
       )}
