@@ -389,7 +389,7 @@ async function changePasswordThroughApi(userId, currentPassword, newPassword) {
   return { ok: true, data: response.data };
 }
 
-const STATUS_LIST = ["Novo","Contato pendente","Contatado","Respondeu","Demo enviada","Demo em análise","Interessado","Proposta enviada","Negociação","Fechado","Perdido"];
+const STATUS_LIST = ["Novo","Contato pendente","MSG 1: Saudação","MSG 2: Apresentação","Contatado","Respondeu","Demo enviada","Demo em análise","Interessado","Proposta enviada","Negociação","Fechado","Perdido"];
 const TEMPERATURES = ["Frio","Morno","Quente"];
 const PRIORITIES = ["Baixa","Média","Alta"];
 const CHANNELS = ["Ligação","WhatsApp","Instagram","E-mail","Presencial","Outro"];
@@ -400,7 +400,8 @@ const SEGMENTS = ["Alimentação","Saúde","Fitness","Jurídico","Beleza","Imóv
 const PLANS = ["Site institucional","Landing page","E-commerce","Site + manutenção mensal"];
 
 const STATUS_TONE = {
-  "Novo": "slate", "Contato pendente": "amber", "Contatado": "blue", "Respondeu": "blue",
+  "Novo": "slate", "Contato pendente": "amber", "MSG 1: Saudação": "blue", "MSG 2: Apresentação": "blue",
+  "Contatado": "blue", "Respondeu": "blue",
   "Demo enviada": "violet", "Demo em análise": "violet", "Interessado": "amber",
   "Proposta enviada": "teal", "Negociação": "teal", "Fechado": "green", "Perdido": "red",
 };
@@ -421,7 +422,7 @@ const CHANNEL_ICON = {
    Dashboard funnel and the Pipeline (Kanban) view, so the two stay consistent. */
 const STAGE_GROUPS = [
   { key: "novo", label: "Novo", statuses: ["Novo"] },
-  { key: "contato", label: "Contato", statuses: ["Contato pendente", "Contatado"] },
+  { key: "contato", label: "Contato", statuses: ["Contato pendente", "MSG 1: Saudação", "MSG 2: Apresentação", "Contatado"] },
   { key: "respondeu", label: "Respondeu", statuses: ["Respondeu"] },
   { key: "demo", label: "Demo", statuses: ["Demo enviada", "Demo em análise"] },
   { key: "interessado", label: "Interessado", statuses: ["Interessado"] },
@@ -1895,7 +1896,7 @@ function TooltipText({ value, className = "", style = {}, children, nativeToolti
   );
 }
 
-function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, onCellMouseEnter, onCellMouseMove, onCellMouseLeave, onCellFocus, onCellBlur, gridTemplateColumns }) {
+function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, history, onCellMouseEnter, onCellMouseMove, onCellMouseLeave, onCellFocus, onCellBlur, gridTemplateColumns }) {
   const bucket = actionBucket(lead.nextAction?.date);
   const cellTooltipProps = {
     nativeTooltip: false,
@@ -1962,7 +1963,7 @@ function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, onCellMouseEnte
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <StatusPill status={lead.status} />
-          <TooltipText {...cellTooltipProps} value={userName(lead.owner)} className="text-xs" style={{ color: "var(--slate)" }} />
+          <TooltipText {...cellTooltipProps} value={history ? timelineEventText(history) : "Sem histórico"} className="text-xs truncate" style={{ color: "var(--slate)" }} />
         </div>
         {lead.nextAction && (
           <div className="flex items-center gap-1.5 text-xs">
@@ -1983,7 +1984,14 @@ function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, onCellMouseEnte
         </span>
         <span className="min-w-0"><StatusPill status={lead.status} /></span>
         <span className="min-w-0"><TempPill temperature={lead.temperature} /></span>
-        <TooltipText {...cellTooltipProps} value={userName(lead.owner)} className="text-sm truncate min-w-0" style={{ color: "var(--ink-soft)" }} />
+        <span className="min-w-0">
+          {history ? (
+            <>
+              <TooltipText {...cellTooltipProps} value={timelineEventText(history)} className="block text-sm truncate" style={{ color: "var(--ink-soft)" }} />
+              <span className="block gc-mono text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{fmtDateTime(history.date)}</span>
+            </>
+          ) : <span className="text-sm" style={{ color: "var(--slate)" }}>—</span>}
+        </span>
         <span className="min-w-0">
           {lead.nextAction ? (
             <span className="flex items-center gap-1.5 text-sm truncate">
@@ -2142,10 +2150,10 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
   const [sortDirection, setSortDirection] = useState("asc");
   const [cellTooltip, setCellTooltip] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(true);
-  const [columnWidths, setColumnWidths] = useState([44, 240, 150, 100, 150, 220, 160, 150]);
+  const [columnWidths, setColumnWidths] = useState([44, 240, 150, 100, 200, 220, 160, 150]);
   const clinicaMessageText = "Olá, bom dia/boa tarde!!\nConsigo falar com a {{nome}} por esse número?";
 
-  const columnWidthsRef = useRef([44, 240, 150, 100, 150, 220, 160, 150]);
+  const columnWidthsRef = useRef([44, 240, 150, 100, 200, 220, 160, 150]);
   const minColumnWidth = 90;
   const maxColumnWidth = 600;
   const gridTemplateColumns = useMemo(() => {
@@ -2192,6 +2200,17 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
   }, [setColumnWidth]);
   const bucketRank = { atrasado: 0, hoje: 1, proximo: 2 };
 
+  /* Mesmo conjunto de eventos da aba Histórico do drawer — a coluna "Histórico"
+     da lista mostra o evento mais recente de cada lead. */
+  const latestHistoryByLead = useMemo(() => {
+    const map = {};
+    db.leads.forEach(l => {
+      const events = buildLeadTimeline(l.id, db);
+      if (events.length) map[l.id] = events[0];
+    });
+    return map;
+  }, [db]);
+
   const showCellTooltip = useCallback((event) => {
     const target = event.currentTarget;
     const text = target.getAttribute("data-tooltip");
@@ -2225,6 +2244,12 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
         return TEMP_RANK[lead.temperature] ?? -1;
       case "owner":
         return userName(lead.owner).toLocaleLowerCase("pt-BR");
+      case "history": {
+        const event = latestHistoryByLead[lead.id];
+        if (!event) return null;
+        const timestamp = new Date(event.date).getTime();
+        return Number.isNaN(timestamp) ? null : timestamp;
+      }
       case "next_action": {
         const date = lead.nextAction?.date;
         if (!date) return null;
@@ -2291,7 +2316,7 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
       return sortDirection === "asc" ? comparison : -comparison;
     });
     return list;
-  }, [db.leads, search, filter, sortBy, sortDirection, sel.noMovement]);
+  }, [db.leads, search, filter, sortBy, sortDirection, sel.noMovement, latestHistoryByLead]);
 
   const clearable = Object.values(filter).some(Boolean);
   const activeFilterCount = Object.values(filter).filter(Boolean).length;
@@ -2357,7 +2382,7 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
                 <option value="company">Empresa</option>
                 <option value="status">Status</option>
                 <option value="temperature">Temperatura</option>
-                <option value="owner">Responsável</option>
+                <option value="history">Histórico</option>
                 <option value="next_action">Próxima ação</option>
                 <option value="last_contact">Último contato</option>
               </Select>
@@ -2387,14 +2412,14 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
               <ResizableHeader label="Empresa" sortKey="company" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={1} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
               <ResizableHeader label="Status" sortKey="status" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={2} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
               <ResizableHeader label="Temp." sortKey="temperature" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={3} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <ResizableHeader label="Responsável" sortKey="owner" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={4} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Histórico" sortKey="history" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={4} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
               <ResizableHeader label="Próxima ação" sortKey="next_action" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={5} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
               <ResizableHeader label="Último contato" sortKey="last_contact" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={6} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
               <span className="min-w-0 text-center">Ação</span>
             </div>
             {filtered.length === 0 ? (
               <EmptyState icon={Search} title="Nenhum lead encontrado" hint="Ajuste os filtros ou a busca para ver mais resultados." />
-            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onEdit={openLeadForEdit} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onWhatsApp={openLeadWhatsApp} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} />)}
+            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onEdit={openLeadForEdit} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onWhatsApp={openLeadWhatsApp} history={latestHistoryByLead[l.id] || null} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} />)}
           </div>
         </SectionCard>
       )}
@@ -2697,6 +2722,16 @@ function buildLeadTimeline(leadId, db) {
   });
   db.proposals.filter(p => p.leadId === leadId).forEach(p => events.push({ type: "proposal", date: p.proposalDate, data: p }));
   return events.sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
+function timelineEventText(event) {
+  const { type, data } = event;
+  if (type === "status") return `${userName(data.user)}: ${data.from || "—"} → ${data.to}`;
+  if (type === "followup") return `Follow-up ${data.status}`;
+  if (type === "demo_created") return `Demo criada — ${userName(data.owner)}`;
+  if (type === "demo_sent") return `Demo enviada — ${userName(data.owner)}`;
+  if (type === "proposal") return `Proposta — ${data.plan}`;
+  return `${userName(data.user)} · ${data.channel}: ${data.result}`;
 }
 
 function dayLabel(date) {

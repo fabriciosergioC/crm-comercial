@@ -5,6 +5,8 @@
 const STATUS_LIST = [
   'Novo',
   'Contato pendente',
+  'MSG 1: Saudação',
+  'MSG 2: Apresentação',
   'Contatado',
   'Respondeu',
   'Demo enviada',
