@@ -1041,8 +1041,8 @@ function Select({ children, className = "", style, ...props }) { return <select 
 
 function Modal({ title, onClose, children, width = 480 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 gc-fade-in" style={{ background: "rgba(23,25,28,0.4)" }} onClick={onClose}>
-      <div className="w-full rounded-2xl gc-scroll overflow-y-auto" style={{ maxWidth: width, width: `min(${width}px, calc(100vw - 24px))`, maxHeight: "88vh", background: "var(--surface)" }} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 gc-fade-in" style={{ background: "rgba(23,25,28,0.4)" }}>
+      <div className="w-full rounded-2xl gc-scroll overflow-y-auto" style={{ maxWidth: width, width: `min(${width}px, calc(100vw - 24px))`, maxHeight: "88vh", background: "var(--surface)" }}>
         <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10" style={{ background: "var(--surface)", borderBottom: "1px solid var(--line)" }}>
           <h3 className="gc-display font-semibold text-base">{title}</h3>
           <button onClick={onClose} className="w-8 h-8 rounded-lg inline-flex items-center justify-center gc-focus" style={{ color: "var(--slate)" }} aria-label="Fechar">
@@ -1057,8 +1057,8 @@ function Modal({ title, onClose, children, width = 480 }) {
 
 function Drawer({ title, subtitle, onClose, children, headerRight }) {
   return (
-    <div className="fixed inset-0 z-40 flex justify-end gc-fade-in" style={{ background: "rgba(23,25,28,0.35)" }} onClick={onClose}>
-      <div className="h-full w-full gc-slide-in gc-scroll overflow-y-auto" style={{ maxWidth: "min(720px, 100vw)", width: "min(720px, 100vw)", background: "var(--paper)" }} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-40 flex justify-end gc-fade-in" style={{ background: "rgba(23,25,28,0.35)" }}>
+      <div className="h-full w-full gc-slide-in gc-scroll overflow-y-auto" style={{ maxWidth: "min(720px, 100vw)", width: "min(720px, 100vw)", background: "var(--paper)" }}>
         <div className="sticky top-0 z-10 px-4 sm:px-6 py-4 flex items-start justify-between gap-3" style={{ background: "var(--surface)", borderBottom: "1px solid var(--line)" }}>
           <div className="min-w-0">
             <h2 className="gc-display font-semibold text-lg truncate">{title}</h2>
@@ -1896,7 +1896,7 @@ function TooltipText({ value, className = "", style = {}, children, nativeToolti
   );
 }
 
-function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, history, onCellMouseEnter, onCellMouseMove, onCellMouseLeave, onCellFocus, onCellBlur, gridTemplateColumns }) {
+function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, onOpenHistory, history, onCellMouseEnter, onCellMouseMove, onCellMouseLeave, onCellFocus, onCellBlur, gridTemplateColumns }) {
   const bucket = actionBucket(lead.nextAction?.date);
   const cellTooltipProps = {
     nativeTooltip: false,
@@ -1963,7 +1963,14 @@ function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, history, onCell
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <StatusPill status={lead.status} />
-          <TooltipText {...cellTooltipProps} value={history.latest ? timelineEventText(history.latest) : "Sem histórico"} className="text-xs truncate" style={{ color: "var(--slate)" }} />
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); if (onOpenHistory) onOpenHistory(lead); }}
+            className="min-w-0 text-left gc-focus rounded-md truncate"
+            aria-label={`Ver histórico de ${lead.company}`}
+          >
+            <TooltipText {...cellTooltipProps} value={history ? timelineEventText(history) : "Sem histórico"} className="text-xs truncate" style={{ color: "var(--slate)" }} />
+          </button>
         </div>
         {lead.nextAction && (
           <div className="flex items-center gap-1.5 text-xs">
@@ -1984,18 +1991,19 @@ function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, history, onCell
         </span>
         <span className="min-w-0"><StatusPill status={lead.status} /></span>
         <span className="min-w-0"><TempPill temperature={lead.temperature} /></span>
-        <span className="min-w-0">
-          {history.events.length ? (
-            <span className="block space-y-1 max-h-36 overflow-y-auto pr-1">
-              {history.events.map((event, i) => (
-                <span key={i} className="flex items-baseline gap-1.5 min-w-0">
-                  <span className="gc-mono text-[10px] shrink-0" style={{ color: "var(--slate)" }}>{fmtDateTime(event.date)}</span>
-                  <TooltipText {...cellTooltipProps} value={timelineEventText(event)} className="truncate text-xs min-w-0" style={{ color: "var(--ink-soft)" }} />
-                </span>
-              ))}
-            </span>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); if (onOpenHistory) onOpenHistory(lead); }}
+          className="min-w-0 text-left gc-focus rounded-md"
+          aria-label={`Ver histórico de ${lead.company}`}
+        >
+          {history ? (
+            <>
+              <TooltipText {...cellTooltipProps} value={timelineEventText(history)} className="block text-sm truncate" style={{ color: "var(--ink-soft)" }} />
+              <span className="block gc-mono text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{fmtDateTime(history.date)}</span>
+            </>
           ) : <span className="text-sm" style={{ color: "var(--slate)" }}>—</span>}
-        </span>
+        </button>
         <span className="min-w-0">
           {lead.nextAction ? (
             <span className="flex items-center gap-1.5 text-sm truncate">
@@ -2153,11 +2161,12 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
   const [sortBy, setSortBy] = useState("next_action");
   const [sortDirection, setSortDirection] = useState("asc");
   const [cellTooltip, setCellTooltip] = useState(null);
+  const [historyLead, setHistoryLead] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(true);
-  const [columnWidths, setColumnWidths] = useState([44, 240, 150, 100, 260, 220, 160, 150]);
+  const [columnWidths, setColumnWidths] = useState([44, 240, 150, 100, 200, 220, 160, 150]);
   const clinicaMessageText = "Olá, bom dia/boa tarde!!\nConsigo falar com a {{nome}} por esse número?";
 
-  const columnWidthsRef = useRef([44, 240, 150, 100, 260, 220, 160, 150]);
+  const columnWidthsRef = useRef([44, 240, 150, 100, 200, 220, 160, 150]);
   const minColumnWidth = 90;
   const maxColumnWidth = 600;
   const gridTemplateColumns = useMemo(() => {
@@ -2204,19 +2213,19 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
   }, [setColumnWidth]);
   const bucketRank = { atrasado: 0, hoje: 1, proximo: 2 };
 
-  /* Mesmos eventos da aba Histórico do drawer: a coluna lista o histórico
-     completo (mais recente primeiro); `latest` é o evento mais recente que já
-     aconteceu (follow-up agendado para o futuro não conta). */
-  const historyByLead = useMemo(() => {
+  /* Mesmo conjunto de eventos da aba Histórico do drawer — a coluna "Histórico"
+     da lista mostra o evento mais recente de cada lead. Só eventos que já
+     aconteceram: follow-up agendado para o futuro não pode esconder a mudança
+     de status registrada agora. */
+  const latestHistoryByLead = useMemo(() => {
     const map = {};
     const now = Date.now();
     db.leads.forEach(l => {
-      const events = buildLeadTimeline(l.id, db);
-      const past = events.filter(e => {
+      const events = buildLeadTimeline(l.id, db).filter(e => {
         const t = new Date(e.date).getTime();
         return !Number.isNaN(t) && t <= now;
       });
-      map[l.id] = { events, latest: past[0] || null };
+      if (events.length) map[l.id] = events[0];
     });
     return map;
   }, [db]);
@@ -2255,7 +2264,7 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
       case "owner":
         return userName(lead.owner).toLocaleLowerCase("pt-BR");
       case "history": {
-        const event = historyByLead[lead.id]?.latest;
+        const event = latestHistoryByLead[lead.id];
         if (!event) return null;
         const timestamp = new Date(event.date).getTime();
         return Number.isNaN(timestamp) ? null : timestamp;
@@ -2326,7 +2335,7 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
       return sortDirection === "asc" ? comparison : -comparison;
     });
     return list;
-  }, [db.leads, search, filter, sortBy, sortDirection, sel.noMovement, historyByLead]);
+  }, [db.leads, search, filter, sortBy, sortDirection, sel.noMovement, latestHistoryByLead]);
 
   const clearable = Object.values(filter).some(Boolean);
   const activeFilterCount = Object.values(filter).filter(Boolean).length;
@@ -2429,10 +2438,11 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
             </div>
             {filtered.length === 0 ? (
               <EmptyState icon={Search} title="Nenhum lead encontrado" hint="Ajuste os filtros ou a busca para ver mais resultados." />
-            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onEdit={openLeadForEdit} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onWhatsApp={openLeadWhatsApp} history={historyByLead[l.id] || { events: [], latest: null }} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} />)}
+            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onEdit={openLeadForEdit} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onWhatsApp={openLeadWhatsApp} onOpenHistory={setHistoryLead} history={latestHistoryByLead[l.id] || null} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} />)}
           </div>
         </SectionCard>
       )}
+      {historyLead && <LeadHistoryModal lead={historyLead} db={db} onClose={() => setHistoryLead(null)} />}
       {cellTooltip && (
         <div
           className={`gc-cell-tooltip${cellTooltip.above ? " above" : ""}`}
@@ -2846,6 +2856,38 @@ function UnifiedTimeline({ leadId, db, onAdd }) {
         </div>
       )}
     </div>
+  );
+}
+
+function LeadHistoryModal({ lead, db, onClose }) {
+  const events = useMemo(() => buildLeadTimeline(lead.id, db), [lead.id, db]);
+  const grouped = useMemo(() => {
+    const groups = [];
+    events.forEach(e => {
+      const label = dayLabel(e.date);
+      let g = groups.find(g => g.label === label);
+      if (!g) { g = { label, events: [] }; groups.push(g); }
+      g.events.push(e);
+    });
+    return groups;
+  }, [events]);
+  return (
+    <Modal title={`Histórico — ${lead.company}`} onClose={onClose} width={560}>
+      {events.length === 0 ? (
+        <EmptyState icon={Clock} title="Nenhum evento registrado" hint="Interações, follow-ups, demos e propostas aparecem aqui em ordem cronológica." />
+      ) : (
+        <div className="space-y-4">
+          {grouped.map((g, gi) => (
+            <div key={gi}>
+              <div className="text-xs font-semibold mb-1.5" style={{ color: "var(--slate)" }}>{g.label}</div>
+              <div className="rounded-xl px-3" style={{ background: "var(--surface-sunken)", border: "1px solid var(--line)" }}>
+                {g.events.map((e, i) => <TimelineEvent key={i} event={e} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
   );
 }
 
