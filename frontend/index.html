@@ -1963,7 +1963,7 @@ function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, history, onCell
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <StatusPill status={lead.status} />
-          <TooltipText {...cellTooltipProps} value={history ? timelineEventText(history) : "Sem histórico"} className="text-xs truncate" style={{ color: "var(--slate)" }} />
+          <TooltipText {...cellTooltipProps} value={history.latest ? timelineEventText(history.latest) : "Sem histórico"} className="text-xs truncate" style={{ color: "var(--slate)" }} />
         </div>
         {lead.nextAction && (
           <div className="flex items-center gap-1.5 text-xs">
@@ -1985,11 +1985,15 @@ function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, history, onCell
         <span className="min-w-0"><StatusPill status={lead.status} /></span>
         <span className="min-w-0"><TempPill temperature={lead.temperature} /></span>
         <span className="min-w-0">
-          {history ? (
-            <>
-              <TooltipText {...cellTooltipProps} value={timelineEventText(history)} className="block text-sm truncate" style={{ color: "var(--ink-soft)" }} />
-              <span className="block gc-mono text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{fmtDateTime(history.date)}</span>
-            </>
+          {history.events.length ? (
+            <span className="block space-y-1 max-h-36 overflow-y-auto pr-1">
+              {history.events.map((event, i) => (
+                <span key={i} className="flex items-baseline gap-1.5 min-w-0">
+                  <span className="gc-mono text-[10px] shrink-0" style={{ color: "var(--slate)" }}>{fmtDateTime(event.date)}</span>
+                  <TooltipText {...cellTooltipProps} value={timelineEventText(event)} className="truncate text-xs min-w-0" style={{ color: "var(--ink-soft)" }} />
+                </span>
+              ))}
+            </span>
           ) : <span className="text-sm" style={{ color: "var(--slate)" }}>—</span>}
         </span>
         <span className="min-w-0">
@@ -2150,10 +2154,10 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
   const [sortDirection, setSortDirection] = useState("asc");
   const [cellTooltip, setCellTooltip] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(true);
-  const [columnWidths, setColumnWidths] = useState([44, 240, 150, 100, 200, 220, 160, 150]);
+  const [columnWidths, setColumnWidths] = useState([44, 240, 150, 100, 260, 220, 160, 150]);
   const clinicaMessageText = "Olá, bom dia/boa tarde!!\nConsigo falar com a {{nome}} por esse número?";
 
-  const columnWidthsRef = useRef([44, 240, 150, 100, 200, 220, 160, 150]);
+  const columnWidthsRef = useRef([44, 240, 150, 100, 260, 220, 160, 150]);
   const minColumnWidth = 90;
   const maxColumnWidth = 600;
   const gridTemplateColumns = useMemo(() => {
@@ -2200,13 +2204,19 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
   }, [setColumnWidth]);
   const bucketRank = { atrasado: 0, hoje: 1, proximo: 2 };
 
-  /* Mesmo conjunto de eventos da aba Histórico do drawer — a coluna "Histórico"
-     da lista mostra o evento mais recente de cada lead. */
-  const latestHistoryByLead = useMemo(() => {
+  /* Mesmos eventos da aba Histórico do drawer: a coluna lista o histórico
+     completo (mais recente primeiro); `latest` é o evento mais recente que já
+     aconteceu (follow-up agendado para o futuro não conta). */
+  const historyByLead = useMemo(() => {
     const map = {};
+    const now = Date.now();
     db.leads.forEach(l => {
       const events = buildLeadTimeline(l.id, db);
-      if (events.length) map[l.id] = events[0];
+      const past = events.filter(e => {
+        const t = new Date(e.date).getTime();
+        return !Number.isNaN(t) && t <= now;
+      });
+      map[l.id] = { events, latest: past[0] || null };
     });
     return map;
   }, [db]);
@@ -2245,7 +2255,7 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
       case "owner":
         return userName(lead.owner).toLocaleLowerCase("pt-BR");
       case "history": {
-        const event = latestHistoryByLead[lead.id];
+        const event = historyByLead[lead.id]?.latest;
         if (!event) return null;
         const timestamp = new Date(event.date).getTime();
         return Number.isNaN(timestamp) ? null : timestamp;
@@ -2316,7 +2326,7 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
       return sortDirection === "asc" ? comparison : -comparison;
     });
     return list;
-  }, [db.leads, search, filter, sortBy, sortDirection, sel.noMovement, latestHistoryByLead]);
+  }, [db.leads, search, filter, sortBy, sortDirection, sel.noMovement, historyByLead]);
 
   const clearable = Object.values(filter).some(Boolean);
   const activeFilterCount = Object.values(filter).filter(Boolean).length;
@@ -2419,7 +2429,7 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
             </div>
             {filtered.length === 0 ? (
               <EmptyState icon={Search} title="Nenhum lead encontrado" hint="Ajuste os filtros ou a busca para ver mais resultados." />
-            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onEdit={openLeadForEdit} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onWhatsApp={openLeadWhatsApp} history={latestHistoryByLead[l.id] || null} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} />)}
+            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onEdit={openLeadForEdit} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onWhatsApp={openLeadWhatsApp} history={historyByLead[l.id] || { events: [], latest: null }} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} />)}
           </div>
         </SectionCard>
       )}
