@@ -389,7 +389,7 @@ async function changePasswordThroughApi(userId, currentPassword, newPassword) {
   return { ok: true, data: response.data };
 }
 
-const STATUS_LIST = ["Novo","Contato pendente","MSG 1: Saudação","MSG 2: Apresentação","Contatado","Respondeu","Demo enviada","Demo em análise","Interessado","Proposta enviada","Negociação","Fechado","Perdido"];
+const STATUS_LIST = ["Novo","Contato pendente","MSG 1: Saudação","Contatado","Respondeu","MSG 2: Apresentação","Demo enviada","Demo em análise","Interessado","Proposta enviada","Negociação","Fechado","Perdido"];
 const TEMPERATURES = ["Frio","Morno","Quente"];
 const PRIORITIES = ["Baixa","Média","Alta"];
 const CHANNELS = ["Ligação","WhatsApp","Instagram","E-mail","Presencial","Outro"];
@@ -422,8 +422,8 @@ const CHANNEL_ICON = {
    Dashboard funnel and the Pipeline (Kanban) view, so the two stay consistent. */
 const STAGE_GROUPS = [
   { key: "novo", label: "Novo", statuses: ["Novo"] },
-  { key: "contato", label: "Contato", statuses: ["Contato pendente", "MSG 1: Saudação", "MSG 2: Apresentação", "Contatado"] },
-  { key: "respondeu", label: "Respondeu", statuses: ["Respondeu"] },
+  { key: "contato", label: "Contato", statuses: ["Contato pendente", "MSG 1: Saudação", "Contatado"] },
+  { key: "respondeu", label: "Respondeu", statuses: ["Respondeu", "MSG 2: Apresentação"] },
   { key: "demo", label: "Demo", statuses: ["Demo enviada", "Demo em análise"] },
   { key: "interessado", label: "Interessado", statuses: ["Interessado"] },
   { key: "proposta", label: "Proposta", statuses: ["Proposta enviada"] },

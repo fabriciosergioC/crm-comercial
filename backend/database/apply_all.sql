@@ -79,8 +79,8 @@ create table if not exists public.leads (
   constraint leads_priority_chk check (priority in ('Baixa','Média','Alta')),
   constraint leads_temperature_chk check (temperature in ('Frio','Morno','Quente')),
   constraint leads_status_chk check (status in (
-    'Novo','Contato pendente','MSG 1: Saudação','MSG 2: Apresentação','Contatado',
-    'Respondeu','Demo enviada','Demo em análise','Interessado','Proposta enviada',
+    'Novo','Contato pendente','MSG 1: Saudação','Contatado','Respondeu',
+    'MSG 2: Apresentação','Demo enviada','Demo em análise','Interessado','Proposta enviada',
     'Negociação','Fechado','Perdido')),
   constraint leads_source_chk check (source is null or source in (
     'Indicação','Instagram','Google','Prospecção ativa','Site','Outro')),
@@ -119,12 +119,12 @@ create table if not exists public.lead_status_history (
   "user"      text        references public.users (id),
   created_at  timestamptz not null default now(),
   constraint lsh_from_chk check (from_status is null or from_status in (
-    'Novo','Contato pendente','MSG 1: Saudação','MSG 2: Apresentação','Contatado',
-    'Respondeu','Demo enviada','Demo em análise','Interessado','Proposta enviada',
+    'Novo','Contato pendente','MSG 1: Saudação','Contatado','Respondeu',
+    'MSG 2: Apresentação','Demo enviada','Demo em análise','Interessado','Proposta enviada',
     'Negociação','Fechado','Perdido')),
   constraint lsh_to_chk check (to_status in (
-    'Novo','Contato pendente','MSG 1: Saudação','MSG 2: Apresentação','Contatado',
-    'Respondeu','Demo enviada','Demo em análise','Interessado','Proposta enviada',
+    'Novo','Contato pendente','MSG 1: Saudação','Contatado','Respondeu',
+    'MSG 2: Apresentação','Demo enviada','Demo em análise','Interessado','Proposta enviada',
     'Negociação','Fechado','Perdido'))
 );
 
@@ -360,8 +360,8 @@ declare
   v_entry jsonb;
 begin
   if p_to is null or p_to not in (
-      'Novo','Contato pendente','MSG 1: Saudação','MSG 2: Apresentação','Contatado',
-      'Respondeu','Demo enviada','Demo em análise','Interessado','Proposta enviada',
+      'Novo','Contato pendente','MSG 1: Saudação','Contatado','Respondeu',
+      'MSG 2: Apresentação','Demo enviada','Demo em análise','Interessado','Proposta enviada',
       'Negociação','Fechado','Perdido') then
     raise exception 'Status inválido: %', p_to using errcode = '22023';
   end if;
