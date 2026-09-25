@@ -1040,6 +1040,13 @@ function TextArea({ className = "", style, ...props }) { return <textarea {...pr
 function Select({ children, className = "", style, ...props }) { return <select {...props} className={`${inputStyle} ${className}`} style={{ ...inputBorder, ...style }}>{children}</select>; }
 
 function Modal({ title, onClose, children, width = 480 }) {
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 gc-fade-in" style={{ background: "rgba(23,25,28,0.4)" }}>
       <div className="w-full rounded-2xl gc-scroll overflow-y-auto" style={{ maxWidth: width, width: `min(${width}px, calc(100vw - 24px))`, maxHeight: "88vh", background: "var(--surface)" }}>
@@ -1056,6 +1063,13 @@ function Modal({ title, onClose, children, width = 480 }) {
 }
 
 function Drawer({ title, subtitle, onClose, children, headerRight }) {
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
   return (
     <div className="fixed inset-0 z-40 flex justify-end gc-fade-in" style={{ background: "rgba(23,25,28,0.35)" }}>
       <div className="h-full w-full gc-slide-in gc-scroll overflow-y-auto" style={{ maxWidth: "min(720px, 100vw)", width: "min(720px, 100vw)", background: "var(--paper)" }}>
