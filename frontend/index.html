@@ -2324,7 +2324,9 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
     const name = lead.contactName || lead.company;
     const message = personalizeMessage(clinicaMessageText, name);
     window.open(`https://wa.me/${lead.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`, "_blank");
-    if (lead.status === "Contato pendente") {
+    if (lead.status === "Novo") {
+      dispatch({ type: "CHANGE_STATUS", id: lead.id, status: "MSG 1: Saudação", user: currentUser });
+    } else if (lead.status === "Contato pendente") {
       dispatch({ type: "CHANGE_STATUS", id: lead.id, status: "Contatado", user: currentUser });
     }
   };
@@ -3614,7 +3616,7 @@ function ReportsView({ db, sel }) {
    ========================================================================= */
 
 function App() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => readSessionUserId());
   const [db, rawDispatch] = useReducer(dbReducer, initialDb);
   const [apiStatus, setApiStatus] = useState("checking");
   const [bootLoading, setBootLoading] = useState(true);
@@ -3682,6 +3684,28 @@ function App() {
     }
     loadData();
     return () => { mounted = false; };
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) return undefined;
+
+    let syncing = false;
+    const syncSilently = async () => {
+      if (syncing || document.visibilityState !== "visible") return;
+      syncing = true;
+      try {
+        const remoteDb = await crmApi.loadAll();
+        if (remoteDb) rawDispatch({ type: "SET_DB", db: remoteDb });
+      } finally {
+        syncing = false;
+      }
+    };
+    const intervalId = window.setInterval(syncSilently, 5000);
+    document.addEventListener("visibilitychange", syncSilently);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", syncSilently);
+    };
   }, [currentUser]);
 
   const handleSeedDemo = async () => {
