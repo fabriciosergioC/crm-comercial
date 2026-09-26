@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Gestão Comercial</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
 
 <link rel="stylesheet" href="css/style.css">
 
@@ -1924,12 +1925,12 @@ function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, onOpenHistory, 
     <button
       type="button"
       onClick={(e) => { e.stopPropagation(); onWhatsApp(lead); }}
-      className="p-1.5 rounded-full gc-focus hover:opacity-80 transition-opacity shrink-0"
-      style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}
+      className="w-10 h-10 rounded-lg gc-focus hover:brightness-90 hover:scale-105 transition-transform shrink-0 inline-flex items-center justify-center shadow-sm"
+      style={{ background: "#25D366", color: "#FFFFFF" }}
       title={`WhatsApp — ${lead.contactName || lead.company}`}
       aria-label={`Abrir WhatsApp de ${lead.company}`}
     >
-      <MessageCircle size={14} />
+      <MessageCircle size={21} />
     </button>
   ) : null;
   return (
@@ -2171,16 +2172,16 @@ function ResizableHeader({ label, sortKey, sortBy, sortDirection, onSort, column
   );
 }
 
-function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead, onDeleteLead, deletingLeadId, onCreateLead, currentUser, viewMode, setViewMode, dispatch }) {
+function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead, onDeleteLead, deletingLeadId, onCreateLead, onImportLeads, currentUser, viewMode, setViewMode, dispatch }) {
   const [sortBy, setSortBy] = useState("next_action");
   const [sortDirection, setSortDirection] = useState("asc");
   const [cellTooltip, setCellTooltip] = useState(null);
   const [historyLead, setHistoryLead] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(true);
-  const [columnWidths, setColumnWidths] = useState([44, 240, 150, 100, 200, 220, 160, 150]);
+  const [columnWidths, setColumnWidths] = useState([52, 240, 150, 100, 200, 220, 160, 150]);
   const clinicaMessageText = "Olá, bom dia/boa tarde!!\nConsigo falar com a {{nome}} por esse número?";
 
-  const columnWidthsRef = useRef([44, 240, 150, 100, 200, 220, 160, 150]);
+  const columnWidthsRef = useRef([52, 240, 150, 100, 200, 220, 160, 150]);
   const minColumnWidth = 90;
   const maxColumnWidth = 600;
   const gridTemplateColumns = useMemo(() => {
@@ -2383,6 +2384,7 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
             <ChevronDown size={14} style={{ transform: filtersOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s ease" }} />
           </button>
           <ViewToggle mode={viewMode} setMode={setViewMode} />
+          <Button icon={FileText} variant="secondary" onClick={onImportLeads}>Importar TXT</Button>
           <Button icon={Plus} onClick={onCreateLead}>Novo lead</Button>
         </div>
       </div>
@@ -2505,6 +2507,7 @@ function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
   const setC = (k) => (e) => setCommercial(c => ({ ...c, [k]: e.target.value }));
   const canSave = form.company.trim().length > 0;
   const save = () => {
+    if (!canSave) return;
     if (!isEditing) { onSave(form); return; }
     onSave({
       ...form,
@@ -2515,6 +2518,16 @@ function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
       ...(commercial.score ? { score: commercial.score } : {}),
     });
   };
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        save();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [canSave, save]);
   return (
     <Modal title={isEditing ? `Editar lead — ${initialLead.company}` : "Novo lead"} onClose={onClose} width={isEditing ? 560 : 520}>
       <div className="space-y-4">
@@ -2584,6 +2597,193 @@ function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button disabled={!canSave} onClick={save}>{isEditing ? "Salvar alterações" : "Salvar lead"}</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function LeadImportModal({ onClose, onImport }) {
+  const [records, setRecords] = useState([]);
+  const [fileName, setFileName] = useState("");
+  const [parseError, setParseError] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const parseLine = (line, delimiter) => {
+    const values = [];
+    let value = "";
+    let quoted = false;
+    for (let index = 0; index < line.length; index += 1) {
+      const character = line[index];
+      if (character === '"' && line[index + 1] === '"' && quoted) {
+        value += '"';
+        index += 1;
+      } else if (character === '"') {
+        quoted = !quoted;
+      } else if (character === delimiter && !quoted) {
+        values.push(value.trim());
+        value = "";
+      } else {
+        value += character;
+      }
+    }
+    values.push(value.trim());
+    return values;
+  };
+
+  const readFile = async (event) => {
+    const file = event.target.files?.[0];
+    setRecords([]);
+    setResult(null);
+    setParseError("");
+    setFileName(file?.name || "");
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".txt")) {
+      setParseError("Selecione um arquivo com extensão .txt.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setParseError("O arquivo deve ter no máximo 2 MB.");
+      return;
+    }
+
+    const text = (await file.text()).replace(/^\uFEFF/, "");
+    const allLines = text.split(/\r?\n/);
+    const lines = allLines.filter(line => line.trim());
+    if (lines.length < 2) {
+      setParseError("O arquivo precisa ter um cabeçalho e pelo menos um lead.");
+      return;
+    }
+    const numberedEntries = allLines.map((line, index) => ({ line, row: index + 1 }))
+      .filter(item => /^\s*\d+[.)]\s+\S/.test(item.line));
+    if (numberedEntries.length) {
+      const title = lines[0];
+      const cityMatch = title.match(/\bem\s+(.+)$/i);
+      const city = cityMatch ? cityMatch[1].replace(/[.!]+$/, "").trim() : "";
+      const isEsthetics = /est[eé]tica|beleza|cl[ií]nica/i.test(title);
+      const entries = numberedEntries.map((entry, index) => {
+        const nextRow = numberedEntries[index + 1]?.row || allLines.length + 1;
+        const block = allLines.slice(entry.row - 1, nextRow - 1);
+        const company = entry.line.replace(/^\s*\d+[.)]\s+/, "").trim();
+        const record = {
+          row: entry.row,
+          company,
+          city,
+          ...(isEsthetics ? { segment: "Estética" } : {}),
+          source: "Google",
+        };
+        const notes = [];
+        block.slice(1).forEach(line => {
+          const match = line.match(/^\s*([^:]+):\s*(.*)$/);
+          if (!match) return;
+          const label = match[1].trim().toLocaleLowerCase("pt-BR");
+          const value = match[2].trim();
+          if (!value) return;
+          if (["telefone", "tel"].includes(label)) {
+            record.phone = value;
+            record.whatsapp = record.whatsapp || value;
+          } else if (label === "whatsapp") {
+            record.whatsapp = value;
+            record.phone = record.phone || value;
+          }
+          else if (label === "instagram") record.instagram = value;
+          else if (["cidade", "city"].includes(label)) record.city = value;
+          else if (["bairro", "neighborhood"].includes(label)) record.neighborhood = value;
+          else if (["site", "endereço", "endereco", "avaliação", "avaliacao", "avaliações", "avaliacoes"].includes(label)) {
+            notes.push(`${match[1].trim()}: ${value}`);
+          } else if (label === "contato") record.contactName = value;
+        });
+        if (notes.length) record.notes = notes.join(" | ");
+        return record;
+      });
+      setRecords(entries);
+      return;
+    }
+
+    const delimiter = [";", "\t", ","].sort((a, b) => lines[0].split(b).length - lines[0].split(a).length)[0];
+    const normalize = value => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    const aliases = {
+      empresa: "company", nome_da_empresa: "company", nome_empresa: "company", company: "company",
+      contato: "contactName", nome: "contactName", contact: "contactName", contact_name: "contactName", contato_nome: "contactName",
+      telefone: "phone", phone: "phone", whatsapp: "whatsapp", instagram: "instagram",
+      cidade: "city", city: "city", bairro: "neighborhood", neighborhood: "neighborhood",
+      segmento: "segment", segment: "segment", observacoes: "notes", notas: "notes", notes: "notes",
+      site: "currentSite", current_site: "currentSite", gmaps: "gmaps", origem: "source", source: "source",
+      prioridade: "priority", priority: "priority", responsavel: "owner", owner: "owner",
+    };
+    const headers = parseLine(lines[0], delimiter).map(header => aliases[normalize(header)] || null);
+    if (!headers.includes("company")) {
+      setParseError("Não encontrei a coluna Empresa. Use cabeçalhos como empresa;contato;whatsapp;cidade.");
+      return;
+    }
+
+    const parsed = lines.slice(1).map((line, index) => {
+      const values = parseLine(line, delimiter);
+      const record = {};
+      headers.forEach((header, column) => {
+        if (header && values[column]) record[header] = values[column];
+      });
+      if (!record.whatsapp && record.phone) record.whatsapp = record.phone;
+      return { row: index + 2, ...record };
+    });
+    setRecords(parsed);
+  };
+
+  const importRecords = async () => {
+    const validRecords = records.filter(record => record.company?.trim());
+    if (!validRecords.length) return;
+    setImporting(true);
+    try {
+      setResult(await onImport(validRecords));
+    } catch (error) {
+      setResult({ succeeded: 0, failures: [{ row: "-", message: error.message || "Falha ao concluir a importação." }] });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const validCount = records.filter(record => record.company?.trim()).length;
+  return (
+    <Modal title="Importar leads de TXT" onClose={importing ? () => {} : onClose} width={620}>
+      <div className="space-y-4">
+        <p className="text-sm" style={{ color: "var(--ink-soft)" }}>
+          Aceita listas numeradas com campos identificados ou tabelas com cabeçalho separado por ponto e vírgula, tabulação ou vírgula. Empresa é obrigatória.
+        </p>
+        <pre className="overflow-x-auto rounded-lg p-3 text-xs gc-mono" style={{ background: "var(--surface-sunken)", color: "var(--ink-soft)" }}>
+{`empresa;contato;whatsapp;instagram;cidade
+Padaria Central;Ana Souza;(31) 99999-0000;@padariacentral;Ipatinga`}
+        </pre>
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium gc-focus" style={{ background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line-strong)" }}>
+          <FileText size={16} />
+          Selecionar arquivo TXT
+          <input type="file" accept=".txt,text/plain" onChange={readFile} className="sr-only" />
+        </label>
+        {fileName && <p className="text-xs" style={{ color: "var(--slate)" }}>{fileName}</p>}
+        {parseError && <p role="alert" className="text-sm" style={{ color: "var(--danger)" }}>{parseError}</p>}
+        {records.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Prévia: {validCount} válidos de {records.length} linhas</p>
+            <div className="max-h-52 overflow-auto rounded-lg" style={{ border: "1px solid var(--line)" }}>
+              <table className="w-full text-left text-xs">
+                <thead style={{ background: "var(--surface-sunken)" }}><tr><th className="p-2">Linha</th><th className="p-2">Empresa</th><th className="p-2">Contato</th><th className="p-2">WhatsApp</th></tr></thead>
+                <tbody>{records.slice(0, 100).map(record => <tr key={record.row} style={{ borderTop: "1px solid var(--line)" }}>
+                  <td className="p-2 gc-mono">{record.row}</td><td className="p-2">{record.company || <span style={{ color: "var(--danger)" }}>Empresa obrigatória</span>}</td><td className="p-2">{record.contactName || "—"}</td><td className="p-2">{record.whatsapp || "—"}</td>
+                </tr>)}</tbody>
+              </table>
+              {records.length > 100 && <p className="p-2 text-xs" style={{ color: "var(--slate)" }}>Exibindo as primeiras 100 linhas.</p>}
+            </div>
+          </div>
+        )}
+        {result && <div role="status" className="space-y-2 rounded-lg p-3 text-sm" style={{ background: "var(--surface-sunken)" }}>
+          <p>{result.succeeded} leads cadastrados; {result.failures.length} falharam.</p>
+          {result.failures.length > 0 && <ul className="max-h-28 list-inside list-disc overflow-auto text-xs" style={{ color: "var(--danger)" }}>
+            {result.failures.slice(0, 20).map((failure, index) => <li key={`${failure.row}-${index}`}>Linha {failure.row}: {failure.message}</li>)}
+          </ul>}
+        </div>}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" disabled={importing} onClick={onClose}>{result ? "Fechar" : "Cancelar"}</Button>
+          <Button icon={FileText} disabled={!validCount || importing || !!result} onClick={importRecords}>{importing ? "Importando..." : "Cadastrar leads"}</Button>
         </div>
       </div>
     </Modal>
@@ -3627,6 +3827,7 @@ function App() {
   const [selectedLeadId, setSelectedLeadId] = useState(null);
   const [initialTab, setInitialTab] = useState("geral");
   const [showLeadForm, setShowLeadForm] = useState(false);
+  const [showLeadImport, setShowLeadImport] = useState(false);
   const [editingLead, setEditingLead] = useState(null);
   const [deletingLeadId, setDeletingLeadId] = useState(null);
   const deleteInProgress = useRef(false);
@@ -3818,15 +4019,25 @@ function App() {
      way to reach any lead, client or proposal from anywhere in the app. */
   useEffect(() => {
     function handleKey(e) {
+      const isNewLeadShortcut = (e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "n";
+      const isNewLeadFallback = e.ctrlKey && e.altKey && e.key.toLowerCase() === "n";
+      if (isNewLeadShortcut || isNewLeadFallback) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (currentUser && !bootLoading && !showLeadForm && !editingLead) {
+          setShowLeadForm(true);
+        }
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
       }
     }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, []);
+    window.addEventListener("keydown", handleKey, true);
+    return () => window.removeEventListener("keydown", handleKey, true);
+  }, [bootLoading, currentUser, editingLead, showLeadForm]);
 
   const sel = useSelectors(db);
 
@@ -3869,6 +4080,57 @@ function App() {
     setView("leads");
     notify("Lead salvo no Supabase.");
     openLead(id);
+  };
+
+  const handleImportLeads = async (records) => {
+    const failures = [];
+    let succeeded = 0;
+    for (const [index, record] of records.entries()) {
+      const ownerValue = (record.owner || currentUser).trim();
+      const owner = USERS.find(user => user.id.toLowerCase() === ownerValue.toLowerCase() || user.name.toLowerCase() === ownerValue.toLowerCase())?.id || ownerValue;
+      const company = record.company.trim();
+      const lead = {
+        id: `l_${Date.now()}_${index}`,
+        company,
+        contactName: (record.contactName || "").trim() || company,
+        phone: record.phone || "",
+        whatsapp: record.whatsapp || "",
+        instagram: record.instagram || "",
+        gmaps: record.gmaps || "",
+        currentSite: record.currentSite || "",
+        city: record.city || "",
+        neighborhood: record.neighborhood || "",
+        segment: record.segment || SEGMENTS[0],
+        notes: record.notes || "",
+        owner,
+        priority: record.priority || "Média",
+        temperature: "Frio",
+        source: record.source || SOURCES[0],
+        status: "Novo",
+        createdAt: new Date().toISOString(),
+        lastContactAt: null,
+        nextAction: { date: daysFromNow(0, 17, 0), note: "Primeiro contato" },
+        score: { dor: 0, facilidade: 0, pagamento: 0, recorrencia: 0 },
+      };
+      try {
+        const response = await crmApi.leads.create(lead);
+        if (!response?.success) throw new Error(response?.message || response?.error?.message || "Falha ao cadastrar lead.");
+        succeeded += 1;
+      } catch (error) {
+        failures.push({ row: record.row, message: error.message || "Falha ao cadastrar lead." });
+      }
+    }
+    try {
+      const refreshedDb = await crmApi.loadAll();
+      rawDispatch({ type: "SET_DB", db: refreshedDb });
+    } catch (error) {
+      notify("Leads cadastrados, mas não foi possível atualizar a lista. Recarregue a página.", "error");
+    }
+    if (succeeded) {
+      setView("leads");
+      notify(`${succeeded} ${succeeded === 1 ? "lead cadastrado" : "leads cadastrados"}.`);
+    }
+    return { succeeded, failures };
   };
 
   const handleDeleteLead = async (lead) => {
@@ -3929,7 +4191,7 @@ function App() {
   if (view === "dashboard") {
     body = <Dashboard db={db} sel={sel} currentUser={currentUser} onOpenLead={openLead} setView={setView} setLeadsFilter={setLeadsFilterAndGo} setLeadsViewMode={setLeadsViewMode} dispatch={dispatch} notify={notify} />;
   } else if (view === "leads") {
-    body = <LeadsView db={db} sel={sel} search={search} filter={leadsFilter} setFilter={setLeadsFilter} onOpenLead={openLead} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} deletingLeadId={deletingLeadId} onCreateLead={() => setShowLeadForm(true)} currentUser={currentUser} viewMode={leadsViewMode} setViewMode={setLeadsViewMode} dispatch={dispatch} />;
+    body = <LeadsView db={db} sel={sel} search={search} filter={leadsFilter} setFilter={setLeadsFilter} onOpenLead={openLead} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} deletingLeadId={deletingLeadId} onCreateLead={() => setShowLeadForm(true)} onImportLeads={() => setShowLeadImport(true)} currentUser={currentUser} viewMode={leadsViewMode} setViewMode={setLeadsViewMode} dispatch={dispatch} />;
   } else if (view === "followups") {
     body = <FollowupsView sel={sel} onOpenLead={openLead} dispatch={dispatch} notify={notify} />;
   } else if (view === "demos") {
@@ -3968,6 +4230,7 @@ function App() {
         <LeadDetail leadId={selectedLeadId} db={db} onClose={() => setSelectedLeadId(null)} currentUser={currentUser} dispatch={dispatch} notify={notify} initialTab={initialTab} onEditLead={handleEditLead} />
       )}
       {showLeadForm && <LeadFormModal onClose={() => setShowLeadForm(false)} onSave={handleCreateLead} currentUser={currentUser} />}
+      {showLeadImport && <LeadImportModal onClose={() => setShowLeadImport(false)} onImport={handleImportLeads} />}
       {editingLead && <LeadFormModal initialLead={editingLead} onClose={() => setEditingLead(null)} onSave={handleSaveEditedLead} currentUser={currentUser} />}
       <ToastStack toasts={toasts} />
     </div>
