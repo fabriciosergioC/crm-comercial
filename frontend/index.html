@@ -2702,6 +2702,59 @@ function LeadImportModal({ onClose, onImport }) {
       return;
     }
 
+    /* Formato em blocos com rótulos (exportações do Google Maps), separados
+       por linha em branco:
+         Nome da empresa : X
+         Cidade: Y
+         Telefone: Z
+         WhatsApp: W */
+    if (/^\s*nome\s+da\s+empresa\s*:/im.test(text) || /^\s*empresa\s*:/im.test(text)) {
+      const labelAliases = {
+        "nome da empresa": "company", "empresa": "company", "company": "company",
+        "contato": "contactName", "contact": "contactName", "nome": "contactName",
+        "cidade": "city", "city": "city", "bairro": "neighborhood", "neighborhood": "neighborhood",
+        "telefone": "phone", "tel": "phone", "phone": "phone",
+        "whatsapp": "whatsapp", "whats": "whatsapp", "zap": "whatsapp",
+        "instagram": "instagram", "insta": "instagram",
+        "segmento": "segment", "segment": "segment",
+        "site": "currentSite", "endereço": "currentSite", "endereco": "currentSite",
+        "google maps": "gmaps", "maps": "gmaps", "gmaps": "gmaps",
+        "observações": "notes", "observacoes": "notes", "notas": "notes", "notes": "notes",
+      };
+      const entries = [];
+      let current = null;
+      const closeBlock = () => { if (current) entries.push(current); current = null; };
+      allLines.forEach((line, index) => {
+        if (!line.trim()) { closeBlock(); return; }
+        const match = line.match(/^\s*([^:]{1,40}?)\s*:\s*(.*)$/);
+        const field = match ? labelAliases[match[1].trim().toLocaleLowerCase("pt-BR")] : null;
+        if (match && field) {
+          const value = match[2].trim();
+          if (!value) return;
+          if (!current) current = { row: index + 1 };
+          if (field === "company" && current.company) closeBlock();
+          if (!current) current = { row: index + 1 };
+          current[field] = value;
+          return;
+        }
+        if (current && !current.company) current.company = line.trim();
+      });
+      closeBlock();
+      const blockRecords = entries.map((record) => ({
+        ...record,
+        phone: record.phone || record.whatsapp || "",
+        whatsapp: record.whatsapp || record.phone || "",
+        ...(/est[eé]tica|beleza|cl[ií]nica|dermatologia|spa/i.test(record.company || "") ? { segment: "Estética" } : {}),
+        source: record.source || "Google",
+      }));
+      if (!blockRecords.some((record) => record.company)) {
+        setParseError("Não encontrei blocos com \"Nome da empresa :\" no arquivo.");
+        return;
+      }
+      setRecords(blockRecords);
+      return;
+    }
+
     const delimiter = [";", "\t", ","].sort((a, b) => lines[0].split(b).length - lines[0].split(a).length)[0];
     const normalize = value => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
     const aliases = {
@@ -2749,7 +2802,7 @@ function LeadImportModal({ onClose, onImport }) {
     <Modal title="Importar leads de TXT" onClose={importing ? () => {} : onClose} width={620}>
       <div className="space-y-4">
         <p className="text-sm" style={{ color: "var(--ink-soft)" }}>
-          Aceita listas numeradas com campos identificados ou tabelas com cabeçalho separado por ponto e vírgula, tabulação ou vírgula. Empresa é obrigatória.
+          Aceita listas numeradas, blocos com rótulos (Nome da empresa:, Cidade:, Telefone:, WhatsApp: — separados por linha em branco, como nas exportações do Google Maps) ou tabelas com cabeçalho separado por ponto e vírgula, tabulação ou vírgula. Empresa é obrigatória.
         </p>
         <pre className="overflow-x-auto rounded-lg p-3 text-xs gc-mono" style={{ background: "var(--surface-sunken)", color: "var(--ink-soft)" }}>
 {`empresa;contato;whatsapp;instagram;cidade
