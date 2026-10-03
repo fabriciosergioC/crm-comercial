@@ -713,7 +713,7 @@ const crmApi = {
         });
       } catch (error) {
         if (baseUrl.includes("localhost:3001") && window.location.hostname !== "localhost") {
-          throw new Error("Não foi possível acessar o WhatsApp neste computador. Abra run-crm.bat e permita o acesso à rede local no navegador.");
+          throw new Error("Não foi possível acessar o WhatsApp neste computador. Confirme que run-crm.bat está aberto; no Chrome/Edge, permita o acesso à rede local para este site (ícone ao lado do endereço → Configurações do site → Acesso à rede local → Permitir) e recarregue a página.");
         }
         throw error;
       }

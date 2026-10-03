@@ -19,17 +19,33 @@ const allowedOrigins = (process.env.CORS_ORIGIN ||
   .map((s) => s.trim())
   .filter(Boolean);
 
+function isAllowedOrigin(origin) {
+  return (
+    !origin ||
+    origin === 'null' ||
+    allowedOrigins.includes(origin) ||
+    allowedOrigins.includes('*') ||
+    origin.endsWith('.vercel.app')
+  );
+}
+
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  if (
+    req.method === 'OPTIONS' &&
+    req.get('Access-Control-Request-Private-Network') === 'true' &&
+    isAllowedOrigin(origin)
+  ) {
+    res.set('Access-Control-Allow-Private-Network', 'true');
+  }
+  next();
+});
+
 app.use(
   cors({
     origin(origin, callback) {
       // Requisições sem Origin, file:// ("null"), origens permitidas ou domínios da Vercel (*.vercel.app).
-      if (
-        !origin ||
-        origin === 'null' ||
-        allowedOrigins.includes(origin) ||
-        allowedOrigins.includes('*') ||
-        origin.endsWith('.vercel.app')
-      ) return callback(null, true);
+      if (isAllowedOrigin(origin)) return callback(null, true);
       return callback(null, false);
     },
   })
