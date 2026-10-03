@@ -3,14 +3,34 @@
 const { ApiError } = require("../../middleware/errorHandler");
 const leadsService = require("../leadsService");
 const { normalizeWhatsAppPhone } = require("./phoneUtils");
+const WhatsAppProvider = require("./WhatsAppProvider");
 const MockWhatsAppProvider = require("./MockWhatsAppProvider");
-const BaileysWhatsAppProvider = require("./BaileysWhatsAppProvider");
 
 function createProvider() {
   const provider = process.env.WHATSAPP_PROVIDER || "baileys";
   if (provider === "mock") return new MockWhatsAppProvider();
-  if (provider === "baileys") return new BaileysWhatsAppProvider();
+  if (provider === "baileys" && process.env.VERCEL === "1") {
+    return new VercelWhatsAppProvider();
+  }
+  if (provider === "baileys") {
+    const BaileysWhatsAppProvider = require("./BaileysWhatsAppProvider");
+    return new BaileysWhatsAppProvider();
+  }
   throw new ApiError(503, "Provider de WhatsApp inválido. Use baileys ou mock.");
+}
+
+class VercelWhatsAppProvider extends WhatsAppProvider {
+  unavailable() {
+    throw new ApiError(503, "A API de dados está hospedada na Vercel, mas a conexão WhatsApp via Baileys requer um backend Node.js persistente.");
+  }
+  getStatus() { return this.unavailable(); }
+  connect() { return this.unavailable(); }
+  disconnect() { return this.unavailable(); }
+  listConversations() { return this.unavailable(); }
+  openLeadConversation() { return this.unavailable(); }
+  getConversation() { return this.unavailable(); }
+  sendText() { return this.unavailable(); }
+  simulateIncomingMessage() { return this.unavailable(); }
 }
 
 class WhatsAppService {
