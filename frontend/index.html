@@ -661,6 +661,19 @@ function getApiBaseUrl() {
 
 let CRM_API_BASE = getApiBaseUrl();
 
+function getWhatsAppApiBaseUrl() {
+  if (typeof window === "undefined") return CRM_API_BASE;
+  if (window.CRM_WHATSAPP_API_URL && window.CRM_WHATSAPP_API_URL.trim()) {
+    return window.CRM_WHATSAPP_API_URL.trim().replace(/\/+$/, "");
+  }
+  const stored = localStorage.getItem("crm_whatsapp_api_url");
+  if (stored && stored.trim()) return stored.trim().replace(/\/+$/, "");
+  if (window.location.hostname === "crm-comercial-kappa.vercel.app") {
+    return "http://localhost:3001/api";
+  }
+  return CRM_API_BASE;
+}
+
 const crmApi = {
   getBaseUrl() {
     return CRM_API_BASE;
@@ -688,13 +701,22 @@ const crmApi = {
 
   whatsapp: {
     async request(path, options = {}) {
-      const response = await fetch(`${CRM_API_BASE}/whatsapp${path}`, {
-        ...options,
-        headers: {
-          "Content-Type": "application/json",
-          ...(options.headers || {}),
-        },
-      });
+      const baseUrl = getWhatsAppApiBaseUrl();
+      let response;
+      try {
+        response = await fetch(`${baseUrl}/whatsapp${path}`, {
+          ...options,
+          headers: {
+            "Content-Type": "application/json",
+            ...(options.headers || {}),
+          },
+        });
+      } catch (error) {
+        if (baseUrl.includes("localhost:3001") && window.location.hostname !== "localhost") {
+          throw new Error("Não foi possível acessar o WhatsApp neste computador. Abra run-crm.bat e permita o acesso à rede local no navegador.");
+        }
+        throw error;
+      }
       const data = await response.json();
       if (!response.ok || !data.success) {
         throw new Error(data.message || "Falha ao consultar o WhatsApp.");
@@ -4535,6 +4557,7 @@ function WhatsAppView({ currentUser }) {
 
   const card = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14 };
   const connected = status?.status === "CONNECTED";
+  const hostedWebApp = window.location.hostname === "crm-comercial-kappa.vercel.app";
   const filteredLeads = leads.filter(lead => {
     const term = leadSearch.trim().toLocaleLowerCase("pt-BR");
     if (!term) return true;
@@ -4622,7 +4645,7 @@ function WhatsAppView({ currentUser }) {
       )}
 
       <div className="p-3 rounded-lg text-xs" style={{ background: "var(--warning-bg, var(--surface-sunken))", color: "var(--ink-soft)" }} role="note">
-        Esta integração usa Baileys, uma biblioteca não oficial que conversa com o WhatsApp Web. Não há Cloud API, webhook da Meta ou cobrança de plataforma no CRM. Use a conexão para atendimento legítimo e evite spam/disparos em massa.
+        {hostedWebApp ? "O CRM está online, mas o WhatsApp usa o backend local deste computador. Deixe run-crm.bat aberto e permita o acesso à rede local no navegador. O atendimento só funciona neste computador." : "Esta integração usa Baileys, uma biblioteca não oficial que conversa com o WhatsApp Web. Não há Cloud API, webhook da Meta ou cobrança de plataforma no CRM. Use a conexão para atendimento legítimo e evite spam/disparos em massa."}
       </div>
 
       {error && <div className="text-sm px-3 py-2 rounded-lg" style={{ background: "var(--danger-bg)", color: "var(--danger)" }} role="alert">{error}</div>}

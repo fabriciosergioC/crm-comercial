@@ -55,5 +55,10 @@ autenticação. A Vercel Functions não oferece essas garantias; portanto, não 
 a função serverless da Vercel como host da sessão WhatsApp. Para atendimento
 WhatsApp confiável, hospede o backend Baileys em um serviço Node.js persistente
 com disco/volume durável e configure o CRM para usar a URL desse backend.
-Na Vercel, os endpoints do CRM permanecem disponíveis; os endpoints de
-WhatsApp respondem com HTTP 503 e uma orientação para usar o backend persistente.
+Na Vercel, os endpoints do CRM permanecem disponíveis. O frontend publicado
+usa `http://localhost:3001/api` exclusivamente para chamadas de WhatsApp, de
+modo que o atendimento funcione no computador que executa `run-crm.bat`; as
+demais rotas continuam usando a API publicada na Vercel. Mantenha o backend
+local e o navegador abertos no mesmo computador. Outros aparelhos não conseguem
+acessar o `localhost` desse computador; para atendimento multiusuário, hospede o
+backend Baileys em um serviço Node.js persistente.
