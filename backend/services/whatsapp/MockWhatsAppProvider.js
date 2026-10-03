@@ -134,6 +134,14 @@ class MockWhatsAppProvider extends WhatsAppProvider {
     return clone(conversation);
   }
 
+  async deleteConversation(id) {
+    const index = this.conversations.findIndex(item => item.id === id);
+    if (index < 0) return false;
+    this.conversations.splice(index, 1);
+    this.lastSyncAt = new Date().toISOString();
+    return true;
+  }
+
   async getConversation(id) {
     const conversation = this.conversations.find(item => item.id === id);
     if (!conversation) return null;

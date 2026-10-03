@@ -30,6 +30,7 @@ class VercelWhatsAppProvider extends WhatsAppProvider {
   openLeadConversation() { return this.unavailable(); }
   getConversation() { return this.unavailable(); }
   sendText() { return this.unavailable(); }
+  deleteConversation() { return this.unavailable(); }
   simulateIncomingMessage() { return this.unavailable(); }
 }
 
@@ -64,6 +65,11 @@ class WhatsAppService {
     const message = await this.provider.sendText(id, content.trim(), sentBy);
     if (!message) throw new ApiError(404, "Conversa não encontrada.");
     return message;
+  }
+  async deleteConversation(id) {
+    const removed = await this.provider.deleteConversation(id);
+    if (!removed) throw new ApiError(404, "Conversa não encontrada.");
+    return { id };
   }
   async simulateIncomingMessage() { throw new ApiError(404, "A simulação foi removida. Use um WhatsApp real conectado."); }
 }

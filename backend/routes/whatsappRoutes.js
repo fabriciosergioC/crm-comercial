@@ -27,6 +27,10 @@ router.post("/conversations/lead/:leadId", async (req, res, next) => {
   try { res.status(200).json({ success: true, data: await whatsappService.openLeadConversation(req.params.leadId) }); } catch (error) { next(error); }
 });
 
+router.delete("/conversations/:id", async (req, res, next) => {
+  try { res.json({ success: true, data: await whatsappService.deleteConversation(req.params.id) }); } catch (error) { next(error); }
+});
+
 router.get("/conversations/:id", async (req, res, next) => {
   try { res.set("Cache-Control", "no-store"); res.json({ success: true, data: await whatsappService.getConversation(req.params.id) }); } catch (error) { next(error); }
 });

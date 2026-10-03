@@ -29,6 +29,10 @@ class WhatsAppProvider {
     throw new Error("sendText() must be implemented by the WhatsApp provider.");
   }
 
+  deleteConversation() {
+    throw new Error("deleteConversation() must be implemented by the WhatsApp provider.");
+  }
+
   simulateIncomingMessage() {
     throw new Error("simulateIncomingMessage() must be implemented by the WhatsApp provider.");
   }

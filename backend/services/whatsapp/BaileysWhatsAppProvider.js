@@ -361,6 +361,17 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     return { ...this.mapConversation(row), messages: (messages || []).map(m => ({ id: m.id, direction: m.direction, content: m.content, timestamp: m.timestamp, status: m.status, sentBy: m.sent_by || null })) };
   }
 
+  async deleteConversation(id) {
+    assertSupabase();
+    const { data: row, error: findError } = await supabase.from("whatsapp_conversations").select("id").eq("id", id).maybeSingle();
+    if (findError) throw databaseError(findError, "Falha ao consultar a conversa do WhatsApp.");
+    if (!row) return false;
+    const { error } = await supabase.from("whatsapp_conversations").delete().eq("id", id);
+    if (error) throw databaseError(error, "Não foi possível excluir a conversa do WhatsApp.");
+    this.lastSyncAt = new Date().toISOString();
+    return true;
+  }
+
   async ensureConversation(phone, contactName = null, company = "") {
     const clean = normalizeWhatsAppPhone(phone);
     if (!clean) throw new ApiError(400, "O contato não tem um número de telefone válido para o WhatsApp.");
