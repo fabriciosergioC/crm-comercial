@@ -12,7 +12,11 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
-backend/.env
+backend/.env*
+
+# Sessões locais do WhatsApp (incluindo sessões rejeitadas arquivadas)
+/data/whatsapp-auth*/
+/backend/data/whatsapp-auth*/
 
 # Dependências e artefatos
 node_modules/

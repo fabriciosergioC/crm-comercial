@@ -13,6 +13,7 @@ Estrutura do banco do CRM. **Nada aqui apaga dados**: só existem
 | 2 | `functions.sql` | 2 funções RPC: `change_lead_status`, `add_lead_interaction` |
 | 3 | `rls.sql` | Habilita RLS, tira acesso de `anon`/`authenticated`, libera `service_role` |
 | 4 | `migrations/002_auth.sql` | adiciona hash, indicador de troca obrigatória e data da senha em `users` |
+| 5 | `migrations/005_whatsapp_baileys.sql` | cria tabelas e permissões usadas pelo WhatsApp |
 
 **Como aplicar:** cole o conteúdo de cada arquivo, na ordem acima, no **SQL
 Editor** do painel do Supabase.
@@ -21,6 +22,10 @@ Editor** do painel do Supabase.
 dos 3 arquivos (schema + functions + rls, nessa ordem) — cole esse arquivo
 **uma única vez** no SQL Editor e rode. A fonte continua sendo os 3 arquivos;
 não edite o bundle à mão (se precisar regerar, peça que eu recrio).
+
+Depois de aplicar a estrutura base, execute também
+`migrations/005_whatsapp_baileys.sql` para habilitar a persistência de conversas
+e mensagens do WhatsApp.
 
 > ⚠️ Cuidado com o arquivo errado — o SQL Editor só aceita SQL:
 > - ✅ `apply_all.sql` (ou `schema.sql` → `functions.sql` → `rls.sql`)
@@ -32,8 +37,8 @@ não edite o bundle à mão (se precisar regerar, peça que eu recrio).
 Se você preferir aplicar de forma automatizada (script Node com o pacote `pg` +
 `DATABASE_URL`), é preciso autorizar essa dependência extra antes.
 
-> Status: os arquivos estão **prontos, mas ainda NÃO aplicados** no Supabase —
-> não existem credenciais no projeto (`backend/.env` não existe).
+As tabelas do WhatsApp são uma migração separada e não são incluídas em
+`apply_all.sql`; execute a migração indicada acima no SQL Editor.
 
 ## Tabelas
 

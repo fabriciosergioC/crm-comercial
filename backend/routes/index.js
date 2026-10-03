@@ -29,4 +29,8 @@ router.use('/proposals', require('./proposalsRoutes'));
 router.use('/clients', require('./clientsRoutes'));
 router.use('/client-updates', require('./clientUpdatesRoutes'));
 
+/* Captura e enriquecimento de empresas (OpenStreetMap) */
+router.use('/enrichment', require('./enrichmentRoutes'));
+router.use('/whatsapp', require('./whatsappRoutes'));
+
 module.exports = router;

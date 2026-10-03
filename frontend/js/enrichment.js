@@ -27,13 +27,14 @@ window.CRMEnrichment = (() => {
   // Resolvido a cada chamada: config.js (CRM_API_URL) carrega depois deste arquivo.
   const apiBase = () => resolveApiBase();
 
-  async function search({ city, state = "MG", radius = 10000, term }) {
+  async function search({ city, state = "MG", radius = 10000, term, source }) {
     const params = new URLSearchParams({
       city,
       state,
       radius: String(radius),
       term
     });
+    if (source) params.set("source", source);
 
     const response = await fetch(
       `${apiBase()}/api/enrichment/search?${params.toString()}`
@@ -48,13 +49,13 @@ window.CRMEnrichment = (() => {
     return data;
   }
 
-  async function enrich(records) {
+  async function enrich(records, city) {
     const response = await fetch(`${apiBase()}/api/enrichment/enrich`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ records })
+      body: JSON.stringify({ records, city })
     });
 
     const data = await response.json();

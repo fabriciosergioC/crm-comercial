@@ -7,8 +7,10 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/enrichment.css">
 
 <script src="js/script.js"></script>
+<script src="js/enrichment.js"></script>
 <script src="config.js"></script>
 </head>
 <body>
@@ -47,6 +49,7 @@ const CheckCircle2 = (p) => <Icon {...p}><circle cx="12" cy="12" r="9" /><polyli
 const X = (p) => <Icon {...p}><line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" /></Icon>;
 const Phone = (p) => <Icon {...p}><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" /></Icon>;
 const MessageCircle = (p) => <Icon {...p}><path d="M4 12a8 8 0 1 1 3 6.2L4 20l1.8-3A8 8 0 0 1 4 12z" /></Icon>;
+const RefreshCw = (p) => <Icon {...p}><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.5 9a9 9 0 0 1 15-3L23 10M1 14l4.5 4A9 9 0 0 0 20.5 15" /></Icon>;
 const Instagram = (p) => <Icon {...p}><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><line x1="17.5" y1="6.5" x2="17.51" y2="6.5" strokeWidth="2.5" /></Icon>;
 const Mail = (p) => <Icon {...p}><rect x="3" y="5" width="18" height="14" rx="2" /><polyline points="3 7 12 13 21 7" /></Icon>;
 const MapPin = (p) => <Icon {...p}><path d="M12 21s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z" /><circle cx="12" cy="9" r="2.3" /></Icon>;
@@ -78,6 +81,9 @@ const ChevronsLeft = (p) => <Icon {...p}><polyline points="11 17 6 12 11 7" /><p
 const ChevronsRight = (p) => <Icon {...p}><polyline points="13 17 18 12 13 7" /><polyline points="6 17 11 12 6 7" /></Icon>;
 const Edit = (p) => <Icon {...p}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></Icon>;
 const Trash2 = (p) => <Icon {...p}><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="m19 6-1 14H6L5 6" /><path d="M10 11v5M14 11v5" /></Icon>;
+const Sparkles = (p) => <Icon {...p}><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3z" /><line x1="18" y1="16" x2="18" y2="20" /><line x1="16" y1="18" x2="20" y2="18" /></Icon>;
+const Loader2 = (p) => <Icon {...p}><path d="M12 3a9 9 0 1 0 9 9" /></Icon>;
+const Download = (p) => <Icon {...p}><path d="M12 3v12" /><polyline points="7 11 12 16 17 11" /><line x1="4" y1="20" x2="20" y2="20" /></Icon>;
 
 
 /* =========================================================================
@@ -680,6 +686,41 @@ const crmApi = {
     }
   },
 
+  whatsapp: {
+    async request(path, options = {}) {
+      const response = await fetch(`${CRM_API_BASE}/whatsapp${path}`, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Falha ao consultar o WhatsApp.");
+      }
+      return data.data;
+    },
+    status: () => crmApi.whatsapp.request("/status"),
+    connect: (phoneNumber) => crmApi.whatsapp.request("/connect", {
+      method: "POST",
+      body: JSON.stringify({ phoneNumber: phoneNumber || "" }),
+      signal: AbortSignal.timeout(20000),
+    }),
+    disconnect: () => crmApi.whatsapp.request("/disconnect", { method: "POST" }),
+    conversations: () => crmApi.whatsapp.request("/conversations"),
+    conversation: id => crmApi.whatsapp.request(`/conversations/${encodeURIComponent(id)}`),
+    sendText: (id, content, sentBy) =>
+      crmApi.whatsapp.request(`/conversations/${encodeURIComponent(id)}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ content, sentBy }),
+      }),
+    openLeadConversation: leadId =>
+      crmApi.whatsapp.request(`/conversations/lead/${encodeURIComponent(leadId)}`, {
+        method: "POST",
+      }),
+  },
+
   async authRequest(path, body, method = "POST") {
     try {
       const res = await fetch(`${CRM_API_BASE}${path}`, {
@@ -738,6 +779,12 @@ const crmApi = {
   },
 
   leads: {
+    list: async () => {
+      const response = await fetch(`${CRM_API_BASE}/leads`);
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || "Não foi possível carregar os leads.");
+      return data.data || [];
+    },
     remove: (id) =>
       fetch(`${CRM_API_BASE}/leads/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => r.json()),
     create: (lead) =>
@@ -1041,7 +1088,10 @@ function TextInput({ className = "", style, ...props }) { return <input {...prop
 function TextArea({ className = "", style, ...props }) { return <textarea {...props} className={`${inputStyle} ${className}`} style={{ ...inputBorder, minHeight: 72, resize: "vertical", ...style }} />; }
 function Select({ children, className = "", style, ...props }) { return <select {...props} className={`${inputStyle} ${className}`} style={{ ...inputBorder, ...style }}>{children}</select>; }
 
-function Modal({ title, onClose, children, width = 480 }) {
+function Modal({ title, onClose, children, width = 480, draggable = false }) {
+  const [position, setPosition] = useState(null);
+  const dragState = useRef(null);
+
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === "Escape") onClose();
@@ -1049,10 +1099,69 @@ function Modal({ title, onClose, children, width = 480 }) {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
+
+  useEffect(() => {
+    if (!draggable) return undefined;
+
+    const handlePointerMove = (event) => {
+      if (!dragState.current) return;
+      const { offsetX, offsetY, width: modalWidth, height: modalHeight } = dragState.current;
+      const maxLeft = Math.max(0, window.innerWidth - modalWidth);
+      const maxTop = Math.max(0, window.innerHeight - modalHeight);
+      setPosition({
+        left: Math.max(0, Math.min(maxLeft, event.clientX - offsetX)),
+        top: Math.max(0, Math.min(maxTop, event.clientY - offsetY)),
+      });
+    };
+    const handlePointerUp = () => {
+      dragState.current = null;
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [draggable]);
+
+  const startDragging = (event) => {
+    if (!draggable || event.button !== 0 || event.target.closest("button")) return;
+    event.preventDefault();
+
+    const rect = event.currentTarget.parentElement.getBoundingClientRect();
+    const left = position?.left ?? rect.left;
+    const top = position?.top ?? rect.top;
+    dragState.current = {
+      offsetX: event.clientX - left,
+      offsetY: event.clientY - top,
+      width: rect.width,
+      height: rect.height,
+    };
+    setPosition({ left, top });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 gc-fade-in" style={{ background: "rgba(23,25,28,0.4)" }}>
-      <div className="w-full rounded-2xl gc-scroll overflow-y-auto" style={{ maxWidth: width, width: `min(${width}px, calc(100vw - 24px))`, maxHeight: "88vh", background: "var(--surface)" }}>
-        <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10" style={{ background: "var(--surface)", borderBottom: "1px solid var(--line)" }}>
+      <div
+        className="w-full rounded-2xl gc-scroll overflow-y-auto"
+        style={{
+          position: position ? "fixed" : "relative",
+          left: position?.left,
+          top: position?.top,
+          maxWidth: width,
+          width: `min(${width}px, calc(100vw - 24px))`,
+          maxHeight: "88vh",
+          background: "var(--surface)",
+        }}
+      >
+        <div
+          className={`flex items-center justify-between px-5 py-4 sticky top-0 z-10${draggable ? " cursor-grab select-none" : ""}`}
+          onPointerDown={startDragging}
+          style={{ background: "var(--surface)", borderBottom: "1px solid var(--line)", touchAction: draggable ? "none" : undefined }}
+        >
           <h3 className="gc-display font-semibold text-base">{title}</h3>
           <button onClick={onClose} className="w-8 h-8 rounded-lg inline-flex items-center justify-center gc-focus" style={{ color: "var(--slate)" }} aria-label="Fechar">
             <X size={18} />
@@ -1391,6 +1500,8 @@ const NAV_ITEMS = [
   { id: "demos", label: "Demos", icon: Timer },
   { id: "proposals", label: "Propostas", icon: FileText },
   { id: "clients", label: "Clientes", icon: UserCheck },
+  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
+  { id: "enrichment", label: "Enriquecimento", icon: Sparkles },
   { id: "reports", label: "Relatórios", icon: TrendingUp },
 ];
 
@@ -1456,12 +1567,10 @@ function LoginScreen({ onLogin }) {
         return;
       }
       if (apiResult.data.mustChangePassword) {
-        await saveLocalPassword(selectedUser.id, password, true);
         setRequiresPasswordChange(true);
         setChangingPassword(true);
         return;
       }
-      await saveLocalPassword(selectedUser.id, password, false);
       writeSessionUserId(selectedUser.id);
       onLogin(selectedUser.id);
     } catch (err) {
@@ -1492,8 +1601,6 @@ function LoginScreen({ onLogin }) {
       } else if (!apiResult.ok) {
         setChangeError(apiResult.message || "Não foi possível alterar a senha.");
         return;
-      } else {
-        await saveLocalPassword(selectedUser.id, newPassword, false);
       }
       writeSessionUserId(selectedUser.id);
       onLogin(selectedUser.id);
@@ -1714,6 +1821,12 @@ function Topbar({ db, currentUser, setCurrentUser, onSearch, search, attention, 
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer" style={{ background: "var(--tone-slate-bg)", color: "var(--slate)" }}>
               <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--slate)" }} />
               Conectando...
+            </span>
+          ) : apiStatus === "unconfigured" ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer" style={{ background: "var(--warn-bg)", color: "var(--warn)" }}>
+              <span className="w-2 h-2 rounded-full" style={{ background: "var(--warn)" }} />
+              <span className="hidden sm:inline">Modo Local (Configurar Supabase)</span>
+              <span className="sm:hidden">Modo local</span>
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer" style={{ background: "var(--warn-bg)", color: "var(--warn)" }}>
@@ -2530,7 +2643,7 @@ function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [canSave, save]);
   return (
-    <Modal title={isEditing ? `Editar lead — ${initialLead.company}` : "Novo lead"} onClose={onClose} width={isEditing ? 560 : 520}>
+    <Modal title={isEditing ? `Editar lead — ${initialLead.company}` : "Novo lead"} onClose={onClose} width={isEditing ? 560 : 520} draggable={!isEditing}>
       <div className="space-y-4">
         {!isEditing ? (
           <p className="text-xs -mt-1" style={{ color: "var(--slate)" }}>Cadastro rápido — complete os outros dados depois, na ficha do lead.</p>
@@ -3871,6 +3984,698 @@ function ReportsView({ db, sel }) {
 }
 
 /* =========================================================================
+   ENRIQUECIMENTO — busca empresas e importa como leads
+   ========================================================================= */
+
+function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) {
+  const [city, setCity] = useState("Ipatinga");
+  const [state, setState] = useState("MG");
+  const [term, setTerm] = useState("barbearia");
+  const [radius, setRadius] = useState("10000");
+  const [source, setSource] = useState("google_places");
+  const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [enriching, setEnriching] = useState(() => new Set());
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+  const [selected, setSelected] = useState(() => new Set());
+  const [onlyContact, setOnlyContact] = useState(true);
+
+  const results = result?.resultados || [];
+  const isGooglePlaces = result?.origem === "Google Places";
+  const hasContact = (i) => Boolean(isGooglePlaces ? i.telefone : i.whatsapp);
+  const visible = onlyContact ? results.filter(hasContact) : results;
+  const keyOf = (item) => `${item.osm_type}:${item.osm_id}`;
+
+  const runSearch = async () => {
+    if (!city.trim() || !term.trim()) {
+      setError("Informe a cidade e o termo de busca.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    setSelected(new Set());
+    try {
+      const data = await window.CRMEnrichment.search({
+        city: city.trim(),
+        state: (state.trim() || "MG").toUpperCase(),
+        radius: Number(radius) || 10000,
+        term: term.trim(),
+        source
+      });
+      setResult(data);
+    } catch (e) {
+      setError(e.message || "Falha na busca. O backend está rodando?");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toRecord = (item) => ({
+    company: item.nome,
+    contactName: item.nome,
+    phone: item.telefone || "",
+    whatsapp: item.whatsapp || "",
+    instagram: item.instagram || "",
+    currentSite: item.site || "",
+    city: item.cidade || city.trim(),
+    source: "Prospecção ativa",
+    gmaps: (item.latitude != null && item.longitude != null)
+      ? `https://www.google.com/maps?q=${item.latitude},${item.longitude}`
+      : "",
+    notes: [
+      item.endereco,
+      item.email && `Email: ${item.email}`,
+      `Fonte: ${item.fonte || "OpenStreetMap"}`,
+      item.whatsapp_nao_verificado && "WhatsApp não verificado (telefone comercial do Google Places)"
+    ].filter(Boolean).join(" · ")
+  });
+
+  const searchInstagram = async (item) => {
+    const key = keyOf(item);
+    setEnriching(prev => new Set(prev).add(key));
+    try {
+      const response = await window.CRMEnrichment.enrich([item], city.trim());
+      const enriched = response.resultados?.[0];
+      if (!enriched) throw new Error("A busca não retornou um resultado para esta empresa.");
+      setResult(prev => prev && ({
+        ...prev,
+        resultados: prev.resultados.map(record =>
+          keyOf(record) === key ? { ...record, ...enriched } : record
+        )
+      }));
+      notify(
+        enriched.instagram
+          ? `Instagram encontrado: ${enriched.instagram}`
+          : "Não encontramos um perfil de Instagram confiável para esta empresa.",
+        enriched.instagram ? "success" : "info"
+      );
+    } catch (e) {
+      notify(e.message || "Falha ao buscar o Instagram.", "error");
+    } finally {
+      setEnriching(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
+  const doImport = async (items) => {
+    if (!items.length) return;
+    if (isGooglePlaces) {
+      notify("Os resultados do Google Places são temporários e não podem ser importados.", "error");
+      return;
+    }
+    setImporting(true);
+    try {
+      const outcome = await onImportRecords(items.map(toRecord));
+      const failures = outcome?.failures || [];
+      if (failures.length) {
+        notify(
+          `${outcome.succeeded || 0} leads salvos; ${failures.length} não puderam ser adicionados. Tente novamente ou confira a conexão.`,
+          "error"
+        );
+      } else {
+        setSelected(new Set());
+      }
+    } catch (e) {
+      notify(e.message || "Falha ao importar.", "error");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const toggle = (k) => setSelected(prev => {
+    const next = new Set(prev);
+    next.has(k) ? next.delete(k) : next.add(k);
+    return next;
+  });
+  const toggleAll = () => setSelected(prev =>
+    prev.size === visible.length ? new Set() : new Set(visible.map(keyOf))
+  );
+
+  const card = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14 };
+
+  return (
+    <div className="space-y-4">
+      <style>{`@keyframes gc-spin { to { transform: rotate(360deg); } } .gc-spin { animation: gc-spin 0.8s linear infinite; }`}</style>
+
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="gc-display text-xl font-semibold">Enriquecimento de leads</h1>
+            <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>
+              Busque empresas e contatos pelo Google Places. Os resultados são temporários e não são importados automaticamente.
+          </p>
+        </div>
+        <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full" style={{ background: "var(--surface-sunken)", color: "var(--slate)" }}>
+          <Globe size={14} /> {result?.instagram_provedor
+            ? `${result.origem} + ${result.instagram_provedor}`
+            : result?.origem || "Google Places"}
+        </span>
+      </div>
+
+      <div className="p-4" style={card}>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+          <Field label="Cidade" required>
+            <TextInput value={city} onChange={e => setCity(e.target.value)} placeholder="Ipatinga" />
+          </Field>
+          <Field label="UF">
+            <TextInput value={state} onChange={e => setState(e.target.value)} maxLength={2} placeholder="MG" />
+          </Field>
+          <Field label="Termo / categoria" required>
+            <TextInput value={term} onChange={e => setTerm(e.target.value)} placeholder="barbearia, clínica, pet..." onKeyDown={e => e.key === "Enter" && runSearch()} />
+          </Field>
+          <Field label="Raio (metros)">
+            <TextInput type="number" value={radius} onChange={e => setRadius(e.target.value)} min="1000" step="1000" />
+          </Field>
+          <Field label="Fonte de busca">
+            <Select
+              value={source}
+              onChange={e => {
+                setSource(e.target.value);
+                setResult(null);
+                setSelected(new Set());
+                setError(null);
+              }}
+            >
+              <option value="google_places">Google Places — consulta temporária</option>
+            </Select>
+          </Field>
+        </div>
+        <div className="flex items-center gap-2 mt-3 flex-wrap">
+          <Button icon={loading ? Loader2 : Search} onClick={runSearch} disabled={loading} className={loading ? "gc-spin" : ""}>
+            {loading ? "Buscando…" : "Buscar empresas"}
+          </Button>
+          {results.length > 0 && !isGooglePlaces && (
+            <Button variant="secondary" icon={Download} onClick={() => doImport(results.filter(i => selected.has(keyOf(i))))} disabled={importing || selected.size === 0}>
+              {importing ? "Importando…" : `Importar selecionados (${selected.size})`}
+            </Button>
+          )}
+          {results.length > 0 && isGooglePlaces && (
+            <span className="text-xs" style={{ color: "var(--slate)" }}>
+              Consulta temporária · importação desativada
+            </span>
+          )}
+          {results.length > 0 && (
+            <label className="inline-flex items-center gap-2 text-sm" style={{ color: "var(--ink-soft)" }}>
+              <input type="checkbox" checked={onlyContact} onChange={e => setOnlyContact(e.target.checked)} />
+              {isGooglePlaces ? "Somente com telefone comercial" : "Somente com WhatsApp"}
+            </label>
+          )}
+        </div>
+        {isGooglePlaces && (
+          <p className="mt-3 text-xs" style={{ color: "var(--slate)" }} role="note">
+            Google Maps · Os dados desta busca não são copiados para o CRM. Use “Criar lead em branco” para preencher manualmente.
+          </p>
+        )}
+        {!isGooglePlaces && result?.origem === "OpenStreetMap + Overpass" && (
+          <p className="mt-3 text-xs" style={{ color: "var(--slate)" }} role="note">
+            Use “Adicionar ao Leads” na linha da empresa ou selecione várias e clique em “Importar selecionados”.
+          </p>
+        )}
+        {error && (
+          <div className="mt-3 text-sm px-3 py-2 rounded-lg" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>
+            {error}
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="p-6" style={card}><EmptyState icon={Loader2} title="Buscando empresas e contatos…" hint="A busca usa o Google Places; configure GOOGLE_PLACES_API_KEY em backend/.env." /></div>
+      ) : result ? (
+        <div style={card}>
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--line)" }}>
+            <span className="text-sm font-medium">
+              {onlyContact
+                ? `${visible.length} de ${result.total} ${isGooglePlaces ? "com telefone comercial" : "com WhatsApp"}`
+                : `${result.total} ${result.total === 1 ? "empresa encontrada" : "empresas encontradas"}`}
+            </span>
+          </div>
+          {visible.length === 0 ? (
+            <EmptyState
+              icon={Search}
+              title={results.length ? `Nenhuma empresa com ${isGooglePlaces ? "telefone comercial" : "WhatsApp"}` : "Nenhuma empresa encontrada"}
+              hint={results.length
+                ? `Desmarque o filtro para ver também empresas sem ${isGooglePlaces ? "telefone comercial" : "contato"}.`
+                : "Tente outro termo ou aumentar o raio de busca."}
+            />
+          ) : (
+            <div className="enrichment-results">
+              <table>
+                <thead>
+                  <tr style={{ color: "var(--slate)" }}>
+                    {!isGooglePlaces && (
+                      <th style={{ width: 40 }}>
+                        <input type="checkbox" checked={selected.size === visible.length} onChange={toggleAll} aria-label="Selecionar todos" />
+                      </th>
+                    )}
+                    <th>Empresa</th>
+                    <th>Categoria</th>
+                    <th>Contato</th>
+                    <th>Cidade</th>
+                    <th style={{ width: 220 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map(item => {
+                    const k = keyOf(item);
+                    return (
+                      <tr key={k}>
+                        {!isGooglePlaces && (
+                          <td><input type="checkbox" checked={selected.has(k)} onChange={() => toggle(k)} aria-label={`Selecionar ${item.nome}`} /></td>
+                        )}
+                        <td>
+                          <div className="font-medium">{item.nome}</div>
+                          {item.endereco && <div className="text-xs" style={{ color: "var(--slate)" }}>{item.endereco}</div>}
+                        </td>
+                        <td className="text-xs" style={{ color: "var(--ink-soft)" }}>{item.categoria || "—"}</td>
+                        <td>
+                          <div className="flex items-center gap-2 flex-wrap text-xs">
+                            {item.whatsapp && (
+                              item.whatsapp_link ? (
+                                <a
+                                  className="inline-flex items-center gap-1"
+                                  style={{ color: "var(--accent-ink)" }}
+                                  href={item.whatsapp_link}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={item.whatsapp_nao_verificado ? "Telefone comercial do Google Places; cadastro no WhatsApp não verificado" : "Abrir WhatsApp"}
+                                >
+                                  <MessageCircle size={12} /> {item.whatsapp}
+                                  {item.whatsapp_nao_verificado && " · não verificado"}
+                                </a>
+                              ) : (
+                                <span
+                                  className="inline-flex items-center gap-1"
+                                  style={{ color: "var(--accent-ink)" }}
+                                  title={item.whatsapp_nao_verificado ? "Telefone comercial do Google Places; cadastro no WhatsApp não verificado" : undefined}
+                                >
+                                  <MessageCircle size={12} /> {item.whatsapp}
+                                  {item.whatsapp_nao_verificado && " · não verificado"}
+                                </span>
+                              )
+                            )}
+                            {item.telefone && <span className="inline-flex items-center gap-1"><Phone size={12} /> {item.telefone}</span>}
+                            {item.instagram && (
+                              <a className="inline-flex items-center gap-1" style={{ color: "var(--accent-ink)" }} href={igLink(item.instagram)} target="_blank" rel="noreferrer">
+                                <Instagram size={12} /> {item.instagram}
+                              </a>
+                            )}
+                            {item.email && <span className="inline-flex items-center gap-1"><Mail size={12} /> {item.email}</span>}
+                            {item.site && <a className="inline-flex items-center gap-1" style={{ color: "var(--accent-ink)" }} href={item.site} target="_blank" rel="noreferrer"><Link2 size={12} /> site</a>}
+                            {!item.telefone && !item.whatsapp && !item.instagram && !item.email && !item.site && <span style={{ color: "var(--slate)" }}>sem contato</span>}
+                          </div>
+                        </td>
+                        <td className="text-xs">{item.cidade || city}</td>
+                        <td>
+                          <div className="flex items-center gap-1.5">
+                            {!item.instagram && !isGooglePlaces && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                icon={enriching.has(k) ? Loader2 : Instagram}
+                                disabled={importing || enriching.has(k)}
+                                onClick={() => searchInstagram(item)}
+                                className={enriching.has(k) ? "gc-spin" : ""}
+                              >
+                                {enriching.has(k) ? "Buscando…" : "Buscar Instagram"}
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              icon={importing && !isGooglePlaces ? Loader2 : Plus}
+                              disabled={importing || enriching.has(k)}
+                              onClick={() => {
+                                if (isGooglePlaces) onCreateLead();
+                                else doImport([item]);
+                              }}
+                              className={importing ? "gc-spin" : ""}
+                              title={isGooglePlaces
+                                ? "Abrir formulário vazio; os dados do Google Places não serão copiados."
+                                : "Adicionar esta empresa ao menu Leads"}
+                            >
+                              {importing && !isGooglePlaces
+                                ? "Salvando…"
+                                : isGooglePlaces
+                                  ? "Criar lead em branco"
+                                  : "Adicionar ao Leads"}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={card}><EmptyState icon={Sparkles} title="Faça uma busca para começar" hint="Informe cidade e termo, depois clique em Buscar empresas." /></div>
+      )}
+    </div>
+  );
+}
+
+function WhatsAppView({ currentUser }) {
+  const [status, setStatus] = useState(null);
+  const [databaseReady, setDatabaseReady] = useState(false);
+  const [conversations, setConversations] = useState([]);
+  const [leads, setLeads] = useState([]);
+  const [conversation, setConversation] = useState(null);
+  const [sidebarView, setSidebarView] = useState("conversations");
+  const [leadSearch, setLeadSearch] = useState("");
+  const [loadingLeads, setLoadingLeads] = useState(false);
+  const [openingLeadId, setOpeningLeadId] = useState(null);
+  const [draft, setDraft] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState("");
+  const messagesEndRef = useRef(null);
+  const selectedConversationIdRef = useRef(null);
+
+  const loadConversation = async id => {
+    const selected = await crmApi.whatsapp.conversation(id);
+    setConversation(selected);
+    selectedConversationIdRef.current = id;
+  };
+
+  const loadLeads = async () => {
+    setLoadingLeads(true);
+    try {
+      setLeads(await crmApi.leads.list());
+    } catch (requestError) {
+      setError(requestError.message || "Não foi possível carregar os leads.");
+    } finally {
+      setLoadingLeads(false);
+    }
+  };
+
+  const refresh = async (keepLoading = false) => {
+    if (!keepLoading) setError("");
+    try {
+      const nextStatus = await crmApi.whatsapp.status();
+      setStatus(nextStatus);
+      const nextConversations = await crmApi.whatsapp.conversations();
+      setConversations(nextConversations);
+      const activeId = selectedConversationIdRef.current || nextConversations[0]?.id;
+      if (activeId && nextConversations.some(item => item.id === activeId)) await loadConversation(activeId);
+      else {
+        setConversation(null);
+        selectedConversationIdRef.current = null;
+      }
+    } catch (requestError) {
+      setError(requestError.message || "Não foi possível carregar o WhatsApp.");
+    } finally {
+      if (!keepLoading) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    let timer;
+
+    async function initialize() {
+      const health = await crmApi.health();
+      if (!mounted) return;
+      if (!health.ok || health.database !== "configurado") {
+        setError(
+          health.ok
+            ? "Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY em backend/.env para usar o WhatsApp."
+            : "A API do backend está indisponível."
+        );
+        setLoading(false);
+        return;
+      }
+
+      setDatabaseReady(true);
+      await refresh();
+      await loadLeads();
+      if (mounted) timer = window.setInterval(() => refresh(true), 2500);
+    }
+
+    initialize();
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [conversation?.messages?.length]);
+
+  const changeConnection = async () => {
+    setError("");
+    setConnecting(true);
+    try {
+      if (["CONNECTED", "CONNECTING", "RECONNECTING", "QR_READY", "PAIRING_READY"].includes(status?.status)) {
+        await crmApi.whatsapp.disconnect();
+      } else {
+        const nextStatus = await crmApi.whatsapp.connect(phoneNumber);
+        setStatus(nextStatus);
+      }
+      await refresh(true);
+    } catch (requestError) {
+      setError(
+        requestError.name === "TimeoutError"
+          ? "O backend demorou para responder. Atualize o estado da conexão e tente novamente."
+          : requestError.message || "Não foi possível conectar o WhatsApp via Baileys."
+      );
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const switchToPairingCode = async () => {
+    const digits = phoneNumber.replace(/\D/g, "");
+    if (digits.length < 10 || digits.length > 15) {
+      setError("Informe o número completo com DDI, por exemplo 55 + DDD + número.");
+      return;
+    }
+
+    setError("");
+    setConnecting(true);
+    try {
+      await crmApi.whatsapp.disconnect();
+      const nextStatus = await crmApi.whatsapp.connect(phoneNumber);
+      setStatus(nextStatus);
+      await refresh(true);
+    } catch (requestError) {
+      setError(
+        requestError.name === "TimeoutError"
+          ? "O backend demorou para responder. Atualize o estado da conexão e tente novamente."
+          : requestError.message || "Não foi possível solicitar o código de pareamento."
+      );
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const selectConversation = async id => {
+    setError("");
+    try {
+      await loadConversation(id);
+      setConversations(await crmApi.whatsapp.conversations());
+    } catch (requestError) {
+      setError(requestError.message || "Não foi possível abrir esta conversa.");
+    }
+  };
+
+  const openLeadConversation = async lead => {
+    setError("");
+    setOpeningLeadId(lead.id);
+    try {
+      const selected = await crmApi.whatsapp.openLeadConversation(lead.id);
+      setConversation(selected);
+      selectedConversationIdRef.current = selected.id;
+      setConversations(await crmApi.whatsapp.conversations());
+      setSidebarView("conversations");
+    } catch (requestError) {
+      setError(requestError.message || "Não foi possível abrir a conversa deste lead.");
+    } finally {
+      setOpeningLeadId(null);
+    }
+  };
+
+  const send = async event => {
+    event?.preventDefault();
+    if (!conversation || !draft.trim() || sending) return;
+    setSending(true);
+    setError("");
+    try {
+      await crmApi.whatsapp.sendText(conversation.id, draft, currentUser || "Usuário");
+      setDraft("");
+      await refresh(true);
+    } catch (requestError) {
+      setError(requestError.message || "Não foi possível enviar a mensagem.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const formatTime = value => {
+    if (!value) return "";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  };
+  const messageStatusLabel = status => ({
+    pending: "aguardando confirmação",
+    sent: "enviada ao WhatsApp",
+    delivered: "entregue",
+    read: "lida",
+    played: "reproduzida",
+    error: "falha no envio",
+  }[status] || status);
+
+  const card = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14 };
+  const connected = status?.status === "CONNECTED";
+  const filteredLeads = leads.filter(lead => {
+    const term = leadSearch.trim().toLocaleLowerCase("pt-BR");
+    if (!term) return true;
+    return [lead.contactName, lead.company, lead.whatsapp, lead.phone, lead.city, lead.status]
+      .some(value => String(value || "").toLocaleLowerCase("pt-BR").includes(term));
+  });
+  const waitingAuth = ["QR_READY", "PAIRING_READY", "CONNECTING", "RECONNECTING"].includes(status?.status);
+  const connectionActive = ["CONNECTED", "CONNECTING", "RECONNECTING", "QR_READY", "PAIRING_READY"].includes(status?.status);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="gc-display text-xl font-semibold">WhatsApp</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>
+            Central de atendimento do CRM usando Baileys. O WhatsApp fica conectado por trás da interface.
+          </p>
+        </div>
+        <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full" style={{ background: "var(--surface-sunken)", color: "var(--slate)" }}>
+          <MessageCircle size={14} /> WHATSAPP + BAILEYS
+        </span>
+      </div>
+
+      <section className="p-4 flex items-center justify-between gap-3 flex-wrap" style={card}>
+        <div className="flex items-center gap-3">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ background: connected ? "var(--success, #16a34a)" : "var(--slate)" }} />
+          <div>
+            <div className="font-medium text-sm">
+              {connected ? `WhatsApp conectado · ${status.phoneNumber || "número conectado"}` : status?.status === "CONNECTING" ? "Conectando ao WhatsApp…" : status?.status === "RECONNECTING" ? "Reconectando ao WhatsApp…" : waitingAuth ? "Aguardando autenticação do WhatsApp…" : "WhatsApp desconectado"}
+            </div>
+            <div className="text-xs mt-0.5" style={{ color: "var(--slate)" }}>
+              {status?.accountName ? status.accountName : status?.status === "QR_READY" ? "Escaneie o QR Code no WhatsApp do celular." : status?.status === "PAIRING_READY" ? "Digite o código de pareamento no WhatsApp do celular." : status?.status === "CONNECTING" ? "Aguardando resposta do WhatsApp. Se não avançar, cancele e tente novamente." : status?.status === "RECONNECTING" ? "O backend está tentando restabelecer a conexão." : "Conecte seu número para atender as conversas pelo CRM."}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {!connected && (!waitingAuth || status?.status === "QR_READY") && (
+            <input className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: "var(--line)", background: "var(--surface)" }} value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="DDD + número para Pairing Code" aria-label="Número do WhatsApp" />
+          )}
+          <Button variant="secondary" icon={RefreshCw} onClick={() => refresh()} disabled={loading || !databaseReady}>Atualizar</Button>
+          <Button onClick={changeConnection} disabled={!databaseReady || connecting}>
+            {connecting ? "Aguarde…" : connected ? "Desconectar" : connectionActive ? "Cancelar conexão" : "Conectar WhatsApp"}
+          </Button>
+        </div>
+      </section>
+
+      {waitingAuth && !connected && (
+        <section className="p-4" style={card}>
+          <div className="font-medium text-sm mb-2">Autenticação do WhatsApp</div>
+          {status?.pairingCode ? (
+            <div className="space-y-2">
+              <div className="text-xs" style={{ color: "var(--slate)" }}>No celular: WhatsApp → Configurações → Dispositivos conectados → Conectar dispositivo → Conectar com número de telefone.</div>
+              <div className="text-2xl font-semibold tracking-[0.35em]" style={{ color: "var(--accent)" }}>{status.pairingCode}</div>
+              <div className="text-xs" style={{ color: "var(--slate)" }}>Código de pareamento gerado pelo Baileys.</div>
+            </div>
+          ) : status?.qrAvailable ? (
+            <div className="space-y-2">
+              {status.qrImage ? (
+                <>
+                  <div className="text-sm">No WhatsApp do celular, abra Dispositivos conectados → Conectar dispositivo e escaneie este QR Code.</div>
+                  <img src={status.qrImage} alt="QR Code para conectar o WhatsApp ao CRM" width="256" height="256" className="rounded-lg border bg-white p-2" />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs" style={{ color: "var(--slate)" }}>Se o QR for recusado, informe o número com DDI e solicite um código de pareamento:</span>
+                    <Button variant="secondary" onClick={switchToPairingCode} disabled={connecting || phoneNumber.replace(/\D/g, "").length < 10}>
+                      {connecting ? "Solicitando…" : "Usar código de pareamento"}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm" style={{ color: "var(--slate)" }}>Gerando a imagem segura do QR Code…</div>
+              )}
+            </div>
+          ) : status?.status === "CONNECTING" ? (
+            <div className="text-sm" style={{ color: "var(--slate)" }}>Conectando ao WhatsApp. Se não receber QR Code ou código em até 30 segundos, cancele a conexão e tente novamente.</div>
+          ) : status?.status === "RECONNECTING" ? (
+            <div className="text-sm" style={{ color: "var(--slate)" }}>Reconectando ao WhatsApp…</div>
+          ) : <div className="text-sm" style={{ color: "var(--slate)" }}>Preparando a autenticação…</div>}
+        </section>
+      )}
+
+      {status?.errors?.length > 0 && (
+        <div className="text-sm px-3 py-2 rounded-lg" style={{ background: "var(--danger-bg)", color: "var(--danger)" }} role="alert">
+          {status.errors[status.errors.length - 1]}
+        </div>
+      )}
+
+      <div className="p-3 rounded-lg text-xs" style={{ background: "var(--warning-bg, var(--surface-sunken))", color: "var(--ink-soft)" }} role="note">
+        Esta integração usa Baileys, uma biblioteca não oficial que conversa com o WhatsApp Web. Não há Cloud API, webhook da Meta ou cobrança de plataforma no CRM. Use a conexão para atendimento legítimo e evite spam/disparos em massa.
+      </div>
+
+      {error && <div className="text-sm px-3 py-2 rounded-lg" style={{ background: "var(--danger-bg)", color: "var(--danger)" }} role="alert">{error}</div>}
+
+      <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+        <section className="overflow-hidden" style={card} aria-label="Conversas do WhatsApp">
+          <div className="p-3 space-y-3" style={{ borderBottom: "1px solid var(--line)" }}>
+            <div className="grid grid-cols-2 gap-1 p-1 rounded-lg" style={{ background: "var(--surface-sunken)" }}>
+              <button type="button" onClick={() => setSidebarView("conversations")} className="rounded-md px-2 py-1.5 text-xs font-medium" style={{ background: sidebarView === "conversations" ? "var(--surface)" : "transparent", color: "var(--ink)" }}>Conversas ({conversations.length})</button>
+              <button type="button" onClick={() => setSidebarView("leads")} className="rounded-md px-2 py-1.5 text-xs font-medium" style={{ background: sidebarView === "leads" ? "var(--surface)" : "transparent", color: "var(--ink)" }}>Leads ({leads.length})</button>
+            </div>
+            {sidebarView === "leads" && <div className="flex gap-2">
+              <input value={leadSearch} onChange={event => setLeadSearch(event.target.value)} placeholder="Buscar lead ou telefone" aria-label="Buscar lead para conversar" className="min-w-0 flex-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: "var(--line)", background: "var(--surface)" }} />
+              <Button variant="secondary" icon={RefreshCw} onClick={loadLeads} disabled={loadingLeads}>Atualizar</Button>
+            </div>}
+          </div>
+          {sidebarView === "conversations" ? (
+            loading ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>Carregando conversas…</div> : conversations.length === 0 ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>Nenhuma conversa ainda. Abra a aba Leads para escolher um contato cadastrado ou aguarde uma nova mensagem recebida.</div> : <div className="max-h-[560px] overflow-y-auto">{conversations.map(item => (
+            <button key={item.id} type="button" onClick={() => selectConversation(item.id)} className="w-full text-left px-4 py-3 transition-colors" style={{ background: conversation?.id === item.id ? "var(--accent-soft)" : "transparent", borderBottom: "1px solid var(--line)" }}>
+              <div className="flex items-center justify-between gap-2"><span className="font-medium text-sm truncate">{item.contact.name}</span><span className="text-[11px] shrink-0" style={{ color: "var(--slate)" }}>{formatTime(item.lastMessage?.timestamp)}</span></div>
+              <div className="text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{item.contact.company} · {item.contact.phone}</div>
+              <div className="flex items-center justify-between gap-2 mt-1.5"><span className="text-xs truncate" style={{ color: "var(--ink-soft)" }}>{item.lastMessage?.content || "Sem mensagens"}</span>{item.unreadCount > 0 && <span className="text-[10px] rounded-full px-1.5 py-0.5" style={{ background: "var(--accent)", color: "white" }}>{item.unreadCount}</span>}</div>
+            </button>
+            ))}</div>
+          ) : loadingLeads ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>Carregando leads…</div> : filteredLeads.length === 0 ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>{leads.length ? "Nenhum lead encontrado para esta busca." : "Nenhum lead cadastrado."}</div> : <div className="max-h-[560px] overflow-y-auto">{filteredLeads.map(lead => {
+            const phoneValue = [lead.whatsapp, lead.phone].find(value => {
+              const digits = String(value || "").replace(/\D/g, "");
+              return digits.length >= 8 && digits.length <= 15;
+            });
+            const phone = String(phoneValue || "").replace(/\D/g, "");
+            const canOpen = Boolean(phone);
+            return <button key={lead.id} type="button" onClick={() => openLeadConversation(lead)} disabled={!canOpen || openingLeadId !== null} className="w-full text-left px-4 py-3 transition-colors disabled:opacity-60" style={{ borderBottom: "1px solid var(--line)" }} title={canOpen ? "Abrir conversa com este lead" : "Cadastre um telefone ou WhatsApp válido no lead"}>
+              <div className="flex items-center justify-between gap-2"><span className="font-medium text-sm truncate">{lead.contactName || lead.company || "Lead sem nome"}</span><MessageCircle size={15} className="shrink-0" style={{ color: "var(--accent)" }} /></div>
+              <div className="text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{lead.company || "Empresa não informada"} · {lead.status || "Novo"}</div>
+              <div className="text-xs mt-1 truncate" style={{ color: canOpen ? "var(--ink-soft)" : "var(--danger)" }}>{canOpen ? phoneValue : "Sem telefone/WhatsApp válido"}</div>
+              {openingLeadId === lead.id && <div className="text-[11px] mt-1" style={{ color: "var(--accent)" }}>Abrindo conversa…</div>}
+            </button>;
+          })}</div>}
+        </section>
+
+        <section className="overflow-hidden flex flex-col min-h-[520px]" style={card} aria-label="Mensagens do WhatsApp">
+          {conversation ? <>
+            <header className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: "1px solid var(--line)" }}><div className="min-w-0"><div className="font-medium text-sm truncate">{conversation.contact.name}</div><div className="text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{conversation.contact.company} · {conversation.contact.phone}</div></div><span className="text-xs shrink-0" style={{ color: "var(--slate)" }}>{conversation.status}</span></header>
+            <div className="flex-1 p-4 space-y-3 overflow-y-auto max-h-[440px]">{conversation.messages.map(message => <div key={message.id} className={`flex ${message.direction === "outgoing" ? "justify-end" : "justify-start"}`}><div className="max-w-[85%] rounded-xl px-3 py-2" style={{ background: message.direction === "outgoing" ? "var(--accent-soft)" : "var(--surface-sunken)", color: "var(--ink)" }}><div className="text-sm whitespace-pre-wrap break-words">{message.content}</div><div className="text-[10px] text-right mt-1" style={{ color: "var(--slate)" }}>{formatTime(message.timestamp)} · {messageStatusLabel(message.status)}</div></div></div>)}<div ref={messagesEndRef} /></div>
+            <form onSubmit={send} className="p-3 space-y-2" style={{ borderTop: "1px solid var(--line)" }}><TextArea value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder="Digite uma mensagem…" rows={2} maxLength={4000} disabled={!connected || sending} aria-label="Mensagem" /><div className="flex items-center justify-between gap-2 flex-wrap"><span className="text-xs" style={{ color: "var(--slate)" }}>Mensagens recebidas aparecem automaticamente.</span><Button type="submit" icon={Send} disabled={!connected || sending || !draft.trim()}>{sending ? "Enviando…" : "Enviar"}</Button></div></form>
+          </> : <div className="flex-1 flex items-center justify-center p-6"><EmptyState icon={MessageCircle} title="Selecione uma conversa" hint={connected ? "Envie uma mensagem nova para o WhatsApp conectado; o histórico anterior não é importado automaticamente." : "Depois que o WhatsApp estiver conectado, as novas mensagens recebidas serão sincronizadas aqui."} /></div>}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
    ROOT APP
    ========================================================================= */
 
@@ -3886,6 +4691,7 @@ function App() {
   const [selectedLeadId, setSelectedLeadId] = useState(null);
   const [initialTab, setInitialTab] = useState("geral");
   const [showLeadForm, setShowLeadForm] = useState(false);
+  const leadFormOpenedFromEnrichment = useRef(false);
   const [showLeadImport, setShowLeadImport] = useState(false);
   const [editingLead, setEditingLead] = useState(null);
   const [deletingLeadId, setDeletingLeadId] = useState(null);
@@ -3929,6 +4735,11 @@ function App() {
         setBootLoading(false);
         return;
       }
+      if (health.database !== "configurado") {
+        setApiStatus("unconfigured");
+        setBootLoading(false);
+        return;
+      }
       setApiStatus("connected");
       try {
         const remoteDb = await crmApi.loadAll();
@@ -3947,7 +4758,7 @@ function App() {
   }, [currentUser]);
 
   useEffect(() => {
-    if (!currentUser) return undefined;
+    if (!currentUser || apiStatus !== "connected") return undefined;
 
     let syncing = false;
     const syncSilently = async () => {
@@ -3966,7 +4777,7 @@ function App() {
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", syncSilently);
     };
-  }, [currentUser]);
+  }, [currentUser, apiStatus]);
 
   const handleSeedDemo = async () => {
     notify("Importando dados de exemplo para o Supabase...");
@@ -3984,6 +4795,7 @@ function App() {
     rawDispatch(action);
 
     // 2. Persistência assíncrona na API do backend -> Supabase
+    if (apiStatus !== "connected") return;
     (async () => {
       try {
         switch (action.type) {
@@ -4065,7 +4877,7 @@ function App() {
         notify("Aviso Supabase: " + (err.message || "Erro ao persistir"), "error");
       }
     })();
-  }, [notify]);
+  }, [apiStatus, notify]);
 
   /* Re-render periodically so demo countdowns and "atrasado" badges stay live
      without the person needing to refresh. */
@@ -4117,6 +4929,8 @@ function App() {
   const openLead = (id, tab) => { setSelectedLeadId(id); setInitialTab(tab || "geral"); };
 
   const handleCreateLead = (form) => {
+    const stayOnEnrichment = leadFormOpenedFromEnrichment.current;
+    leadFormOpenedFromEnrichment.current = false;
     const id = `l_${Date.now()}`;
     const company = (form.company || "").trim();
     const contactName = (form.contactName && form.contactName.trim()) ? form.contactName.trim() : company;
@@ -4136,9 +4950,11 @@ function App() {
       lead: leadData,
     });
     setShowLeadForm(false);
-    setView("leads");
-    notify("Lead salvo no Supabase.");
-    openLead(id);
+    if (!stayOnEnrichment) {
+      setView("leads");
+      openLead(id);
+    }
+    notify(stayOnEnrichment ? "Lead criado. Você continua na tela de enriquecimento." : "Lead salvo no Supabase.");
   };
 
   const handleImportLeads = async (records) => {
@@ -4250,7 +5066,7 @@ function App() {
   if (view === "dashboard") {
     body = <Dashboard db={db} sel={sel} currentUser={currentUser} onOpenLead={openLead} setView={setView} setLeadsFilter={setLeadsFilterAndGo} setLeadsViewMode={setLeadsViewMode} dispatch={dispatch} notify={notify} />;
   } else if (view === "leads") {
-    body = <LeadsView db={db} sel={sel} search={search} filter={leadsFilter} setFilter={setLeadsFilter} onOpenLead={openLead} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} deletingLeadId={deletingLeadId} onCreateLead={() => setShowLeadForm(true)} onImportLeads={() => setShowLeadImport(true)} currentUser={currentUser} viewMode={leadsViewMode} setViewMode={setLeadsViewMode} dispatch={dispatch} />;
+    body = <LeadsView db={db} sel={sel} search={search} filter={leadsFilter} setFilter={setLeadsFilter} onOpenLead={openLead} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} deletingLeadId={deletingLeadId} onCreateLead={() => { leadFormOpenedFromEnrichment.current = false; setShowLeadForm(true); }} onImportLeads={() => setShowLeadImport(true)} currentUser={currentUser} viewMode={leadsViewMode} setViewMode={setLeadsViewMode} dispatch={dispatch} />;
   } else if (view === "followups") {
     body = <FollowupsView sel={sel} onOpenLead={openLead} dispatch={dispatch} notify={notify} />;
   } else if (view === "demos") {
@@ -4259,6 +5075,18 @@ function App() {
     body = <ProposalsView db={db} sel={sel} onOpenLead={openLead} dispatch={dispatch} notify={notify} />;
   } else if (view === "clients") {
     body = <ClientsView db={db} onOpenLead={openLead} />;
+  } else if (view === "whatsapp") {
+    body = <WhatsAppView currentUser={currentUser} />;
+  } else if (view === "enrichment") {
+    body = <EnrichmentView
+      currentUser={currentUser}
+      onImportRecords={handleImportLeads}
+      onCreateLead={() => {
+        leadFormOpenedFromEnrichment.current = true;
+        setShowLeadForm(true);
+      }}
+      notify={notify}
+    />;
   } else if (view === "reports") {
     body = <ReportsView db={db} sel={sel} />;
   }
@@ -4282,13 +5110,13 @@ function App() {
           apiStatus={apiStatus}
           onSeedDemo={handleSeedDemo}
         />
-        <main className={`py-4 sm:py-5 ${view === "leads" ? "px-3 sm:px-4 md:px-4 max-w-none" : "px-3 sm:px-4 md:px-6 max-w-[1200px] mx-auto"}`}>{body}</main>
+        <main className={`py-4 sm:py-5 ${(view === "leads" || view === "enrichment") ? "px-3 sm:px-4 md:px-4 max-w-none" : "px-3 sm:px-4 md:px-6 max-w-[1200px] mx-auto"}`}>{body}</main>
       </div>
 
       {selectedLeadId && (
         <LeadDetail leadId={selectedLeadId} db={db} onClose={() => setSelectedLeadId(null)} currentUser={currentUser} dispatch={dispatch} notify={notify} initialTab={initialTab} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} />
       )}
-      {showLeadForm && <LeadFormModal onClose={() => setShowLeadForm(false)} onSave={handleCreateLead} currentUser={currentUser} />}
+      {showLeadForm && <LeadFormModal onClose={() => { leadFormOpenedFromEnrichment.current = false; setShowLeadForm(false); }} onSave={handleCreateLead} currentUser={currentUser} />}
       {showLeadImport && <LeadImportModal onClose={() => setShowLeadImport(false)} onImport={handleImportLeads} />}
       {editingLead && <LeadFormModal initialLead={editingLead} onClose={() => setEditingLead(null)} onSave={handleSaveEditedLead} currentUser={currentUser} />}
       <ToastStack toasts={toasts} />

@@ -49,7 +49,29 @@ async function list(query) {
 
   const { data, error } = await q;
   if (error) throw mapDbError(error, 'Falha ao consultar os clientes.');
-  return (data || []).map(fromRow);
+  return addContacts((data || []).map(fromRow));
+}
+
+async function addContacts(clients) {
+  const leadIds = [...new Set(clients.map(client => client.leadId).filter(Boolean))];
+  const contacts = new Map();
+  if (leadIds.length) {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('id, whatsapp, instagram')
+      .in('id', leadIds);
+    if (error) throw mapDbError(error, 'Falha ao consultar os contatos dos clientes.');
+    for (const lead of data || []) {
+      contacts.set(lead.id, {
+        whatsapp: lead.whatsapp || null,
+        instagram: lead.instagram || null,
+      });
+    }
+  }
+  return clients.map(client => ({
+    ...client,
+    ...(contacts.get(client.leadId) || { whatsapp: null, instagram: null }),
+  }));
 }
 
 async function getById(id) {
@@ -57,7 +79,12 @@ async function getById(id) {
   const { data, error } = await supabase.from('clients').select('*').eq('id', id).maybeSingle();
   if (error) throw mapDbError(error, 'Falha ao consultar o cliente.');
   if (!data) throw new ApiError(404, 'Cliente não encontrado.');
-  return fromRow(data);
+  return (await addContacts([fromRow(data)]))[0];
+}
+
+async function getContactById(id) {
+  const client = await getById(id);
+  return { whatsapp: client.whatsapp, instagram: client.instagram };
 }
 
 /* Conversão de lead em cliente (mesmo fluxo do front-end):
@@ -72,7 +99,7 @@ async function create(payload) {
   if (!row.closing_date) row.closing_date = new Date().toISOString();
   const { data, error } = await supabase.from('clients').insert(row).select().single();
   if (error) throw mapDbError(error, 'Falha ao registrar o cliente.');
-  return fromRow(data);
+  return (await addContacts([fromRow(data)]))[0];
 }
 
 /* PATCH: { company?, contactName?, plan?, contractedValue?, monthlyValue?,
@@ -86,7 +113,7 @@ async function update(id, patch) {
   if (Object.keys(row).length === 0) return getById(id);
   const { data, error } = await supabase.from('clients').update(row).eq('id', id).select().single();
   if (error) throw mapDbError(error, 'Falha ao atualizar o cliente.');
-  return fromRow(data);
+  return (await addContacts([fromRow(data)]))[0];
 }
 
-module.exports = { list, getById, create, update, COLUMNS, FILTERS };
+module.exports = { list, getById, getContactById, create, update, COLUMNS, FILTERS };

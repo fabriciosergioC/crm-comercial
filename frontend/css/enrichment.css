@@ -1,0 +1,36 @@
+.enrichment-results {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.enrichment-results table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.enrichment-results th,
+.enrichment-results td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line, #ddd);
+  text-align: left;
+  vertical-align: top;
+  color: var(--ink, inherit);
+}
+
+.enrichment-results th {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+}
+
+.enrichment-results tbody tr:hover {
+  background: var(--surface-sunken, rgba(0, 0, 0, 0.02));
+}
+
+.enrichment-results tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.enrichment-confidence {
+  white-space: nowrap;
+}

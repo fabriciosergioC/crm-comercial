@@ -18,6 +18,12 @@ router.get('/', asyncHandler(async (req, res) => {
   res.json({ success: true, count: data.length, data });
 }));
 
+/* GET /api/clients/:id/contact */
+router.get('/:id/contact', asyncHandler(async (req, res) => {
+  const data = await clientsService.getContactById(req.params.id);
+  res.json({ success: true, data });
+}));
+
 /* GET /api/clients/:id */
 router.get('/:id', asyncHandler(async (req, res) => {
   const data = await clientsService.getById(req.params.id);

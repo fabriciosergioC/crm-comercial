@@ -9,7 +9,8 @@ const express = require('express');
 
 const tables = {
   leads: [
-    { id: 'l1', company: 'Empresa antiga', contact_name: 'Contato antigo', owner: 'u1', status: 'Fechado' },
+    { id: 'l1', company: 'Empresa antiga', contact_name: 'Contato antigo', owner: 'u1', status: 'Fechado',
+      whatsapp: '+5511999999999', instagram: '@empresa' },
     { id: 'l2', company: 'Sem cliente', contact_name: 'Contato', owner: 'u1' },
   ],
   clients: [
@@ -31,11 +32,13 @@ const supabase = {
       order() { return q; },
       limit() { return q; },
       eq(key, value) { filters.push([key, value]); return q; },
+      in(key, values) { filters.push([key, values]); return q; },
       update(value) { patch = value; return q; },
       single() { single = true; return q; },
       maybeSingle() { single = true; return q; },
       then(resolve, reject) {
-        const rows = tables[table].filter(row => filters.every(([k, v]) => row[k] === v));
+        const rows = tables[table].filter(row => filters.every(([k, v]) =>
+          Array.isArray(v) ? v.includes(row[k]) : row[k] === v));
         if (patch && table === 'clients') {
           clientWrites++;
           if (failClientUpdate) return Promise.resolve({ error: { message: 'Falha simulada' } }).then(resolve, reject);
@@ -78,6 +81,20 @@ async function main() {
   try {
     const load = async () => ({ leads: (await request('/leads')).body.data, clients: (await request('/clients')).body.data });
     const before = await load();
+    assert.equal(before.clients[0].whatsapp, '+5511999999999');
+    assert.equal(before.clients[0].instagram, '@empresa');
+    assert.equal(before.clients[1].whatsapp, null);
+    const singleClient = await request('/clients/c1');
+    assert.equal(singleClient.status, 200);
+    assert.equal(singleClient.body.data.whatsapp, '+5511999999999');
+    assert.equal(singleClient.body.data.instagram, '@empresa');
+    const contact = await request('/clients/c1/contact');
+    assert.equal(contact.status, 200);
+    assert.deepEqual(contact.body.data, { whatsapp: '+5511999999999', instagram: '@empresa' });
+    const independentContact = await request('/clients/c2/contact');
+    assert.equal(independentContact.status, 200);
+    assert.deepEqual(independentContact.body.data, { whatsapp: null, instagram: null });
+    assert.equal((await request('/clients/inexistente/contact')).status, 404);
     const patch = { company: 'Empresa nova', contactName: 'Contato novo', owner: 'u2', notes: 'Notas do lead', currentSite: 'outro.com.br' };
     const optimistic = reduce(before, { type: 'UPDATE_LEAD', id: 'l1', patch });
     assert.equal(optimistic.clients[0].company, patch.company);

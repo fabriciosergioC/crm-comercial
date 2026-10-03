@@ -6,7 +6,7 @@ color 0B
 
 :: ===================================================================
 ::  Sistema CRM - Script de Inicialização Automatizada
-::  1. Abre o frontend, que é autocontido: não precisa de servidor.
+::  1. Abre o frontend servido pelo backend quando a API está disponível.
 ::  2. Sobe a API do backend em uma janela separada, quando disponível.
 :: ===================================================================
 
@@ -109,8 +109,12 @@ if exist "%ENV_FILE%" goto INICIAR_BACKEND
 >> "%ENV_FILE%" echo # Enquanto estiverem vazias as rotas de dados respondem 503.
 >> "%ENV_FILE%" echo SUPABASE_URL=
 >> "%ENV_FILE%" echo SUPABASE_SERVICE_ROLE_KEY=
+>> "%ENV_FILE%" echo GOOGLE_PLACES_API_KEY=
 >> "%ENV_FILE%" echo.
 >> "%ENV_FILE%" echo CORS_ORIGIN=http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000
+>> "%ENV_FILE%" echo WHATSAPP_PROVIDER=baileys
+>> "%ENV_FILE%" echo WHATSAPP_PAIRING_PHONE=
+>> "%ENV_FILE%" echo WHATSAPP_AUTH_DIR=./data/whatsapp-auth
 echo ✅ Arquivo .env criado: %ENV_FILE%
 goto INICIAR_BACKEND
 
@@ -142,8 +146,17 @@ goto ABRIR_FRONTEND
 :ABRIR_FRONTEND
 echo.
 echo 🎨 [6/6] Abrindo o Sistema CRM no navegador...
+if "%BACKEND_STATUS%"=="200" goto ABRIR_FRONTEND_WEB
 start "" "%FRONTEND_FILE%"
 if errorlevel 1 explorer "%FRONTEND_FILE%"
+goto FRONTEND_ABERTO
+
+:ABRIR_FRONTEND_WEB
+start "" "http://localhost:3001/"
+echo     Para abrir no celular conectado ao mesmo Wi-Fi:
+echo     http://192.168.0.107:3001/
+
+:FRONTEND_ABERTO
 echo.
 echo ========================================
 echo       ✨ Sistema CRM - Pronto para Uso!

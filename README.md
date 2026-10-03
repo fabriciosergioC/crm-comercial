@@ -31,19 +31,19 @@ Basta abrir `frontend/index.html` no navegador.
 Não há build, servidor, dependências ou banco de dados — todos os dados são
 de demonstração, em memória.
 
-Alternativamente, dê um duplo clique em `run-crm.bat`: ele confere o Node.js,
-abre o frontend no navegador e, **quando a API do backend estiver completa**,
-sobe a API em uma janela separada (`http://localhost:3001/api`) e cria o
-`backend/.env` na primeira execução. Se o backend não estiver utilizável, o
-script avisa e segue apenas com o frontend — que é o caso hoje.
+Alternativamente, dê um duplo clique em `run-crm.bat`: ele instala as
+dependências, inicia a API em uma janela separada (`http://localhost:3001/api`)
+e abre o frontend servido localmente.
 
-## Backend (em construção)
+## Backend
 
-`backend/` traz a API Express + Supabase (`config`, `middleware`, `models` e
-`services`), mas ainda não tem a camada de rotas (`backend/routes`, importada
-por `server.js`) nem o `backend/database/schema.sql` citado pelos services.
-Enquanto isso, `node server.js` falha com `Cannot find module './routes'` — por
-isso o `run-crm.bat` apenas avisa e segue com o frontend.
+A busca de empresas usa OpenStreetMap por padrão e não exige chave de API.
+Para selecionar Google Places na tela de enriquecimento, configure
+`GOOGLE_PLACES_API_KEY` em `backend/.env`. Os recursos que persistem dados
+comerciais e o WhatsApp exigem `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`
+no mesmo arquivo. Copie esses valores das configurações do seu projeto
+Supabase e reinicie `run-crm.bat`; sem eles, o CRM continua em modo local,
+mas não persiste dados nem conecta o WhatsApp.
 
 ## Notas técnicas
 
@@ -52,9 +52,9 @@ isso o `run-crm.bat` apenas avisa e segue com o frontend.
   em tempo de execução por `js/boot.js` (Babel Standalone, carregado via
   `js/script.js`). Extraí-lo exigiria fetch assíncrono (não funciona via
   `file://`), alterando a lógica de inicialização.
-- A camada de serviços está preparada (em comentários) para uma futura
-  integração com Supabase — hoje o frontend funciona 100% em memória e não
-  chama a API (`backend/` é apenas o esqueleto descrito acima).
+- A aplicação pode ser usada sem o backend para visualizar e editar dados de
+  demonstração em memória; a busca de empresas e os recursos de API exigem que
+  o `run-crm.bat` tenha iniciado o backend.
 - Nenhuma lógica foi alterada na separação: `css/style.css`,
   `js/script.js` e `js/boot.js` são cópias byte a byte dos blocos originais
   (verificado por hash SHA-256), na mesma ordem de carregamento.
