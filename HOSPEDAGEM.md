@@ -38,3 +38,20 @@ Antes de clicar em Deploy, abra a seção **"Environment Variables"** e adicione
 - Quando você acessar o link da Vercel, a interface abrirá imediatamente.
 - Todas as chamadas para `/api/leads`, `/api/proposals`, etc. serão processadas pelas funções serverless da Vercel conectadas ao seu banco no Supabase.
 - Qualquer alteração que você fizer no código no futuro e der `git push`, a Vercel atualizará automaticamente em segundos.
+
+### Verificar a API publicada
+
+Depois do deploy, abra `https://SEU-DOMINIO/api/health`. A resposta precisa
+conter `status: "ok"` e `database: "configurado"`. Se houver erro 500, confira
+os logs de Functions no painel da Vercel. O projeto instala a API a partir do
+`package.json` e `package-lock.json` da raiz; mantenha ali as dependências que
+`api/index.js` e o servidor Express carregam.
+
+### Limitação do WhatsApp via Baileys
+
+A API de dados HTTP pode rodar como função serverless, mas a sessão Baileys
+precisa de conexão WebSocket persistente e armazenamento durável dos arquivos de
+autenticação. A Vercel Functions não oferece essas garantias; portanto, não use
+a função serverless da Vercel como host da sessão WhatsApp. Para atendimento
+WhatsApp confiável, hospede o backend Baileys em um serviço Node.js persistente
+com disco/volume durável e configure o CRM para usar a URL desse backend.
