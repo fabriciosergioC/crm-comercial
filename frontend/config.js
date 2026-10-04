@@ -1,16 +1,22 @@
 // ============================================================================
 //  Configuração da API do CRM
 // ============================================================================
-//  Arquitetura de produção (A): frontend estático na Vercel + API/Baileys na VPS.
+//  Produção (INTERINO): frontend + API na MESMA ORIGEM da Vercel ("/api").
 //
-//    Produção  -> https://api.crm-comercial.com/api   (VPS: nginx + TLS + systemd)
-//    Local     -> http://localhost:3001/api           (run-crm.bat / node backend/server.js)
+//  A arquitetura definitiva (frontend na Vercel + API/Baileys numa VPS em
+//  https://api.crm-comercial.com/api) ainda NÃO está no ar: o domínio
+//  api.crm-comercial.com não existe (DNS NXDOMAIN). Enquanto a VPS não sobe,
+//  usamos a API serverless da Vercel para os DADOS (leads, auth, propostas...).
+//  O WhatsApp via Baileys NÃO roda na Vercel — nessas rotas a API responde 503
+//  até a VPS existir.
 //
-//  A detecção abaixo evita que o desenvolvimento local caia na API de produção:
-//  em localhost/file:// as variáveis ficam vazias e o front usa a lógica
-//  padrão de getApiBaseUrl() (mesma origem / localhost:3001).
+//    Local (localhost/file://) -> variáveis vazias; getApiBaseUrl() usa localhost:3001
+//    Produção (Vercel)         -> "/api" (mesma origem)
+//
+//  Quando a VPS estiver pronta, troque CRM_PROD_API_URL para
+//  "https://api.crm-comercial.com/api".
 // ============================================================================
-const CRM_PROD_API_URL = "https://api.crm-comercial.com/api";
+const CRM_PROD_API_URL = "/api";
 
 const CRM_IS_LOCAL =
   typeof window !== "undefined" &&
@@ -22,8 +28,8 @@ const CRM_IS_LOCAL =
 // Base da API (leads, auth, propostas, enriquecimento...)
 window.CRM_API_URL = CRM_IS_LOCAL ? "" : CRM_PROD_API_URL;
 
-// Base específica do WhatsApp. Mesma URL nesta arquitetura, mas declarada
-// explicitamente: getWhatsAppApiBaseUrl() tem um fallback antigo que manda
-// determinados hostnames da Vercel para http://localhost:3001 — aqui isso é
-// contornado, senão o atendimento nunca encontraria a VPS.
+// Base específica do WhatsApp. Em produção usa a mesma origem ("/api"),
+// declarado explicitamente para NÃO cair no fallback antigo de
+// getWhatsAppApiBaseUrl(), que manda o hostname da Vercel para
+// http://localhost:3001 (conteúdo misto a partir de https — falha).
 window.CRM_WHATSAPP_API_URL = CRM_IS_LOCAL ? "" : CRM_PROD_API_URL;
