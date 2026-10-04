@@ -13,6 +13,7 @@
 <script src="js/enrichment.js"></script>
 <script src="js/brasil.js"></script>
 <script src="config.js"></script>
+<script src="js/theme.js"></script>
 </head>
 <body>
   <div id="root"></div>
@@ -85,6 +86,7 @@ const Trash2 = (p) => <Icon {...p}><path d="M3 6h18" /><path d="M8 6V4h8v2" /><p
 const Sparkles = (p) => <Icon {...p}><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3z" /><line x1="18" y1="16" x2="18" y2="20" /><line x1="16" y1="18" x2="20" y2="18" /></Icon>;
 const Loader2 = (p) => <Icon {...p}><path d="M12 3a9 9 0 1 0 9 9" /></Icon>;
 const Download = (p) => <Icon {...p}><path d="M12 3v12" /><polyline points="7 11 12 16 17 11" /><line x1="4" y1="20" x2="20" y2="20" /></Icon>;
+const Palette = (p) => <Icon {...p}><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H16a5 5 0 0 0 5-5c0-3.9-4-7-9-7z" /><circle cx="7.5" cy="11.5" r="1" fill="currentColor" stroke="none" /><circle cx="10.5" cy="7.5" r="1" fill="currentColor" stroke="none" /><circle cx="15" cy="8" r="1" fill="currentColor" stroke="none" /></Icon>;
 
 
 /* =========================================================================
@@ -1794,6 +1796,63 @@ function NotificationPanel({ items, onClose, onOpenLead }) {
   );
 }
 
+function ThemePicker() {
+  const presets = (window.GCTheme && window.GCTheme.PRESETS) || [];
+  const [open, setOpen] = useState(false);
+  const [color, setColor] = useState(() => (window.GCTheme ? window.GCTheme.get() : "#2C5F72"));
+
+  const applyColor = (hex) => {
+    if (!window.GCTheme || !window.GCTheme.isValid(hex)) return;
+    setColor(hex);
+    window.GCTheme.apply(hex);
+  };
+  const resetTheme = () => {
+    if (!window.GCTheme) return;
+    window.GCTheme.reset();
+    setColor(window.GCTheme.DEFAULT_ACCENT);
+  };
+
+  return (
+    <div className="relative">
+      <IconButton icon={Palette} label="Cor do site" active={open} onClick={() => setOpen(v => !v)} />
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-11 w-[calc(100vw-1.5rem)] sm:w-80 rounded-xl z-30 gc-pop-in" style={{ background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 12px 32px rgba(23,25,28,0.14)" }}>
+            <div className="px-4 py-3 font-semibold text-sm gc-display flex items-center justify-between gap-2" style={{ borderBottom: "1px solid var(--line)" }}>
+              <span>Cor do site</span>
+              <button type="button" onClick={resetTheme} className="text-xs gc-focus rounded px-1.5 py-0.5" style={{ color: "var(--slate)" }}>Restaurar padrão</button>
+            </div>
+            <div className="p-4">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+                {presets.map(p => {
+                  const active = String(p.hex).toLowerCase() === String(color).toLowerCase();
+                  return (
+                    <button key={p.hex} type="button" title={p.name} aria-label={p.name} onClick={() => applyColor(p.hex)}
+                      className="gc-focus gc-pressable flex items-center justify-center"
+                      style={{ height: 44, borderRadius: 8, background: p.hex, border: active ? "2px solid var(--ink)" : "1px solid var(--line-strong)" }}>
+                      {active && <span className="text-white text-sm leading-none">✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <label className="flex items-center gap-3 mt-4 rounded-lg px-3 py-2 cursor-pointer" style={{ border: "1px solid var(--line-strong)" }}>
+                <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : "#2C5F72"}
+                  onChange={(e) => applyColor(e.target.value)}
+                  className="gc-focus shrink-0"
+                  style={{ width: 36, height: 36, padding: 0, borderRadius: 9999, background: "transparent", border: "1px solid var(--line-strong)", cursor: "pointer" }}
+                  aria-label="Escolher cor personalizada" />
+                <span className="text-sm" style={{ color: "var(--ink-soft)" }}>Cor personalizada</span>
+                <span className="ml-auto text-xs gc-mono" style={{ color: "var(--slate)" }}>{String(color).toUpperCase()}</span>
+              </label>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Topbar({ db, currentUser, setCurrentUser, onSearch, search, attention, onOpenLead, onMenu, onLogout, searchInputRef, apiStatus, onSeedDemo }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1872,6 +1931,7 @@ function Topbar({ db, currentUser, setCurrentUser, onSearch, search, attention, 
           </button>
         )}
       </div>
+      <ThemePicker />
       <div className="relative">
         <IconButton icon={Bell} label="Notificações" active={notifOpen} badge={attention.length} onClick={() => setNotifOpen(v => !v)} />
         {notifOpen && <NotificationPanel items={attention} onClose={() => setNotifOpen(false)} onOpenLead={onOpenLead} />}
