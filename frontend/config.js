@@ -1,22 +1,31 @@
 // ============================================================================
 //  Configuração da API do CRM
 // ============================================================================
-//  Produção (INTERINO): frontend + API na MESMA ORIGEM da Vercel ("/api").
+//  Arquitetura atual (INTERINA, sem VPS):
 //
-//  A arquitetura definitiva (frontend na Vercel + API/Baileys numa VPS em
-//  https://api.crm-comercial.com/api) ainda NÃO está no ar: o domínio
-//  api.crm-comercial.com não existe (DNS NXDOMAIN). Enquanto a VPS não sobe,
-//  usamos a API serverless da Vercel para os DADOS (leads, auth, propostas...).
-//  O WhatsApp via Baileys NÃO roda na Vercel — nessas rotas a API responde 503
-//  até a VPS existir.
+//    - DADOS (leads, auth, propostas, enriquecimento...): API serverless da
+//      Vercel, na MESMA ORIGEM ("/api").
+//    - WHATSAPP (Baileys): NÃO roda na Vercel (exige processo Node persistente
+//      + disco durável). Roda no backend LOCAL em http://localhost:3001/api.
 //
-//    Local (localhost/file://) -> variáveis vazias; getApiBaseUrl() usa localhost:3001
-//    Produção (Vercel)         -> "/api" (mesma origem)
+//  Por isso o frontend hospedado na Vercel chama:
+//    window.CRM_API_URL          -> "/api"                     (dados, Vercel)
+//    window.CRM_WHATSAPP_API_URL -> "http://localhost:3001/api" (WhatsApp, local)
 //
-//  Quando a VPS estiver pronta, troque CRM_PROD_API_URL para
+//  O servidor local (porta 3001) precisa estar no ar com o Baileys CONNECTED.
+//  O backend já libera CORS para *.vercel.app e envia
+//  Access-Control-Allow-Private-Network: true no preflight (PNA), permitindo
+//  que a página https da Vercel chame http://localhost:3001.
+//
+//    Local (localhost/file://) -> variáveis vazias; getApiBaseUrl()/
+//                                 getWhatsAppApiBaseUrl() já usam localhost:3001
+//    Produção (Vercel)         -> dados "/api" / WhatsApp localhost:3001
+//
+//  Quando a VPS estiver pronta, troque CRM_PROD_WHATSAPP_URL para
 //  "https://api.crm-comercial.com/api".
 // ============================================================================
 const CRM_PROD_API_URL = "/api";
+const CRM_PROD_WHATSAPP_URL = "http://localhost:3001/api";
 
 const CRM_IS_LOCAL =
   typeof window !== "undefined" &&
@@ -25,11 +34,9 @@ const CRM_IS_LOCAL =
     window.location.hostname === "127.0.0.1" ||
     window.location.hostname === "");
 
-// Base da API (leads, auth, propostas, enriquecimento...)
+// Base da API de DADOS (leads, auth, propostas, enriquecimento...)
 window.CRM_API_URL = CRM_IS_LOCAL ? "" : CRM_PROD_API_URL;
 
-// Base específica do WhatsApp. Em produção usa a mesma origem ("/api"),
-// declarado explicitamente para NÃO cair no fallback antigo de
-// getWhatsAppApiBaseUrl(), que manda o hostname da Vercel para
-// http://localhost:3001 (conteúdo misto a partir de https — falha).
-window.CRM_WHATSAPP_API_URL = CRM_IS_LOCAL ? "" : CRM_PROD_API_URL;
+// Base específica do WhatsApp (Baileys). Em produção aponta para o backend
+// LOCAL na porta 3001, pois o Baileys não roda na Vercel serverless.
+window.CRM_WHATSAPP_API_URL = CRM_IS_LOCAL ? "" : CRM_PROD_WHATSAPP_URL;
