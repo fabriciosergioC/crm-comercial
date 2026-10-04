@@ -7,9 +7,14 @@ const express = require('express');
 const cors = require('cors');
 const routes = require('./routes');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
+const followupNotifier = require('./services/followupNotifier');
+const whatsappService = require('./services/whatsapp/WhatsAppService');
 
 const app = express();
+/* PORT/HOST permitem travar o bind em 127.0.0.1 em produção (atrás do nginx),
+   deixando a porta 3001 invisível para a internet. Padrão inalterado: 0.0.0.0:3001 */
 const PORT = process.env.PORT || 3001;
+const HOST = process.env.HOST || '0.0.0.0';
 
 /* CORS restrito a origens permitidas (configuráveis via CORS_ORIGIN no .env).
    Evita Access-Control-Allow-Origin: * em produção. */
@@ -60,11 +65,37 @@ app.use(express.static(path.join(__dirname, '..', 'frontend')));
 app.use(notFound);
 app.use(errorHandler);
 
+/* Reconecta o WhatsApp (Baileys) ao subir o servidor, reaproveitando a sessão
+   salva em WHATSAPP_AUTH_DIR — assim os lembretes de follow-up continuam
+   chegando após um restart sem precisar escanear QR de novo. Se não houver
+   sessão, o provider cai no fluxo normal (QR/pairing) e o erro é só logado.
+   Desative com WHATSAPP_AUTOSTART=false. */
+function autostartWhatsApp() {
+  if (String(process.env.WHATSAPP_AUTOSTART || 'true').toLowerCase() === 'false') return;
+  const provider = process.env.WHATSAPP_PROVIDER || 'baileys';
+  if (provider !== 'baileys') return;
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn('[whatsapp] Auto-conexão ignorada: configure o Supabase primeiro.');
+    return;
+  }
+  console.log('[whatsapp] Auto-conexão iniciada (reaproveitando sessão salva)...');
+  whatsappService
+    .connect({ phoneNumber: process.env.WHATSAPP_PAIRING_PHONE || '' })
+    .then((status) => console.log(`[whatsapp] Status após auto-conexão: ${status && status.status}.`))
+    .catch((error) => console.warn(`[whatsapp] Auto-conexão falhou: ${error.message || error}`));
+}
+
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`[backend] API rodando em http://localhost:${PORT}/api`);
+  app.listen(PORT, HOST, () => {
+    console.log(`[backend] API rodando em http://${HOST}:${PORT}/api`);
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       console.log('[backend] AVISO: credenciais do Supabase ausentes no .env — os endpoints de dados responderão 503 até serem configuradas.');
+    }
+    /* O agendador e o WhatsApp precisam de processo Node persistente;
+       na Vercel serverless nenhum dos dois roda (Baileys exige socket contínuo). */
+    if (process.env.VERCEL !== '1') {
+      autostartWhatsApp();
+      followupNotifier.start();
     }
   });
 }

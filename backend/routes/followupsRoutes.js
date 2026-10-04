@@ -1,6 +1,7 @@
 const express = require('express');
 const asyncHandler = require('../middleware/asyncHandler');
 const followupsService = require('../services/followupsService');
+const followupNotifier = require('../services/followupNotifier');
 const { ApiError } = require('../middleware/errorHandler');
 const V = require('../middleware/validate');
 const { FOLLOWUP_STATUSES } = require('../models/enums');
@@ -9,6 +10,15 @@ const router = express.Router();
 
 /* Campos aceitos (whitelist do banco: lead_followups). */
 const FIELDS = ['id', 'leadId', 'dueDate', 'note', 'status', 'createdBy'];
+
+/* POST /api/followups/notify - dispara UMA varredura manual do agendador.
+   Útil para testar/forçar o envio sem esperar o intervalo. Retorna o resumo
+   ({ sent, failed, total } ou { skipped, ... }). Usa o socket do backend em
+   execução, então exige WhatsApp CONNECTED. */
+router.post('/notify', asyncHandler(async (req, res) => {
+  const result = await followupNotifier.runOnce();
+  res.json({ success: true, data: result });
+}));
 
 /* GET /api/followups?leadId=&status=&createdBy=&limit= */
 router.get('/', asyncHandler(async (req, res) => {

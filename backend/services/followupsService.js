@@ -72,6 +72,9 @@ async function update(id, patch) {
   const row = toRow(patch);
   delete row.id;
   delete row.lead_id;
+  /* Reagendar (nova dueDate) ou reativar (status "pendente") zera o aviso já
+     enviado, para o agendador notificar de novo no próximo vencimento. */
+  if (patch.dueDate !== undefined || patch.status === 'pendente') row.notified_at = null;
   if (Object.keys(row).length === 0) return getById(id);
   const { data, error } = await supabase.from('lead_followups').update(row).eq('id', id).select().single();
   if (error) throw mapDbError(error, 'Falha ao atualizar o follow-up.');

@@ -5,6 +5,12 @@ Seu CRM agora está configurado para rodar **integralmente na Vercel**:
 - **Backend (API Node.js + Express + Supabase):** Roda como Serverless Functions na própria Vercel (`/api/...`)
 - **Tudo em um único link, sem necessidade de Render e sem problemas de CORS!**
 
+> **⚠️ Arquitetura atual (recomendada): Vercel + VPS.** O deploy 100% na Vercel
+> continua válido para **dados** (funções serverless), mas o **WhatsApp via
+> Baileys não roda lá** — precisa de processo persistente e disco durável.
+> Produção nova: frontend estático na Vercel + API/Baileys na VPS
+> (`https://api.crm-comercial.com/api`).
+
 ---
 
 ## Passo a Passo para Publicar na Vercel
@@ -55,10 +61,11 @@ autenticação. A Vercel Functions não oferece essas garantias; portanto, não 
 a função serverless da Vercel como host da sessão WhatsApp. Para atendimento
 WhatsApp confiável, hospede o backend Baileys em um serviço Node.js persistente
 com disco/volume durável e configure o CRM para usar a URL desse backend.
-Na Vercel, os endpoints do CRM permanecem disponíveis. O frontend publicado
-usa `http://localhost:3001/api` exclusivamente para chamadas de WhatsApp, de
-modo que o atendimento funcione no computador que executa `run-crm.bat`; as
-demais rotas continuam usando a API publicada na Vercel. Mantenha o backend
-local e o navegador abertos no mesmo computador. Outros aparelhos não conseguem
-acessar o `localhost` desse computador; para atendimento multiusuário, hospede o
-backend Baileys em um serviço Node.js persistente.
+Na Vercel, os endpoints de **dados** continuam disponíveis (rede de segurança),
+mas o atendimento WhatsApp usa a VPS: `frontend/config.js` aponta
+`window.CRM_API_URL` e `window.CRM_WHATSAPP_API_URL` para
+`https://api.crm-comercial.com/api` — **somente fora de `localhost`/`file://`**,
+então o desenvolvimento local continua batendo em `http://localhost:3001` com o
+`run-crm.bat`. A sessão Baileys fica em `/opt/crm/data/whatsapp-auth` na VPS,
+sobrevivendo a reboot e servindo qualquer navegador/aparelho (nada mais de
+`localhost` preso ao computador de quem roda o `run-crm.bat`).

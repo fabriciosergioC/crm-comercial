@@ -30,6 +30,7 @@ class VercelWhatsAppProvider extends WhatsAppProvider {
   openLeadConversation() { return this.unavailable(); }
   getConversation() { return this.unavailable(); }
   sendText() { return this.unavailable(); }
+  sendNotification() { return this.unavailable(); }
   deleteConversation() { return this.unavailable(); }
   simulateIncomingMessage() { return this.unavailable(); }
 }
@@ -65,6 +66,13 @@ class WhatsAppService {
     const message = await this.provider.sendText(id, content.trim(), sentBy);
     if (!message) throw new ApiError(404, "Conversa não encontrada.");
     return message;
+  }
+  async sendNotification(phone, text) {
+    if (typeof text !== "string" || !text.trim()) throw new ApiError(400, "Texto do aviso vazio.");
+    if (text.length > 4000) throw new ApiError(400, "O aviso não pode ultrapassar 4.000 caracteres.");
+    const status = await this.provider.getStatus();
+    if (status.status !== "CONNECTED") throw new ApiError(409, "Conecte o WhatsApp via Baileys antes de enviar avisos.");
+    return this.provider.sendNotification(phone, text.trim());
   }
   async deleteConversation(id) {
     const removed = await this.provider.deleteConversation(id);

@@ -154,6 +154,7 @@ create table if not exists public.lead_followups (
   created_by text        references public.users (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  notified_at timestamptz,
   constraint lf_status_chk check (status in ('pendente','concluido','cancelado'))
 );
 
@@ -260,6 +261,8 @@ create index if not exists li_channel_idx     on public.lead_interactions (chann
 create index if not exists li_user_idx        on public.lead_interactions ("user");
 create index if not exists lf_lead_idx        on public.lead_followups (lead_id);
 create index if not exists lf_status_due_idx  on public.lead_followups (status, due_date);
+create index if not exists lf_pending_notify_idx on public.lead_followups (due_date)
+  where status = 'pendente' and notified_at is null;
 create index if not exists ld_lead_idx        on public.lead_demos (lead_id);
 create index if not exists ld_expires_idx     on public.lead_demos (expires_at)
   where deactivated = false;

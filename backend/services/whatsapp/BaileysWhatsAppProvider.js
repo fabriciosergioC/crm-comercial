@@ -436,6 +436,30 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     return { id: saved.id, direction: saved.direction, content: saved.content, timestamp: saved.timestamp, status: saved.status, sentBy: saved.sent_by };
   }
 
+  /* Envia um aviso direto para um número (ex.: lembrete de follow-up para o
+     próprio dono), SEM criar conversa no CRM — não é um lead. */
+  async sendNotification(phone, text) {
+    if (!this.sock || this.status !== "CONNECTED") throw new ApiError(409, "Conecte o WhatsApp via Baileys antes de enviar avisos.");
+    const clean = normalizeWhatsAppPhone(phone);
+    if (!clean) throw new ApiError(400, "Número de aviso inválido. Configure FOLLOWUP_NOTIFY_PHONE com DDI.");
+    const phoneJid = jidNormalizedUser(`${clean}@s.whatsapp.net`);
+    let recipient;
+    try {
+      const matches = await this.sock.onWhatsApp(phoneJid);
+      recipient = matches?.find(match => match.exists && match.jid);
+    } catch (error) {
+      throw new ApiError(502, `Não foi possível validar o número de aviso no WhatsApp.${error?.message ? ` (${error.message})` : ""}`);
+    }
+    if (!recipient) throw new ApiError(400, "O número de aviso (FOLLOWUP_NOTIFY_PHONE) não foi encontrado no WhatsApp.");
+    try {
+      await this.sock.sendMessage(jidNormalizedUser(recipient.jid), { text });
+    } catch (error) {
+      throw new ApiError(502, `O WhatsApp não aceitou o envio do aviso${error?.message ? ` (${error.message})` : ""}.`);
+    }
+    this.lastSyncAt = new Date().toISOString();
+    return { phone: clean, status: "sent" };
+  }
+
   async handleMessageUpdates(updates) {
     for (const item of updates || []) {
       const messageId = item?.key?.id;

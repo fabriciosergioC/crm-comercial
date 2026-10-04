@@ -2149,7 +2149,6 @@ function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, onOpenHistory, 
           <TooltipText {...cellTooltipProps} value={`${lead.city} · ${lead.segment}`} className="block text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }} />
         </span>
         <span className="min-w-0"><StatusPill status={lead.status} /></span>
-        <span className="min-w-0"><TempPill temperature={lead.temperature} /></span>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); if (onOpenHistory) onOpenHistory(lead); }}
@@ -2322,10 +2321,10 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
   const [cellTooltip, setCellTooltip] = useState(null);
   const [historyLead, setHistoryLead] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(true);
-  const [columnWidths, setColumnWidths] = useState([52, 240, 150, 100, 200, 220, 160, 150]);
+  const [columnWidths, setColumnWidths] = useState([52, 240, 150, 200, 220, 160, 150]);
   const clinicaMessageText = "Olá, bom dia/boa tarde!!\nConsigo falar com a {{nome}} por esse número?";
 
-  const columnWidthsRef = useRef([52, 240, 150, 100, 200, 220, 160, 150]);
+  const columnWidthsRef = useRef([52, 240, 150, 200, 220, 160, 150]);
   const minColumnWidth = 90;
   const maxColumnWidth = 600;
   const gridTemplateColumns = useMemo(() => {
@@ -2562,7 +2561,6 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
               >
                 <option value="company">Empresa</option>
                 <option value="status">Status</option>
-                <option value="temperature">Temperatura</option>
                 <option value="history">Histórico</option>
                 <option value="next_action">Próxima ação</option>
                 <option value="last_contact">Último contato</option>
@@ -2592,10 +2590,9 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
               <span className="min-w-0" />
               <ResizableHeader label="Empresa" sortKey="company" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={1} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
               <ResizableHeader label="Status" sortKey="status" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={2} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <ResizableHeader label="Temp." sortKey="temperature" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={3} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <ResizableHeader label="Histórico" sortKey="history" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={4} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <ResizableHeader label="Próxima ação" sortKey="next_action" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={5} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <ResizableHeader label="Último contato" sortKey="last_contact" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={6} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Histórico" sortKey="history" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={3} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Próxima ação" sortKey="next_action" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={4} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Último contato" sortKey="last_contact" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={5} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
               <span className="min-w-0 text-center">Ação</span>
             </div>
             {filtered.length === 0 ? (

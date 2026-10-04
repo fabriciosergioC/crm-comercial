@@ -167,6 +167,13 @@ class MockWhatsAppProvider extends WhatsAppProvider {
     return clone(message);
   }
 
+  async sendNotification(phone, text) {
+    if (this.status !== "CONNECTED") return null;
+    console.log(`[mock-whatsapp] Aviso para ${phone}: ${text}`);
+    this.lastSyncAt = new Date().toISOString();
+    return { phone: String(phone || "").replace(/\D/g, ""), status: "sent" };
+  }
+
   async simulateIncomingMessage(id) {
     const conversation = this.conversations.find(item => item.id === id);
     if (!conversation) return null;
