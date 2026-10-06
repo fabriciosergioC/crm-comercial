@@ -1357,8 +1357,8 @@ function ToastStack({ toasts }) {
         const Icon = t.tone === "error" ? AlertTriangle : CheckCircle2;
         return (
           <div key={t.id} className="pointer-events-auto gc-toast-in flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium max-w-sm"
-            style={{ background: "var(--ink)", color: "#fff", boxShadow: "0 12px 28px rgba(23,25,28,0.25)" }}>
-            <Icon size={16} style={{ color: tone === "danger" ? "#F0B4A3" : tone === "accent" ? "#9FD3E8" : "#A9DBB0", flexShrink: 0 }} />
+            style={{ background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line-strong)", boxShadow: "0 12px 28px rgba(0,0,0,0.25)" }}>
+            <Icon size={16} style={{ color: tone === "danger" ? "var(--danger)" : tone === "accent" ? "var(--accent)" : "var(--success)", flexShrink: 0 }} />
             <span className="truncate">{t.message}</span>
           </div>
         );
