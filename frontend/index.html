@@ -1796,55 +1796,72 @@ function NotificationPanel({ items, onClose, onOpenLead }) {
   );
 }
 
-function ThemePicker() {
-  const presets = (window.GCTheme && window.GCTheme.PRESETS) || [];
-  const [open, setOpen] = useState(false);
-  const [color, setColor] = useState(() => (window.GCTheme ? window.GCTheme.get() : "#2C5F72"));
+function ThemeSwatch({ theme, active, onClick }) {
+  const tk = theme.tokens;
+  return (
+    <button type="button" onClick={onClick} title={theme.name} aria-label={theme.name}
+      className="gc-focus gc-pressable text-left"
+      style={{ borderRadius: 10, padding: 8, background: "var(--surface)", border: active ? "2px solid var(--accent)" : "1px solid var(--line-strong)" }}>
+      <span style={{ display: "block", height: 46, borderRadius: 6, background: tk["--paper"], border: "1px solid " + tk["--line"], position: "relative", overflow: "hidden" }}>
+        <span style={{ position: "absolute", left: 6, top: 6, width: "48%", height: 15, borderRadius: 3, background: tk["--surface"], border: "1px solid " + tk["--line"] }} />
+        <span style={{ position: "absolute", right: 6, top: 8, width: "32%", height: 6, borderRadius: 3, background: tk["--ink"], opacity: 0.5 }} />
+        <span style={{ position: "absolute", right: 6, top: 18, width: "22%", height: 6, borderRadius: 3, background: tk["--slate"], opacity: 0.55 }} />
+        <span style={{ position: "absolute", left: 6, bottom: 6, width: 15, height: 15, borderRadius: 9999, background: tk["--accent"] }} />
+        <span style={{ position: "absolute", left: 25, bottom: 6, width: "40%", height: 15, borderRadius: 4, background: tk["--accent-soft"], border: "1px solid " + tk["--accent-soft-strong"] }} />
+      </span>
+      <span className="flex items-center gap-1.5" style={{ marginTop: 7 }}>
+        <span className="text-xs font-medium truncate" style={{ color: "var(--ink-soft)" }}>{theme.name}</span>
+        {active && <span className="ml-auto text-xs" style={{ color: "var(--accent)" }}>✓</span>}
+      </span>
+    </button>
+  );
+}
 
-  const applyColor = (hex) => {
-    if (!window.GCTheme || !window.GCTheme.isValid(hex)) return;
-    setColor(hex);
-    window.GCTheme.apply(hex);
-  };
-  const resetTheme = () => {
-    if (!window.GCTheme) return;
-    window.GCTheme.reset();
-    setColor(window.GCTheme.DEFAULT_ACCENT);
-  };
+function ThemePicker() {
+  const themes = (window.GCTheme && window.GCTheme.THEMES) || [];
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState(() => (window.GCTheme ? window.GCTheme.getState() : { id: "petroleo", accent: null }));
+
+  const current = themes.find(t => t.id === state.id) || themes[0];
+  const accentColor = state.accent || (current && current.tokens["--accent"]) || "#2C5F72";
+  const sync = () => setState(window.GCTheme.getState());
+
+  const chooseTheme = (id) => { if (window.GCTheme.applyTheme(id)) sync(); };
+  const chooseAccent = (hex) => { if (window.GCTheme.isValid(hex) && window.GCTheme.applyAccent(hex)) sync(); };
+  const resetTheme = () => { window.GCTheme.reset(); sync(); };
 
   return (
     <div className="relative">
-      <IconButton icon={Palette} label="Cor do site" active={open} onClick={() => setOpen(v => !v)} />
+      <IconButton icon={Palette} label="Tema da tela" active={open} onClick={() => setOpen(v => !v)} />
       {open && (
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-11 w-[calc(100vw-1.5rem)] sm:w-80 rounded-xl z-30 gc-pop-in" style={{ background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 12px 32px rgba(23,25,28,0.14)" }}>
-            <div className="px-4 py-3 font-semibold text-sm gc-display flex items-center justify-between gap-2" style={{ borderBottom: "1px solid var(--line)" }}>
-              <span>Cor do site</span>
+          <div className="absolute right-0 top-11 w-[calc(100vw-1.5rem)] sm:w-80 rounded-xl z-30 gc-pop-in gc-scroll overflow-y-auto" style={{ maxHeight: "min(72vh, 540px)", background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }}>
+            <div className="px-4 py-3 font-semibold text-sm gc-display flex items-center justify-between gap-2" style={{ borderBottom: "1px solid var(--line)", position: "sticky", top: 0, background: "var(--surface)", zIndex: 1 }}>
+              <span>Tema da tela</span>
               <button type="button" onClick={resetTheme} className="text-xs gc-focus rounded px-1.5 py-0.5" style={{ color: "var(--slate)" }}>Restaurar padrão</button>
             </div>
             <div className="p-4">
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
-                {presets.map(p => {
-                  const active = String(p.hex).toLowerCase() === String(color).toLowerCase();
-                  return (
-                    <button key={p.hex} type="button" title={p.name} aria-label={p.name} onClick={() => applyColor(p.hex)}
-                      className="gc-focus gc-pressable flex items-center justify-center"
-                      style={{ height: 44, borderRadius: 8, background: p.hex, border: active ? "2px solid var(--ink)" : "1px solid var(--line-strong)" }}>
-                      {active && <span className="text-white text-sm leading-none">✓</span>}
-                    </button>
-                  );
-                })}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                {themes.map(t => <ThemeSwatch key={t.id} theme={t} active={t.id === state.id} onClick={() => chooseTheme(t.id)} />)}
               </div>
-              <label className="flex items-center gap-3 mt-4 rounded-lg px-3 py-2 cursor-pointer" style={{ border: "1px solid var(--line-strong)" }}>
-                <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : "#2C5F72"}
-                  onChange={(e) => applyColor(e.target.value)}
-                  className="gc-focus shrink-0"
-                  style={{ width: 36, height: 36, padding: 0, borderRadius: 9999, background: "transparent", border: "1px solid var(--line-strong)", cursor: "pointer" }}
-                  aria-label="Escolher cor personalizada" />
-                <span className="text-sm" style={{ color: "var(--ink-soft)" }}>Cor personalizada</span>
-                <span className="ml-auto text-xs gc-mono" style={{ color: "var(--slate)" }}>{String(color).toUpperCase()}</span>
-              </label>
+              <div style={{ borderTop: "1px solid var(--line)", marginTop: 16, paddingTop: 12 }}>
+                <div className="text-xs font-medium" style={{ color: "var(--slate)", marginBottom: 8 }}>Cor de destaque</div>
+                <label className="flex items-center gap-3 rounded-lg px-3 py-2 cursor-pointer" style={{ border: "1px solid var(--line-strong)" }}>
+                  <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(accentColor) ? accentColor : "#2C5F72"}
+                    onChange={(e) => chooseAccent(e.target.value)}
+                    className="gc-focus shrink-0"
+                    style={{ width: 36, height: 36, padding: 0, borderRadius: 9999, background: "transparent", border: "1px solid var(--line-strong)", cursor: "pointer" }}
+                    aria-label="Cor de destaque personalizada" />
+                  <span className="text-sm" style={{ color: "var(--ink-soft)" }}>Personalizada</span>
+                  <span className="ml-auto text-xs gc-mono" style={{ color: "var(--slate)" }}>{String(accentColor).toUpperCase()}</span>
+                </label>
+                {state.accent && (
+                  <button type="button" onClick={() => { window.GCTheme.clearAccent(); sync(); }} className="text-xs gc-focus rounded px-1.5 py-1" style={{ color: "var(--slate)", marginTop: 8 }}>
+                    Usar a cor de destaque do tema
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </>
@@ -1856,7 +1873,7 @@ function ThemePicker() {
 function Topbar({ db, currentUser, setCurrentUser, onSearch, search, attention, onOpenLead, onMenu, onLogout, searchInputRef, apiStatus, onSeedDemo }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const results = useMemo(() => globalSearch(search, db), [search, db]);
+  const results = useMemo(() => globalSearch(search, db), [db, search]);
 
   return (
     <div className="sticky top-0 z-20 flex items-center gap-2 md:gap-3 px-3 md:px-6 py-2 md:py-3" style={{ background: "var(--paper)", borderBottom: "1px solid var(--line)" }}>
