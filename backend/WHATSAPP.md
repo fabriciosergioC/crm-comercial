@@ -29,6 +29,7 @@ elas voltam aos exemplos iniciais quando o backend reinicia.
 - `POST /api/whatsapp/conversations/:id/open` — atendente abriu a conversa; aplica a transição de abertura e devolve o histórico.
 - `PATCH /api/whatsapp/conversations/:id/status` — corpo `{ "status": "Resolvido" }`; só aceita os estados abaixo (400 fora disso).
 - `POST /api/whatsapp/conversations/:id/messages`
+- `POST /api/whatsapp/conversations/:id/messages/media?kind=image|audio` — recebe imagem ou áudio binário (máximo 8 MB); `caption` opcional para imagem.
 
 Toda a integração passa por `WhatsAppService` e pela interface
 `WhatsAppProvider`.
@@ -68,6 +69,14 @@ Na interface do WhatsApp, a aba **Leads** permite buscar contatos cadastrados e
 abrir uma conversa usando o campo WhatsApp do lead ou, se estiver vazio, o
 telefone. A conversa existente para o mesmo número é reutilizada.
 O envio de mensagens exige que o WhatsApp esteja conectado.
+No chat, imagens JPEG/PNG/WebP e áudios OGG/MP3/M4A/WebM/WAV podem ser
+selecionados e enviados pelo Baileys; o microfone também pode gravar áudio no
+navegador. Antes do envio, os áudios são convertidos para OGG/Opus mono para
+compatibilidade com os clientes WhatsApp. A conversão usa o binário incluído
+por `ffmpeg-static`; a ponte inclui esse binário no executável autocontido. Os
+arquivos são transmitidos ao WhatsApp e não ficam armazenados no
+banco do CRM; no histórico local fica um marcador (`[Imagem enviada]` ou
+`[Áudio enviado]`).
 
 ## Teste
 

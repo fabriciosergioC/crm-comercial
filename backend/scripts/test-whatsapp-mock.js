@@ -5,8 +5,36 @@ const assert = require("node:assert/strict");
 const MockWhatsAppProvider = require("../services/whatsapp/MockWhatsAppProvider");
 const WhatsAppService = require("../services/whatsapp/WhatsAppService").WhatsAppService;
 const { ApiError } = require("../middleware/errorHandler");
+const { convertToOggOpus } = require("../services/whatsapp/audioConverter");
+
+function createTestWav() {
+  const sampleRate = 16000;
+  const sampleCount = 1600;
+  const dataSize = sampleCount * 2;
+  const wav = Buffer.alloc(44 + dataSize);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(36 + dataSize, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(dataSize, 40);
+  for (let i = 0; i < sampleCount; i++) {
+    wav.writeInt16LE(Math.round(Math.sin(2 * Math.PI * 440 * i / sampleRate) * 12000), 44 + i * 2);
+  }
+  return wav;
+}
 
 async function main() {
+  const convertedAudio = await convertToOggOpus(createTestWav());
+  assert.equal(convertedAudio.subarray(0, 4).toString(), "OggS");
+  await assert.rejects(convertToOggOpus(Buffer.from("not an audio file")));
+
   const provider = new MockWhatsAppProvider();
   const service = new WhatsAppService(provider);
 
@@ -45,6 +73,11 @@ async function main() {
   assert.equal(sent.direction, "outgoing");
   assert.equal(sent.status, "sent");
   assert.equal(sent.content, "Teste mock");
+
+  await assert.rejects(
+    service.sendMedia(conversations[0].id, { kind: "image", buffer: Buffer.from("x"), mimeType: "image/svg+xml" }),
+    error => error instanceof ApiError && error.status === 400
+  );
 
   /* Enviou -> agora o CRM espera o cliente. */
   let current = await service.getConversation(conversations[0].id);
@@ -93,11 +126,15 @@ async function main() {
   /* Rótulos antigos (antes da renomeação) continuam sendo entendidos,
      então rodar a migração 007 é opcional. */
   const { normalize } = require("../services/whatsapp/conversationStatus");
+  const { messageStatusAfterSend } = require("../services/whatsapp/phoneUtils");
   assert.equal(normalize("Em atendimento"), "Atendimento iniciado");
   assert.equal(normalize("Aguardando cliente"), "Aguardando resposta");
   assert.equal(normalize("Aguardando atendente"), "Respondido");
   assert.equal(normalize("Aguardando resposta"), "Aguardando resposta");
   assert.equal(normalize("Respondido"), "Respondido");
+  assert.equal(messageStatusAfterSend(1), "sent");
+  assert.equal(messageStatusAfterSend(2), "sent");
+  assert.equal(messageStatusAfterSend("delivered"), "delivered");
 
   const conversation = await service.getConversation(conversations[0].id);
   assert.equal(conversation.messages.at(-2).content, "Teste mock");
@@ -171,6 +208,26 @@ async function main() {
     assert.equal(openResult.response.status, 200);
     assert.equal(openResult.data.data.status, "Resolvido");
     assert.ok(Array.isArray(openResult.data.data.messages));
+
+    const mediaQuery = new URLSearchParams({ kind: "image", caption: "Prévia do serviço", sentBy: "tester" });
+    const mediaResponse = await fetch(`${baseUrl}/conversations/${conversationId}/messages/media?${mediaQuery}`, {
+      method: "POST",
+      headers: { "Content-Type": "image/png" },
+      body: Buffer.from("mock-image"),
+    });
+    const mediaResult = await mediaResponse.json();
+    assert.equal(mediaResponse.status, 201);
+    assert.equal(mediaResult.data.content, "Prévia do serviço");
+
+    const audioQuery = new URLSearchParams({ kind: "audio", sentBy: "tester" });
+    const audioResponse = await fetch(`${baseUrl}/conversations/${conversationId}/messages/media?${audioQuery}`, {
+      method: "POST",
+      headers: { "Content-Type": "audio/ogg" },
+      body: Buffer.from("mock-audio"),
+    });
+    const audioResult = await audioResponse.json();
+    assert.equal(audioResponse.status, 201);
+    assert.equal(audioResult.data.content, "[Áudio enviado]");
 
     const disconnectResult = await request("/disconnect", "POST", {});
     assert.equal(disconnectResult.data.data.status, "DISCONNECTED");

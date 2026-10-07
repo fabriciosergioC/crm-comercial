@@ -25,4 +25,9 @@ function messageStatusFromBaileys(status) {
   return statuses[status] || null;
 }
 
-module.exports = { phoneDigits, normalizeWhatsAppPhone, messageStatusFromBaileys };
+function messageStatusAfterSend(status) {
+  const normalized = typeof status === "string" ? status : messageStatusFromBaileys(status);
+  return normalized && normalized !== "pending" ? normalized : "sent";
+}
+
+module.exports = { phoneDigits, normalizeWhatsAppPhone, messageStatusFromBaileys, messageStatusAfterSend };

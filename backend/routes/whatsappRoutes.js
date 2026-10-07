@@ -60,4 +60,21 @@ router.post("/conversations/:id/messages", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.post(
+  "/conversations/:id/messages/media",
+  express.raw({ type: ["image/*", "audio/*"], limit: "8mb" }),
+  async (req, res, next) => {
+    try {
+      const message = await whatsappService.sendMedia(req.params.id, {
+        kind: req.query.kind,
+        buffer: req.body,
+        mimeType: req.get("Content-Type")?.split(";")[0].trim().toLowerCase(),
+        caption: typeof req.query.caption === "string" ? req.query.caption : "",
+        sentBy: typeof req.query.sentBy === "string" ? req.query.sentBy.slice(0, 80) : "Usuário",
+      });
+      res.status(201).json({ success: true, data: message });
+    } catch (error) { next(error); }
+  }
+);
+
 module.exports = router;

@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const esbuild = require('esbuild');
+const ffmpegPath = require('ffmpeg-static');
 
 const ROOT = path.join(__dirname, '..');
 const ENV_PATH = path.join(ROOT, 'backend', '.env');
@@ -29,6 +30,7 @@ function readEnv() {
 const LAUNCHER_BAT = [
   '@echo off',
   'title Ponte do WhatsApp - CRM Comercial',
+  'set "FFMPEG_BIN=%~dp0ffmpeg.exe"',
   '"%~dp0node.exe" "%~dp0bridge.bundle.cjs"',
   'echo.',
   'echo Processo encerrado. Pressione uma tecla para fechar.',
@@ -73,6 +75,10 @@ async function main() {
   fs.mkdirSync(SFX_SRC, { recursive: true });
   fs.copyFileSync(process.execPath, path.join(SFX_SRC, 'node.exe'));
   fs.copyFileSync(path.join(DIST, 'bridge.bundle.cjs'), path.join(SFX_SRC, 'bridge.bundle.cjs'));
+  if (!ffmpegPath || !fs.existsSync(ffmpegPath)) {
+    throw new Error('O binário ffmpeg-static não está disponível para incluir na ponte.');
+  }
+  fs.copyFileSync(ffmpegPath, path.join(SFX_SRC, 'ffmpeg.exe'));
   fs.writeFileSync(path.join(SFX_SRC, 'run-bridge.bat'), LAUNCHER_BAT);
   console.log('[build] pasta SFX montada -> dist/sfx-src');
 

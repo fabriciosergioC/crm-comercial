@@ -31,6 +31,7 @@ class VercelWhatsAppProvider extends WhatsAppProvider {
   openLeadConversation() { return this.unavailable(); }
   getConversation() { return this.unavailable(); }
   sendText() { return this.unavailable(); }
+  sendMedia() { return this.unavailable(); }
   sendNotification() { return this.unavailable(); }
   deleteConversation() { return this.unavailable(); }
   markConversationOpen() { return this.unavailable(); }
@@ -84,6 +85,32 @@ class WhatsAppService {
     const status = await this.provider.getStatus();
     if (status.status !== "CONNECTED") throw new ApiError(409, "Conecte o WhatsApp via Baileys antes de enviar mensagens.");
     const message = await this.provider.sendText(id, content.trim(), sentBy);
+    if (!message) throw new ApiError(404, "Conversa não encontrada.");
+    return message;
+  }
+  async sendMedia(id, { kind, buffer, mimeType, caption = "", sentBy }) {
+    const allowedTypes = {
+      image: new Set(["image/jpeg", "image/png", "image/webp"]),
+      audio: new Set(["audio/ogg", "audio/mpeg", "audio/mp4", "audio/webm", "audio/wav", "audio/x-wav", "audio/aac"]),
+      voice: new Set(["audio/ogg", "audio/mp4", "audio/webm"]),
+    };
+    if (!allowedTypes[kind] || !Buffer.isBuffer(buffer) || buffer.length === 0) {
+      throw new ApiError(400, "Anexo inválido. Escolha uma imagem ou um arquivo de áudio.");
+    }
+    if (!allowedTypes[kind].has(mimeType)) {
+      throw new ApiError(400, kind === "image"
+        ? "Formato de imagem não suportado. Use JPEG, PNG ou WebP."
+        : "Formato de áudio não suportado.");
+    }
+    if (buffer.length > 8 * 1024 * 1024) {
+      throw new ApiError(413, "O arquivo excede o limite de 8 MB.");
+    }
+    if (typeof caption !== "string" || caption.length > 4000) {
+      throw new ApiError(400, "A legenda não pode ultrapassar 4.000 caracteres.");
+    }
+    const status = await this.provider.getStatus();
+    if (status.status !== "CONNECTED") throw new ApiError(409, "Conecte o WhatsApp via Baileys antes de enviar arquivos.");
+    const message = await this.provider.sendMedia(id, { kind, buffer, mimeType, caption: caption.trim(), sentBy });
     if (!message) throw new ApiError(404, "Conversa não encontrada.");
     return message;
   }

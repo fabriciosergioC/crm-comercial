@@ -15,8 +15,9 @@ const {
   downloadMediaMessage,
 } = require("@whiskeysockets/baileys");
 const WhatsAppProvider = require("./WhatsAppProvider");
-const { phoneDigits, normalizeWhatsAppPhone, messageStatusFromBaileys } = require("./phoneUtils");
+const { phoneDigits, normalizeWhatsAppPhone, messageStatusFromBaileys, messageStatusAfterSend } = require("./phoneUtils");
 const conversationStatus = require("./conversationStatus");
+const { convertToOggOpus } = require("./audioConverter");
 const { supabase, isConfigured: supabaseConfigured } = require("../../config/supabase");
 const { ApiError } = require("../../middleware/errorHandler");
 
@@ -412,9 +413,25 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     let data = existing.data;
     if (!data) {
       const created = await supabase.from("whatsapp_conversations").insert({ phone: clean, contact_name: contactName || clean, company, status: conversationStatus.DEFAULT_STATUS, unread_count: 0, updated_at: new Date().toISOString() }).select().single();
-      if (created.error) throw databaseError(created.error, "Não foi possível criar a conversa no CRM.");
-      data = created.data;
-    } else if ((contactName && contactName !== data.contact_name) || (company && company !== data.company)) {
+      if (created.error?.code === "23505") {
+        /* Uma mensagem recebida pode criar a mesma conversa após o SELECT.
+           A restrição única do telefone garante que a conversa existente pode
+           ser reutilizada em vez de falhar ao abrir o lead. */
+        const raced = await supabase.from("whatsapp_conversations").select("*").eq("phone", clean).maybeSingle();
+        if (raced.error) throw databaseError(raced.error, "Falha ao consultar a conversa recebida.");
+        if (!raced.data) throw databaseError(created.error, "Não foi possível criar a conversa no CRM.");
+        data = raced.data;
+      } else if (created.error) {
+        console.error("[whatsapp] Não foi possível criar conversa.", {
+          code: created.error.code || "unknown",
+          message: created.error.message || "Erro do banco de dados sem mensagem.",
+        });
+        throw databaseError(created.error, "Não foi possível criar a conversa no CRM.");
+      } else {
+        data = created.data;
+      }
+    }
+    if ((contactName && contactName !== data.contact_name) || (company && company !== data.company)) {
       const patch = {};
       if (contactName && contactName !== data.contact_name) patch.contact_name = contactName;
       if (company && company !== data.company) patch.company = company;
@@ -453,7 +470,9 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     }
     const messageId = sent?.key?.id || randomUUID();
     const timestamp = new Date().toISOString();
-    const initialStatus = this.recentMessageStatuses.get(messageId) || messageStatusFromBaileys(sent?.status) || "pending";
+    const initialStatus = messageStatusAfterSend(
+      this.recentMessageStatuses.get(messageId) || sent?.status
+    );
     const { data: saved, error } = await supabase.from("whatsapp_messages").insert({ id: messageId, conversation_id: id, direction: "outgoing", content, timestamp, status: initialStatus, sent_by: sentBy || null, provider_message_id: messageId }).select().single();
     if (error) throw databaseError(error, "A mensagem foi enviada ao WhatsApp, mas não foi possível salvar o histórico.");
     const receiptStatus = this.recentMessageStatuses.get(messageId);
@@ -464,6 +483,75 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     }
     const updated = await supabase.from("whatsapp_conversations").update({ status: conversationStatus.nextOnOutgoing(conversation.status), updated_at: timestamp }).eq("id", id);
     if (updated.error) throw databaseError(updated.error, "A mensagem foi enviada, mas não foi possível atualizar a conversa.");
+    this.lastSyncAt = timestamp;
+    return { id: saved.id, direction: saved.direction, content: saved.content, timestamp: saved.timestamp, status: saved.status, sentBy: saved.sent_by };
+  }
+
+  async sendMedia(id, { kind, buffer, mimeType, caption, sentBy }) {
+    assertSupabase();
+    if (!this.sock || this.status !== "CONNECTED") throw new ApiError(409, "Conecte o WhatsApp via Baileys antes de enviar arquivos.");
+    const { data: conversation, error: conversationError } = await supabase.from("whatsapp_conversations").select("*").eq("id", id).maybeSingle();
+    if (conversationError) throw databaseError(conversationError, "Falha ao consultar o contato antes do envio.");
+    if (!conversation) return null;
+    const phone = normalizeWhatsAppPhone(conversation.phone);
+    if (!phone) throw new ApiError(400, "O contato não tem um número de telefone válido para o WhatsApp.");
+    const phoneJid = jidNormalizedUser(`${phone}@s.whatsapp.net`);
+    let recipient;
+    try {
+      const matches = await this.sock.onWhatsApp(phoneJid);
+      recipient = matches?.find(match => match.exists && match.jid);
+    } catch (error) {
+      throw new ApiError(502, `Não foi possível validar o número no WhatsApp. Tente novamente.${error?.message ? ` (${error.message})` : ""}`);
+    }
+    if (!recipient) throw new ApiError(400, "Este número não foi encontrado no WhatsApp. Confira o DDI, DDD e número cadastrado no lead.");
+
+    let payload;
+    const content = caption || (kind === "image" ? "[Imagem enviada]" : "[Áudio enviado]");
+    if (kind === "image") payload = { image: buffer, mimetype: mimeType, ...(caption ? { caption } : {}) };
+    else {
+      let audio;
+      try {
+        audio = await convertToOggOpus(buffer);
+      } catch (error) {
+        console.error("[whatsapp] Falha ao converter áudio:", error.message);
+        throw new ApiError(422, "Não foi possível preparar o áudio para o WhatsApp. Tente outro arquivo de áudio.");
+      }
+      payload = {
+        audio,
+        mimetype: "audio/ogg; codecs=opus",
+        ptt: kind === "voice",
+      };
+    }
+    let sent;
+    try {
+      sent = await this.sock.sendMessage(jidNormalizedUser(recipient.jid), payload);
+    } catch (error) {
+      const reason = error?.message ? ` (${error.message})` : "";
+      throw new ApiError(502, `O WhatsApp não aceitou o envio do arquivo${reason}.`);
+    }
+
+    const messageId = sent?.key?.id || randomUUID();
+    const timestamp = new Date().toISOString();
+    const initialStatus = messageStatusAfterSend(
+      this.recentMessageStatuses.get(messageId) || sent?.status
+    );
+    const { data: saved, error } = await supabase.from("whatsapp_messages").insert({
+      id: messageId,
+      conversation_id: id,
+      direction: "outgoing",
+      content,
+      timestamp,
+      status: initialStatus,
+      sent_by: sentBy || null,
+      provider_message_id: messageId,
+    }).select().single();
+    if (error) throw databaseError(error, "O arquivo foi enviado ao WhatsApp, mas não foi possível salvar o histórico.");
+    this.recentMessageStatuses.delete(messageId);
+    const updated = await supabase.from("whatsapp_conversations").update({
+      status: conversationStatus.nextOnOutgoing(conversation.status),
+      updated_at: timestamp,
+    }).eq("id", id);
+    if (updated.error) throw databaseError(updated.error, "O arquivo foi enviado, mas não foi possível atualizar a conversa.");
     this.lastSyncAt = timestamp;
     return { id: saved.id, direction: saved.direction, content: saved.content, timestamp: saved.timestamp, status: saved.status, sentBy: saved.sent_by };
   }
@@ -497,6 +585,7 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
       const messageId = item?.key?.id;
       const status = messageStatusFromBaileys(item?.update?.status);
       if (!messageId || !status || !item.key.fromMe) continue;
+      if (status === "pending") continue;
       this.recentMessageStatuses.set(messageId, status);
       if (this.recentMessageStatuses.size > 200) {
         this.recentMessageStatuses.delete(this.recentMessageStatuses.keys().next().value);

@@ -75,6 +75,9 @@ const ExternalLink = (p) => <Icon {...p}><path d="M14 4h6v6" /><line x1="20" y1=
 const List = (p) => <Icon {...p}><line x1="9" y1="6" x2="20" y2="6" /><line x1="9" y1="12" x2="20" y2="12" /><line x1="9" y1="18" x2="20" y2="18" /><line x1="4.5" y1="6" x2="4.51" y2="6" strokeWidth="3" /><line x1="4.5" y1="12" x2="4.51" y2="12" strokeWidth="3" /><line x1="4.5" y1="18" x2="4.51" y2="18" strokeWidth="3" /></Icon>;
 const LayoutGrid = (p) => <Icon {...p}><rect x="3" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" /></Icon>;
 const Send = (p) => <Icon {...p}><path d="M21 3 3 10.5l7.5 3L13.5 21 21 3z" /><line x1="10.5" y1="13.5" x2="21" y2="3" /></Icon>;
+const Paperclip = (p) => <Icon {...p}><path d="m21.4 11.6-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" /></Icon>;
+const Mic = (p) => <Icon {...p}><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8" /></Icon>;
+const ImageIcon = (p) => <Icon {...p}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" /></Icon>;
 const Eye = (p) => <Icon {...p}><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></Icon>;
 const ArrowRight = (p) => <Icon {...p}><line x1="4" y1="12" x2="20" y2="12" /><polyline points="13 5 20 12 13 19" /></Icon>;
 const ChevronDown = (p) => <Icon {...p}><polyline points="6 9 12 15 18 9" /></Icon>;
@@ -839,6 +842,14 @@ const crmApi = {
         method: "POST",
         body: JSON.stringify({ content, sentBy }),
       }),
+    sendMedia: (id, file, kind, caption, sentBy) => {
+      const query = new URLSearchParams({ kind, sentBy: sentBy || "Usuário" });
+      if (caption) query.set("caption", caption);
+      return crmApi.whatsapp.request(
+        `/conversations/${encodeURIComponent(id)}/messages/media?${query}`,
+        { method: "POST", headers: { "Content-Type": file.type }, body: file }
+      );
+    },
     openLeadConversation: leadId =>
       crmApi.whatsapp.request(`/conversations/lead/${encodeURIComponent(leadId)}`, {
         method: "POST",
@@ -4564,6 +4575,7 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
 }
 
 function WhatsAppView({ currentUser }) {
+  const MAX_MEDIA_BYTES = 8 * 1024 * 1024;
   const [status, setStatus] = useState(null);
   const [databaseReady, setDatabaseReady] = useState(false);
   const [conversations, setConversations] = useState([]);
@@ -4576,7 +4588,10 @@ function WhatsAppView({ currentUser }) {
   const [openingLeadId, setOpeningLeadId] = useState(null);
   const [removingConversationId, setRemovingConversationId] = useState(null);
   const [draft, setDraft] = useState("");
+  const [attachment, setAttachment] = useState(null);
+  const [attachmentKind, setAttachmentKind] = useState(null);
   const [quickRepliesOpen, setQuickRepliesOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -4593,6 +4608,27 @@ function WhatsAppView({ currentUser }) {
   const [savingStatus, setSavingStatus] = useState(false);
   const [statusFilter, setStatusFilter] = useState("Todas");
   const statusMenuRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const audioInputRef = useRef(null);
+  const recorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const recordingChunksRef = useRef([]);
+  const attachmentPreviewUrl = useMemo(() => attachment ? URL.createObjectURL(attachment) : "", [attachment]);
+
+  useEffect(() => () => {
+    if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
+  }, [attachmentPreviewUrl]);
+
+  useEffect(() => {
+    setAttachment(null);
+    setAttachmentKind(null);
+    setQuickRepliesOpen(false);
+  }, [conversation?.id]);
+
+  useEffect(() => () => {
+    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+    mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+  }, []);
 
   const loadConversation = async id => {
     const selected = await crmApi.whatsapp.conversation(id);
@@ -4906,17 +4942,99 @@ function WhatsAppView({ currentUser }) {
 
   const send = async event => {
     event?.preventDefault();
-    if (!conversation || !draft.trim() || sending) return;
+    if (!conversation || (!draft.trim() && !attachment) || sending) return;
     setSending(true);
     setError("");
     try {
-      await crmApi.whatsapp.sendText(conversation.id, draft, currentUser || "Usuário");
+      if (attachment) {
+        const kind = attachmentKind || (attachment.type.startsWith("image/") ? "image" : "audio");
+        if (kind === "audio" && draft.trim()) {
+          await crmApi.whatsapp.sendText(conversation.id, draft.trim(), currentUser || "Usuário");
+          setDraft("");
+        }
+        await crmApi.whatsapp.sendMedia(
+          conversation.id,
+          attachment,
+          kind,
+          kind === "image" ? draft.trim() : "",
+          currentUser || "Usuário"
+        );
+        setAttachment(null);
+      } else {
+        await crmApi.whatsapp.sendText(conversation.id, draft, currentUser || "Usuário");
+      }
       setDraft("");
       await refresh(true);
     } catch (requestError) {
       setError(requestError.message || "Não foi possível enviar a mensagem.");
     } finally {
       setSending(false);
+    }
+  };
+
+  const selectAttachment = (file, kind) => {
+    if (!file) return;
+    const validType = kind === "image"
+      ? ["image/jpeg", "image/png", "image/webp"].includes(file.type)
+      : ["audio/ogg", "audio/mpeg", "audio/mp4", "audio/webm", "audio/wav", "audio/x-wav", "audio/aac"].includes(file.type.split(";")[0]);
+    if (!validType) {
+      setError(kind === "image" ? "Escolha uma imagem JPEG, PNG ou WebP." : "Escolha um áudio OGG, MP3, M4A, WebM ou WAV.");
+      return;
+    }
+    if (file.size > MAX_MEDIA_BYTES) {
+      setError("O arquivo excede o limite de 8 MB.");
+      return;
+    }
+    setError("");
+    setAttachment(file);
+    setAttachmentKind(kind);
+  };
+
+  const toggleAudioRecording = async () => {
+    if (recording) {
+      recorderRef.current?.stop();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("Este navegador não permite gravar áudio. Selecione um arquivo de áudio.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      const supportedType = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/mp4"]
+        .find(type => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, supportedType ? { mimeType: supportedType } : undefined);
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = event => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        setRecording(false);
+        setError("Não foi possível gravar o áudio. Tente novamente ou selecione um arquivo.");
+        stream.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+        recorderRef.current = null;
+      };
+      recorder.onstop = () => {
+        const mimeType = recorder.mimeType || supportedType || "audio/webm";
+        const blob = new Blob(recordingChunksRef.current, { type: mimeType });
+        const extension = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "m4a" : "webm";
+        const file = new File([blob], `audio-${Date.now()}.${extension}`, { type: mimeType });
+        stream.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+        recorderRef.current = null;
+        setRecording(false);
+        selectAttachment(file, "voice");
+      };
+      recorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+      setError("");
+    } catch (requestError) {
+      setError(requestError.name === "NotAllowedError"
+        ? "Permita o acesso ao microfone para gravar áudio."
+        : requestError.message || "Não foi possível iniciar a gravação de áudio.");
     }
   };
 
@@ -5250,6 +5368,40 @@ function WhatsAppView({ currentUser }) {
             <header className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: "1px solid var(--line)" }}><div className="min-w-0"><div className="font-medium text-sm truncate">{conversation.contact.name}</div><div className="text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{conversation.contact.company} · {conversation.contact.phone}</div></div><div className="flex items-center gap-2 shrink-0">{activeLead && <Pill tone={STATUS_TONE[activeLead.status] || "slate"}>{activeLead.status}</Pill>}{statusMenuControl}</div></header>
             <div className="flex-1 min-h-0 p-4 space-y-3 overflow-y-auto">{conversation.messages.map(message => <div key={message.id} className={`flex ${message.direction === "outgoing" ? "justify-end" : "justify-start"}`}><div className="max-w-[85%] rounded-xl px-3 py-2" style={{ background: message.direction === "outgoing" ? "var(--accent-soft)" : "var(--surface-sunken)", color: "var(--ink)" }}><div className="text-sm whitespace-pre-wrap break-words">{message.content}</div><div className="text-[10px] text-right mt-1" style={{ color: "var(--slate)" }}>{formatTime(message.timestamp)} · {messageStatusLabel(message.status)}</div></div></div>)}<div ref={messagesEndRef} /></div>
             <form onSubmit={send} className="p-3 space-y-2" style={{ borderTop: "1px solid var(--line)" }}>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                aria-label="Selecionar imagem"
+                onChange={event => { selectAttachment(event.target.files?.[0], "image"); event.target.value = ""; }}
+              />
+              <input
+                ref={audioInputRef}
+                type="file"
+                accept="audio/ogg,audio/mpeg,audio/mp4,audio/webm,audio/wav,audio/aac"
+                className="hidden"
+                aria-label="Selecionar áudio"
+                onChange={event => { selectAttachment(event.target.files?.[0], "audio"); event.target.value = ""; }}
+              />
+              {attachment && (
+                <div className={`${attachment.type.startsWith("image/") ? "inline-flex w-fit max-w-full" : "flex w-full"} items-center gap-3 rounded-lg border p-2`} style={{ borderColor: "var(--line)", background: "var(--surface-sunken)" }}>
+                  {attachment.type.startsWith("image/")
+                    ? <img src={attachmentPreviewUrl} alt="Prévia da imagem para envio" className="h-12 w-12 shrink-0 rounded-md object-contain" style={{ background: "var(--surface)" }} />
+                    : <audio src={attachmentPreviewUrl} controls className="min-w-0 flex-1" aria-label="Prévia do áudio para envio" />}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-medium">{attachment.name}</div>
+                    <div className="text-[11px]" style={{ color: "var(--slate)" }}>{(attachment.size / 1024 / 1024).toFixed(2)} MB · {attachment.type.startsWith("image/") ? "Imagem" : "Áudio"}</div>
+                  </div>
+                  <button type="button" onClick={() => setAttachment(null)} className="rounded-md p-1.5" style={{ color: "var(--slate)" }} aria-label="Remover anexo"><X size={16} /></button>
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="secondary" size="sm" icon={ImageIcon} onClick={() => imageInputRef.current?.click()} disabled={!connected || sending}>Imagem</Button>
+                <Button type="button" variant="secondary" size="sm" icon={Paperclip} onClick={() => audioInputRef.current?.click()} disabled={!connected || sending}>Áudio</Button>
+                <Button type="button" variant={recording ? "danger" : "secondary"} size="sm" icon={Mic} onClick={toggleAudioRecording} disabled={!connected || sending}>{recording ? "Parar gravação" : "Gravar áudio"}</Button>
+                {recording && <span className="text-xs" style={{ color: "var(--danger)" }} role="status">Gravando…</span>}
+              </div>
               <button
                 type="button"
                 onClick={() => setQuickRepliesOpen(open => !open)}
@@ -5279,8 +5431,8 @@ function WhatsAppView({ currentUser }) {
                   ))}
                 </div>
               )}
-              <TextArea value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder="Digite uma mensagem…" rows={2} maxLength={4000} disabled={!connected || sending} aria-label="Mensagem" />
-              <div className="flex items-center justify-between gap-2 flex-wrap"><span className="text-xs" style={{ color: "var(--slate)" }}>Mensagens recebidas aparecem automaticamente.</span><Button type="submit" icon={Send} disabled={!connected || sending || !draft.trim()}>{sending ? "Enviando…" : "Enviar"}</Button></div>
+              <TextArea value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder={attachment?.type.startsWith("image/") ? "Legenda da imagem (opcional)…" : "Digite uma mensagem…"} rows={2} maxLength={4000} disabled={!connected || sending} aria-label={attachment?.type.startsWith("image/") ? "Legenda da imagem" : "Mensagem"} />
+              <div className="flex items-center justify-between gap-2 flex-wrap"><span className="text-xs" style={{ color: "var(--slate)" }}>Mensagens recebidas aparecem automaticamente.</span><Button type="submit" icon={Send} disabled={!connected || sending || (!draft.trim() && !attachment)}>{sending ? "Enviando…" : "Enviar"}</Button></div>
             </form>
           </> : <div className="flex-1 flex items-center justify-center p-6"><EmptyState icon={MessageCircle} title="Selecione uma conversa" hint={connected ? "Envie uma mensagem nova para o WhatsApp conectado; o histórico anterior não é importado automaticamente." : "Depois que o WhatsApp estiver conectado, as novas mensagens recebidas serão sincronizadas aqui."} /></div>}
         </section>

@@ -37,6 +37,10 @@ class WhatsAppProvider {
     throw new Error("sendText() must be implemented by the WhatsApp provider.");
   }
 
+  sendMedia() {
+    throw new Error("sendMedia() must be implemented by the WhatsApp provider.");
+  }
+
   sendNotification() {
     throw new Error("sendNotification() must be implemented by the WhatsApp provider.");
   }
