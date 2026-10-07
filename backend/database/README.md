@@ -14,6 +14,13 @@ Estrutura do banco do CRM. **Nada aqui apaga dados**: só existem
 | 3 | `rls.sql` | Habilita RLS, tira acesso de `anon`/`authenticated`, libera `service_role` |
 | 4 | `migrations/002_auth.sql` | adiciona hash, indicador de troca obrigatória e data da senha em `users` |
 | 5 | `migrations/005_whatsapp_baileys.sql` | cria tabelas e permissões usadas pelo WhatsApp |
+| 6 | `migrations/007_whatsapp_conversation_status.sql` | converge `whatsapp_conversations.status` para os 7 status do ciclo de vida e passa o padrão da coluna para `Novo` |
+| 7 | `migrations/008_whatsapp_respondido_status.sql` | alteração anterior: renomeou `Aguardando resposta` para `Respondido` |
+| 8 | `migrations/009_whatsapp_status_labels.sql` | restaura `Aguardando resposta` e renomeia `Aguardando atendente` para `Respondido` |
+
+Para corrigir um banco em que a migração 008 já foi executada, rode apenas a
+009, uma vez, antes de usar a versão corrigida do CRM. A 009 também funciona
+diretamente em um banco que ainda não recebeu a 008.
 
 **Como aplicar:** cole o conteúdo de cada arquivo, na ordem acima, no **SQL
 Editor** do painel do Supabase.

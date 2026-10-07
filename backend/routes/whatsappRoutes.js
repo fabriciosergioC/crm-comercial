@@ -35,6 +35,24 @@ router.get("/conversations/:id", async (req, res, next) => {
   try { res.set("Cache-Control", "no-store"); res.json({ success: true, data: await whatsappService.getConversation(req.params.id) }); } catch (error) { next(error); }
 });
 
+/* POST /conversations/:id/open — atendente abriu a conversa.
+   Dispara a transição de abertura (Novo / Respondido ->
+   Atendimento iniciado) e devolve a conversa atualizada. */
+router.post("/conversations/:id/open", async (req, res, next) => {
+  try { res.set("Cache-Control", "no-store"); res.json({ success: true, data: await whatsappService.openConversation(req.params.id) }); } catch (error) { next(error); }
+});
+
+/* PATCH /conversations/:id/status   { status }
+   Mudança manual feita pelo atendente no menu de status do chat.
+   Só aceita os estados do ciclo de vida (400 caso contrário). */
+router.patch("/conversations/:id/status", async (req, res, next) => {
+  try {
+    const status = typeof req.body?.status === "string" ? req.body.status : "";
+    res.set("Cache-Control", "no-store");
+    res.json({ success: true, data: await whatsappService.updateStatus(req.params.id, status) });
+  } catch (error) { next(error); }
+});
+
 router.post("/conversations/:id/messages", async (req, res, next) => {
   try {
     const message = await whatsappService.sendText(req.params.id, req.body?.content, typeof req.body?.sentBy === "string" ? req.body.sentBy.slice(0, 80) : "Usuário");

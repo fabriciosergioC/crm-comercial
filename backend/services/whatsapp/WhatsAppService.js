@@ -3,6 +3,7 @@
 const { ApiError } = require("../../middleware/errorHandler");
 const leadsService = require("../leadsService");
 const { normalizeWhatsAppPhone } = require("./phoneUtils");
+const conversationStatus = require("./conversationStatus");
 const WhatsAppProvider = require("./WhatsAppProvider");
 const MockWhatsAppProvider = require("./MockWhatsAppProvider");
 
@@ -32,6 +33,8 @@ class VercelWhatsAppProvider extends WhatsAppProvider {
   sendText() { return this.unavailable(); }
   sendNotification() { return this.unavailable(); }
   deleteConversation() { return this.unavailable(); }
+  markConversationOpen() { return this.unavailable(); }
+  updateConversationStatus() { return this.unavailable(); }
   simulateIncomingMessage() { return this.unavailable(); }
 }
 
@@ -55,6 +58,23 @@ class WhatsAppService {
   }
   async getConversation(id) {
     const conversation = await this.provider.getConversation(id);
+    if (!conversation) throw new ApiError(404, "Conversa não encontrada.");
+    return conversation;
+  }
+  /* Atendente abriu a conversa: aplica a transição de abertura
+     (Novo / Respondido -> Atendimento iniciado) e devolve a conversa. */
+  async openConversation(id) {
+    const conversation = await this.provider.markConversationOpen(id);
+    if (!conversation) throw new ApiError(404, "Conversa não encontrada.");
+    return conversation;
+  }
+  /* Mudança manual do status no menu do chat — só aceita os estados do
+     ciclo de vida; qualquer outro valor é rejeitado antes de tocar no dado. */
+  async updateStatus(id, status) {
+    if (!conversationStatus.isValid(status)) {
+      throw new ApiError(400, `Status inválido. Escolha um destes: ${conversationStatus.STATUSES.join(", ")}.`);
+    }
+    const conversation = await this.provider.updateConversationStatus(id, status);
     if (!conversation) throw new ApiError(404, "Conversa não encontrada.");
     return conversation;
   }

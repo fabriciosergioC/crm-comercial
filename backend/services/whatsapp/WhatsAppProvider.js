@@ -25,6 +25,14 @@ class WhatsAppProvider {
     throw new Error("getConversation() must be implemented by the WhatsApp provider.");
   }
 
+  markConversationOpen() {
+    throw new Error("markConversationOpen() must be implemented by the WhatsApp provider.");
+  }
+
+  updateConversationStatus() {
+    throw new Error("updateConversationStatus() must be implemented by the WhatsApp provider.");
+  }
+
   sendText() {
     throw new Error("sendText() must be implemented by the WhatsApp provider.");
   }

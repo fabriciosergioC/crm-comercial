@@ -2,6 +2,7 @@
 
 const { randomUUID } = require("node:crypto");
 const WhatsAppProvider = require("./WhatsAppProvider");
+const { isValid, nextOnIncoming, nextOnOpen, nextOnOutgoing, normalize } = require("./conversationStatus");
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -17,7 +18,7 @@ function createSeedConversations() {
         phone: "5531999990001",
         company: "Clínica Vida"
       },
-      status: "Em atendimento",
+      status: "Respondido",
       unreadCount: 1,
       messages: [
         {
@@ -105,7 +106,7 @@ class MockWhatsAppProvider extends WhatsAppProvider {
       return {
         id: conversation.id,
         contact: conversation.contact,
-        status: conversation.status,
+        status: normalize(conversation.status),
         unreadCount: conversation.unreadCount,
         lastMessage
       };
@@ -119,17 +120,39 @@ class MockWhatsAppProvider extends WhatsAppProvider {
       existing.contact.name = lead.contactName || existing.contact.name;
       existing.contact.company = lead.company || existing.contact.company;
       existing.unreadCount = 0;
+      existing.status = nextOnOpen(existing.status);
       return clone(existing);
     }
 
     const conversation = {
       id: `mock-conversation-${randomUUID()}`,
       contact: { name: lead.contactName || phone, phone, company: lead.company || "" },
-      status: "Em atendimento",
+      status: "Atendimento iniciado",
       unreadCount: 0,
       messages: []
     };
     this.conversations.unshift(conversation);
+    this.lastSyncAt = new Date().toISOString();
+    return clone(conversation);
+  }
+
+  /* Atendente abriu a conversa: "Novo" e "Respondido" viram
+     "Atendimento iniciado"; estados escolhidos à mão são preservados. */
+  async markConversationOpen(id) {
+    const conversation = this.conversations.find(item => item.id === id);
+    if (!conversation) return null;
+    conversation.status = nextOnOpen(conversation.status);
+    conversation.unreadCount = 0;
+    this.lastSyncAt = new Date().toISOString();
+    return clone(conversation);
+  }
+
+  /* Mudança manual feita pelo atendente no menu do chat. */
+  async updateConversationStatus(id, status) {
+    const conversation = this.conversations.find(item => item.id === id);
+    if (!conversation) return null;
+    if (!isValid(status)) return null;
+    conversation.status = status;
     this.lastSyncAt = new Date().toISOString();
     return clone(conversation);
   }
@@ -162,7 +185,7 @@ class MockWhatsAppProvider extends WhatsAppProvider {
       sentBy
     };
     conversation.messages.push(message);
-    conversation.status = "Aguardando resposta";
+    conversation.status = nextOnOutgoing(conversation.status);
     this.lastSyncAt = message.timestamp;
     return clone(message);
   }
@@ -186,7 +209,7 @@ class MockWhatsAppProvider extends WhatsAppProvider {
       status: "delivered"
     };
     conversation.messages.push(message);
-    conversation.status = "Em atendimento";
+    conversation.status = nextOnIncoming(conversation.status);
     conversation.unreadCount += 1;
     this.lastSyncAt = message.timestamp;
     return clone(message);

@@ -16,6 +16,7 @@ const {
 } = require("@whiskeysockets/baileys");
 const WhatsAppProvider = require("./WhatsAppProvider");
 const { phoneDigits, normalizeWhatsAppPhone, messageStatusFromBaileys } = require("./phoneUtils");
+const conversationStatus = require("./conversationStatus");
 const { supabase, isConfigured: supabaseConfigured } = require("../../config/supabase");
 const { ApiError } = require("../../middleware/errorHandler");
 
@@ -336,14 +337,45 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
   async openLeadConversation(lead) {
     assertSupabase();
     const row = await this.ensureConversation(lead.phone, lead.contactName, lead.company);
+    await this.markConversationOpen(row.id);
     return this.getConversation(row.id);
+  }
+
+  /* Atendente abriu a conversa: "Novo" e "Respondido" passam a
+     "Atendimento iniciado". Resolvido/Cancelado/Arquivado e "Aguardando
+     resposta" são preservados — a abertura sozinha não reabre um caso encerrado. */
+  async markConversationOpen(id) {
+    assertSupabase();
+    const { data: row, error } = await supabase.from("whatsapp_conversations").select("*").eq("id", id).maybeSingle();
+    if (error) throw databaseError(error, "Falha ao consultar a conversa do WhatsApp.");
+    if (!row) return null;
+    const next = conversationStatus.nextOnOpen(row.status);
+    /* Nada muda: só devolve a conversa (getConversation já zera o não lido). */
+    if (next === conversationStatus.normalize(row.status)) return this.getConversation(id);
+    const { error: updateError } = await supabase.from("whatsapp_conversations").update({ status: next, unread_count: 0 }).eq("id", id);
+    if (updateError) throw databaseError(updateError, "Não foi possível marcar a conversa como em atendimento.");
+    return this.getConversation(id);
+  }
+
+  /* Mudança manual do atendente pelo menu de status do chat. */
+  async updateConversationStatus(id, status) {
+    assertSupabase();
+    const { data: row, error } = await supabase.from("whatsapp_conversations").select("id").eq("id", id).maybeSingle();
+    if (error) throw databaseError(error, "Falha ao consultar a conversa do WhatsApp.");
+    if (!row) return null;
+    const { error: updateError } = await supabase.from("whatsapp_conversations").update({ status }).eq("id", id);
+    if (updateError) throw databaseError(updateError, "Não foi possível atualizar o status da conversa.");
+    return this.getConversation(id);
   }
 
   mapConversation(row, lastMessage = null) {
     return {
       id: row.id,
       contact: { name: row.contact_name || row.phone, phone: row.phone, company: row.company || "" },
-      status: row.status || "Em atendimento",
+      /* normalize() converte rótulos antigos (ex.: "Em atendimento",
+         "Aguardando cliente") para o ciclo de vida atual sem precisar de
+         migração de dados. */
+      status: conversationStatus.normalize(row.status),
       unreadCount: row.unread_count || 0,
       lastMessage: lastMessage ? { id: lastMessage.id, direction: lastMessage.direction, content: lastMessage.content, timestamp: lastMessage.timestamp, status: lastMessage.status } : null,
     };
@@ -379,7 +411,7 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     if (existing.error) throw databaseError(existing.error, "Falha ao consultar a conversa recebida.");
     let data = existing.data;
     if (!data) {
-      const created = await supabase.from("whatsapp_conversations").insert({ phone: clean, contact_name: contactName || clean, company, status: "Em atendimento", unread_count: 0, updated_at: new Date().toISOString() }).select().single();
+      const created = await supabase.from("whatsapp_conversations").insert({ phone: clean, contact_name: contactName || clean, company, status: conversationStatus.DEFAULT_STATUS, unread_count: 0, updated_at: new Date().toISOString() }).select().single();
       if (created.error) throw databaseError(created.error, "Não foi possível criar a conversa no CRM.");
       data = created.data;
     } else if ((contactName && contactName !== data.contact_name) || (company && company !== data.company)) {
@@ -430,7 +462,7 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
       const receiptUpdate = await supabase.from("whatsapp_messages").update({ status: receiptStatus }).eq("provider_message_id", messageId);
       if (receiptUpdate.error) throw databaseError(receiptUpdate.error, "Não foi possível salvar a confirmação de entrega da mensagem.");
     }
-    const updated = await supabase.from("whatsapp_conversations").update({ status: "Aguardando resposta", updated_at: timestamp }).eq("id", id);
+    const updated = await supabase.from("whatsapp_conversations").update({ status: conversationStatus.nextOnOutgoing(conversation.status), updated_at: timestamp }).eq("id", id);
     if (updated.error) throw databaseError(updated.error, "A mensagem foi enviada, mas não foi possível atualizar a conversa.");
     this.lastSyncAt = timestamp;
     return { id: saved.id, direction: saved.direction, content: saved.content, timestamp: saved.timestamp, status: saved.status, sentBy: saved.sent_by };
@@ -491,7 +523,7 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
       const messageId = msg.key?.id || randomUUID();
       const inserted = await supabase.from("whatsapp_messages").upsert({ id: messageId, conversation_id: conversation.id, direction: "incoming", content, timestamp, status: "delivered", provider_message_id: messageId }, { onConflict: "id" });
       if (inserted.error) throw databaseError(inserted.error, "Não foi possível salvar a mensagem recebida.");
-      const updated = await supabase.from("whatsapp_conversations").update({ status: "Em atendimento", unread_count: (conversation.unread_count || 0) + 1, updated_at: timestamp, contact_name: contactName || conversation.contact_name }).eq("id", conversation.id);
+      const updated = await supabase.from("whatsapp_conversations").update({ status: conversationStatus.nextOnIncoming(conversation.status), unread_count: (conversation.unread_count || 0) + 1, updated_at: timestamp, contact_name: contactName || conversation.contact_name }).eq("id", conversation.id);
       if (updated.error) throw databaseError(updated.error, "Não foi possível atualizar a conversa recebida.");
       this.lastSyncAt = timestamp;
     }

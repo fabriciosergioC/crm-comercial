@@ -87,6 +87,60 @@ const Sparkles = (p) => <Icon {...p}><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12
 const Loader2 = (p) => <Icon {...p}><path d="M12 3a9 9 0 1 0 9 9" /></Icon>;
 const Download = (p) => <Icon {...p}><path d="M12 3v12" /><polyline points="7 11 12 16 17 11" /><line x1="4" y1="20" x2="20" y2="20" /></Icon>;
 const Palette = (p) => <Icon {...p}><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H16a5 5 0 0 0 5-5c0-3.9-4-7-9-7z" /><circle cx="7.5" cy="11.5" r="1" fill="currentColor" stroke="none" /><circle cx="10.5" cy="7.5" r="1" fill="currentColor" stroke="none" /><circle cx="15" cy="8" r="1" fill="currentColor" stroke="none" /></Icon>;
+const Volume2 = (p) => <Icon {...p}><path d="M11 5 6 9H3v6h3l5 4V5z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M18 6a8 8 0 0 1 0 12" /></Icon>;
+const VolumeX = (p) => <Icon {...p}><path d="M11 5 6 9H3v6h3l5 4V5z" /><line x1="16" y1="9" x2="22" y2="15" /><line x1="22" y1="9" x2="16" y2="15" /></Icon>;
+
+/* Som de notificação sintetizado via Web Audio (sem arquivo externo).
+   O AudioContext só é criado no primeiro play — navegadores exigem gesto do
+   usuário, então o som toca a partir da primeira interação com a página. */
+const messageSound = (() => {
+  let ctx = null;
+  function ensureContext() {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!ctx) ctx = new AudioCtx();
+    if (ctx.state === "suspended") ctx.resume();
+    return ctx;
+  }
+  function tone(freq, start, duration, gainValue) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, start);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(gainValue, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(start);
+    osc.stop(start + duration + 0.02);
+  }
+  /* Destrava o áudio no primeiro gesto real do usuário. Sem isso, o Chrome
+     mantém o AudioContext "suspended" e o som disparado pelo polling (que não
+     vem de um gesto) é bloqueado pela política de autoplay. */
+  function unlock() {
+    const context = ensureContext();
+    if (context && context.state === "suspended") context.resume();
+  }
+  ["pointerdown", "keydown", "touchstart"].forEach(evt =>
+    window.addEventListener(evt, unlock, { once: true, passive: true })
+  );
+  return {
+    play() {
+      try {
+        const context = ensureContext();
+        if (!context) return;
+        if (context.state === "suspended") context.resume();
+        const now = context.currentTime;
+        tone(880, now, 0.16, 0.28);
+        tone(1174.66, now + 0.14, 0.22, 0.24);
+      } catch (_) { /* som nunca deve quebrar a UI */ }
+    },
+    get ready() {
+      return Boolean(ctx && ctx.state === "running");
+    },
+  };
+})();
 
 
 /* =========================================================================
@@ -124,6 +178,7 @@ const Tokens = () => (
       --tone-teal-bg:  #DCEEEA; --tone-teal-fg:  #1F6E5C;
       --tone-green-bg: #DEEEDD; --tone-green-fg: #2C6B34;
       --tone-red-bg:   #F7E2DD; --tone-red-fg:   #A23E28;
+      --tone-orange-bg:#FBE7D8; --tone-orange-fg:#9A4B12;
 
       --hot: #B23B22; --hot-bg: #F7E2DD;
       --warm: #93690F; --warm-bg: #FBF0D9;
@@ -417,10 +472,49 @@ const STATUS_TONE = {
   "Proposta enviada": "teal", "Negociação": "teal", "Fechado": "green", "Perdido": "red",
 };
 
-/* Estado operacional da conversa (coluna status do backend): "Em atendimento"
-   quando o cliente mandou mensagem, "Aguardando resposta" depois que o CRM
-   enviou algo. A etapa comercial do cliente aparece ao lado (STATUS_TONE). */
-const CONVERSATION_TONE = { "Em atendimento": "blue", "Aguardando resposta": "amber" };
+/* Ciclo de vida da conversa (coluna status do backend) — espelho EXATO de
+   backend/services/whatsapp/conversationStatus.js: mesma ordem, mesmos rótulos.
+   As transições automáticas (mensagem recebida/enviada/abertura) convivem com a
+   escolha manual no menu do chat. A etapa comercial do lead aparece ao lado
+   (STATUS_TONE); o que muda aqui é quem está aguardando o próximo passo. */
+const CONVERSATION_STATUSES = [
+  { key: "Novo", emoji: "🟡", tone: "amber", hint: "Cliente acabou de entrar em contato" },
+  { key: "Atendimento iniciado", emoji: "🔵", tone: "blue", hint: "Atendente está conversando com o cliente" },
+  { key: "Aguardando resposta", emoji: "🟣", tone: "violet", hint: "Atendente respondeu e está esperando o retorno" },
+  { key: "Respondido", emoji: "🟠", tone: "orange", hint: "Cliente respondeu e precisa da ação do atendente" },
+  { key: "Demo Enviada", emoji: "✨", tone: "violet", hint: "Demonstração enviada ao cliente" },
+  { key: "Resolvido", emoji: "🟢", tone: "green", hint: "Atendimento concluído" },
+  { key: "Cancelado", emoji: "🔴", tone: "red", hint: "Atendimento encerrado sem solução" },
+  { key: "Arquivado", emoji: "⚫", tone: "slate", hint: "Conversa encerrada e retirada da fila" },
+];
+const CONVERSATION_STATUS_BY_KEY = Object.fromEntries(CONVERSATION_STATUSES.map(item => [item.key, item]));
+const DEFAULT_CONVERSATION_STATUS = "Novo";
+const WHATSAPP_QUICK_REPLIES = [
+  {
+    label: "Primeiro contato",
+    message: "Olá, tudo bem? Falo com o responsável pela {empresa}?\nEstou fazendo uma análise rápida de algumas clínicas da região e vi uma oportunidade na presença digital de vocês relacionada à captação de clientes pelo WhatsApp.\nHoje, quando alguém encontra vocês pelo Instagram ou Google e quer saber mais sobre um procedimento, essa pessoa normalmente vai direto para o WhatsApp ou passa por algum outro caminho?",
+  },
+  {
+    label: "Sem Retorno",
+    message: "Oi 😊 passando só para retomar nossa conversa.\n\nVocê chegou a ver com calma a ideia da página para enviar para as clientes pelo WhatsApp?\n\nQueria saber se você achou que faria sentido para o atendimento de vocês.",
+  },
+  {
+    label: "Demo enviada",
+    message: "Claro, posso enviar.\nAntes, quero te mostrar a página pensando especificamente no principal serviço de vocês, porque a ideia não é simplesmente apresentar um site bonito.\nQuero que você veja como o cliente sairia da apresentação do serviço até o contato pelo WhatsApp.",
+  },
+  {
+    label: "Agendar conversa",
+    message: "{saudacao} Podemos agendar uma conversa rápida para eu apresentar a solução e entender melhor o que você precisa?",
+  },
+];
+/* Valores fora do ciclo (linhas antigas, ainda não normalizadas pelo backend)
+   aparecem com o rótulo original e tom neutro — nunca fingem ser outro status. */
+const conversationStatusMeta = (status) => {
+  if (CONVERSATION_STATUS_BY_KEY[status]) return CONVERSATION_STATUS_BY_KEY[status];
+  if (!status) return CONVERSATION_STATUS_BY_KEY[DEFAULT_CONVERSATION_STATUS];
+  return { key: status, emoji: "⚪", tone: "slate", hint: "Status fora do ciclo de vida" };
+};
+const CONVERSATION_TONE = Object.fromEntries(CONVERSATION_STATUSES.map(item => [item.key, item.tone]));
 
 const TEMP_TONE = { "Frio": "cold", "Morno": "warm", "Quente": "hot" };
 const PRIORITY_ORDER = { "Alta": 0, "Média": 1, "Baixa": 2 };
@@ -748,6 +842,17 @@ const crmApi = {
     openLeadConversation: leadId =>
       crmApi.whatsapp.request(`/conversations/lead/${encodeURIComponent(leadId)}`, {
         method: "POST",
+      }),
+    /* Marca a conversa como aberta pelo atendente (transição de abertura). */
+    openConversation: id =>
+      crmApi.whatsapp.request(`/conversations/${encodeURIComponent(id)}/open`, {
+        method: "POST",
+      }),
+    /* Mudança manual de status pelo menu do chat. */
+    updateConversationStatus: (id, status) =>
+      crmApi.whatsapp.request(`/conversations/${encodeURIComponent(id)}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
       }),
     removeConversation: id =>
       crmApi.whatsapp.request(`/conversations/${encodeURIComponent(id)}`, { method: "DELETE" }),
@@ -4471,6 +4576,7 @@ function WhatsAppView({ currentUser }) {
   const [openingLeadId, setOpeningLeadId] = useState(null);
   const [removingConversationId, setRemovingConversationId] = useState(null);
   const [draft, setDraft] = useState("");
+  const [quickRepliesOpen, setQuickRepliesOpen] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -4478,6 +4584,15 @@ function WhatsAppView({ currentUser }) {
   const [error, setError] = useState("");
   const messagesEndRef = useRef(null);
   const selectedConversationIdRef = useRef(null);
+  const prevIncomingRef = useRef(new Map());
+  const initializedIncomingRef = useRef(false);
+  const [freshIds, setFreshIds] = useState(() => new Set());
+  const [soundOn, setSoundOn] = useState(() => localStorage.getItem("gc_wa_sound") !== "off");
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [statusMenuPos, setStatusMenuPos] = useState(null);
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("Todas");
+  const statusMenuRef = useRef(null);
 
   const loadConversation = async id => {
     const selected = await crmApi.whatsapp.conversation(id);
@@ -4550,6 +4665,138 @@ function WhatsAppView({ currentUser }) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversation?.messages?.length]);
 
+  /* Detecta novas mensagens RECEBIDAS comparando o timestamp da última
+     mensagem "incoming" de cada conversa entre polls. Na primeira carga apenas
+     memoriza o estado (sem tocar som nem destacar), para não notificar
+     histórico antigo. Depois, qualquer conversa com lastMessage incoming mais
+     recente dispara o som e o destaque temporário. */
+  useEffect(() => {
+    if (!conversations.length) return;
+    const prev = prevIncomingRef.current;
+    const next = new Map();
+    const changed = [];
+    for (const item of conversations) {
+      const isIncoming = item.lastMessage?.direction === "incoming";
+      const stamp = isIncoming ? item.lastMessage?.timestamp : null;
+      next.set(item.id, stamp || null);
+      if (!initializedIncomingRef.current) continue;
+      const before = prev.get(item.id) ?? null;
+      if (stamp && stamp !== before) changed.push(item.id);
+    }
+    prevIncomingRef.current = next;
+    if (!initializedIncomingRef.current) {
+      initializedIncomingRef.current = true;
+      return;
+    }
+    if (!changed.length) return;
+    if (soundOn) messageSound.play();
+    setFreshIds(previous => {
+      const updated = new Set(previous);
+      changed.forEach(id => updated.add(id));
+      return updated;
+    });
+    window.setTimeout(() => {
+      setFreshIds(previous => {
+        const updated = new Set(previous);
+        changed.forEach(id => updated.delete(id));
+        return updated;
+      });
+    }, 9000);
+  }, [conversations, soundOn]);
+
+  const toggleSound = () => {
+    /* Toca o som em todo clique: o gesto já destrava o AudioContext e serve de
+       teste audível imediato para o usuário confirmar que o alerta funciona. */
+    messageSound.play();
+    setSoundOn(previous => {
+      const next = !previous;
+      localStorage.setItem("gc_wa_sound", next ? "on" : "off");
+      return next;
+    });
+  };
+
+  const clearFresh = id => {
+    if (!id) return;
+    setFreshIds(previous => {
+      if (!previous.has(id)) return previous;
+      const updated = new Set(previous);
+      updated.delete(id);
+      return updated;
+    });
+  };
+
+  /* O menu de status fecha ao clicar fora ou apertar Esc. */
+  useEffect(() => {
+    if (!statusMenuOpen) return undefined;
+    const onPointerDown = event => {
+      if (statusMenuRef.current && !statusMenuRef.current.contains(event.target)) setStatusMenuOpen(false);
+    };
+    const onKeyDown = event => { if (event.key === "Escape") setStatusMenuOpen(false); };
+    /* O menu é posicionado em relação ao viewport: fecha em resize/scroll
+       externo para não descolar do botão que o abriu. A rolagem interna da
+       lista de status deve permanecer aberta. */
+    const onViewportChange = () => setStatusMenuOpen(false);
+    const onScroll = event => {
+      const target = event.target;
+      if (!(target instanceof Node) || !statusMenuRef.current?.contains(target)) setStatusMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [statusMenuOpen]);
+
+  /* Mudança manual do status pelo atendente — o backend valida os estados. */
+  const changeConversationStatus = async nextStatus => {
+    if (!conversation || savingStatus) return;
+    setStatusMenuOpen(false);
+    if (nextStatus === conversation.status) return;
+    setError("");
+    setSavingStatus(true);
+    try {
+      setConversation(await crmApi.whatsapp.updateConversationStatus(conversation.id, nextStatus));
+      setConversations(await crmApi.whatsapp.conversations());
+    } catch (requestError) {
+      setError(requestError.message || "Não foi possível mudar o status desta conversa.");
+    } finally {
+      setSavingStatus(false);
+    }
+  };
+
+  /* Abre o menu com position: fixed calculado pelo retângulo do botão — assim
+     o overflow-hidden da seção do chat não corta os últimos status (Resolvido,
+     Cancelado, Arquivado). Quando falta espaço abaixo, vira para cima; e o
+     maxHeight com rolagem interna garante os 7 itens em telas pequenas. */
+  const toggleStatusMenu = () => {
+    if (statusMenuOpen) {
+      setStatusMenuOpen(false);
+      return;
+    }
+    const rect = statusMenuRef.current?.getBoundingClientRect();
+    if (rect) {
+      const GAP = 8;
+      const MIN_VISIBLE = 240;
+      const spaceBelow = window.innerHeight - rect.bottom - GAP - 8;
+      const spaceAbove = rect.top - GAP - 8;
+      const above = spaceBelow < MIN_VISIBLE && spaceAbove > spaceBelow;
+      const maxHeight = Math.max(180, Math.min(above ? spaceAbove : spaceBelow, window.innerHeight - 32));
+      setStatusMenuPos({
+        ...(above
+          ? { bottom: Math.max(8, window.innerHeight - rect.top + GAP) }
+          : { top: rect.bottom + GAP }),
+        right: Math.max(8, window.innerWidth - rect.right),
+        maxHeight,
+      });
+    }
+    setStatusMenuOpen(true);
+  };
+
   const changeConnection = async () => {
     setError("");
     setConnecting(true);
@@ -4599,8 +4846,19 @@ function WhatsAppView({ currentUser }) {
 
   const selectConversation = async id => {
     setError("");
+    clearFresh(id);
     try {
-      await loadConversation(id);
+      /* Abrir a conversa é um evento de atendimento: o backend aproveita para
+         aplicar a transição de abertura (Novo/Respondido ->
+         Atendimento iniciado) antes de devolver o histórico. */
+      try {
+        setConversation(await crmApi.whatsapp.openConversation(id));
+      } catch (openError) {
+        /* Compatibilidade: um backend ainda sem a rota /open continua abrindo
+           a conversa em modo leitura — melhor do que travar o atendimento. */
+        await loadConversation(id);
+      }
+      selectedConversationIdRef.current = id;
       setConversations(await crmApi.whatsapp.conversations());
     } catch (requestError) {
       setError(requestError.message || "Não foi possível abrir esta conversa.");
@@ -4614,6 +4872,7 @@ function WhatsAppView({ currentUser }) {
       const selected = await crmApi.whatsapp.openLeadConversation(lead.id);
       setConversation(selected);
       selectedConversationIdRef.current = selected.id;
+      clearFresh(selected.id);
       setConversations(await crmApi.whatsapp.conversations());
       setSidebarView("conversations");
     } catch (requestError) {
@@ -4659,6 +4918,17 @@ function WhatsAppView({ currentUser }) {
     } finally {
       setSending(false);
     }
+  };
+
+  const selectQuickReply = reply => {
+    const contactName = conversation?.contact?.name;
+    const phone = String(conversation?.contact?.phone || "").replace(/\D/g, "");
+    const company = conversation?.contact?.company || "empresa";
+    const greeting = contactName && String(contactName).replace(/\D/g, "") !== phone
+      ? `Olá, ${contactName}!`
+      : "Olá!";
+    setDraft(reply.message.replaceAll("{saudacao}", greeting).replaceAll("{empresa}", company));
+    setQuickRepliesOpen(false);
   };
 
   const formatTime = value => {
@@ -4721,8 +4991,84 @@ function WhatsAppView({ currentUser }) {
     return [item.contact?.name, item.contact?.company, item.contact?.phone, item.lastMessage?.content, item.status, lead?.status]
       .some(value => normalizeSearch(value).includes(conversationTerm));
   });
-  const conversationRows = filteredConversations.map(item => ({ item, lead: findConversationLead(item) }));
+  /* Filtro da fila por status: "Todas" ou um dos estados do ciclo de vida.
+     Só aparece chip de status que realmente existe na lista. */
+  const statusCounts = conversations.reduce((acc, item) => {
+    const key = item.status || DEFAULT_CONVERSATION_STATUS;
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const statusFilters = ["Todas", ...CONVERSATION_STATUSES.map(item => item.key).filter(key => statusCounts[key])];
+  const statusFiltered = statusFilter === "Todas"
+    ? filteredConversations
+    : filteredConversations.filter(item => (item.status || DEFAULT_CONVERSATION_STATUS) === statusFilter);
+  const conversationRows = statusFiltered.map(item => ({ item, lead: findConversationLead(item) }));
   const activeLead = conversation ? findConversationLead(conversation) : null;
+  const statusMeta = conversationStatusMeta(conversation?.status);
+  /* Menu de status do chat: botão com emoji + rótulo que abre a lista dos
+     estados, cada um com a cor da tabela do ciclo de vida. */
+  const statusMenuControl = !conversation ? null : (
+    <div className="relative" ref={statusMenuRef}>
+      <button
+        type="button"
+        onClick={toggleStatusMenu}
+        aria-haspopup="menu"
+        aria-expanded={statusMenuOpen}
+        aria-label={`Status desta conversa: ${conversation.status || DEFAULT_CONVERSATION_STATUS}. Clique para mudar`}
+        title="Mudar o status desta conversa"
+        disabled={savingStatus}
+        className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full transition-colors disabled:opacity-60"
+        style={{ ...TONE_STYLE(CONVERSATION_TONE[conversation.status] || statusMeta.tone), border: "1px solid currentColor" }}
+      >
+        <span aria-hidden="true">{statusMeta.emoji}</span>
+        <span className="font-medium">{conversation.status || DEFAULT_CONVERSATION_STATUS}</span>
+        <ChevronDown size={13} />
+      </button>
+      {statusMenuOpen && statusMenuPos && (
+        <div
+          role="menu"
+          aria-label="Status da conversa"
+          className="rounded-xl"
+          style={{ position: "fixed", width: "min(300px, 78vw)", overflowX: "hidden", overflowY: "auto", ...statusMenuPos, background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 16px 36px rgba(20,22,26,0.2)", zIndex: 60 }}
+        >
+          <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide" style={{ background: "var(--surface-sunken)", color: "var(--slate)" }}>
+            Status da conversa
+          </div>
+          {CONVERSATION_STATUSES.map(option => {
+            const isActive = option.key === conversation.status;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                role="menuitemradio"
+                aria-checked={isActive}
+                onClick={() => changeConversationStatus(option.key)}
+                disabled={savingStatus}
+                className="w-full text-left px-3 py-2 flex items-start gap-2 transition-colors disabled:opacity-60"
+                style={{ background: isActive ? "var(--accent-soft)" : "transparent", borderBottom: "1px solid var(--line)" }}
+              >
+                <span className="text-sm leading-5 shrink-0" aria-hidden="true">{option.emoji}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-semibold" style={{ color: "var(--ink)" }}>{option.key}</span>
+                  <span className="block text-[11px] leading-4" style={{ color: "var(--slate)" }}>{option.hint}</span>
+                </span>
+                <span
+                  className="w-2 h-2 rounded-full mt-1.5 shrink-0"
+                  aria-hidden="true"
+                  style={isActive
+                    ? { background: `var(--tone-${option.tone}-fg, var(--slate))` }
+                    : { border: "1px solid var(--line-strong)" }}
+                />
+              </button>
+            );
+          })}
+          <div className="px-3 py-2 text-[11px]" style={{ background: "var(--surface-sunken)", color: "var(--slate)" }}>
+            O status muda sozinho conforme as mensagens entram e saem; escolher aqui vale até a próxima mensagem.
+          </div>
+        </div>
+      )}
+    </div>
+  );
   const waitingAuth = ["QR_READY", "PAIRING_READY", "CONNECTING", "RECONNECTING"].includes(status?.status);
   const connectionActive = ["CONNECTED", "CONNECTING", "RECONNECTING", "QR_READY", "PAIRING_READY"].includes(status?.status);
 
@@ -4735,9 +5081,23 @@ function WhatsAppView({ currentUser }) {
             Central de atendimento do CRM usando Baileys. O WhatsApp fica conectado por trás da interface.
           </p>
         </div>
-        <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full" style={{ background: "var(--surface-sunken)", color: "var(--slate)" }}>
-          <MessageCircle size={14} /> WHATSAPP + BAILEYS
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleSound}
+            aria-pressed={soundOn}
+            title={soundOn ? "Som de nova mensagem ativado — clique para silenciar" : "Som de nova mensagem silenciado — clique para ativar"}
+            aria-label={soundOn ? "Silenciar som de nova mensagem" : "Ativar som de nova mensagem"}
+            className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full transition-colors"
+            style={{ background: soundOn ? "var(--accent-soft)" : "var(--surface-sunken)", color: soundOn ? "var(--accent)" : "var(--slate)" }}
+          >
+            {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
+            <span className="sm:inline hidden">{soundOn ? "Som ligado" : "Som off"}</span>
+          </button>
+          <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full" style={{ background: "var(--surface-sunken)", color: "var(--slate)" }}>
+            <MessageCircle size={14} /> WHATSAPP + BAILEYS
+          </span>
+        </div>
       </div>
 
       <section className="p-4 flex items-center justify-between gap-3 flex-wrap" style={card}>
@@ -4820,21 +5180,48 @@ function WhatsAppView({ currentUser }) {
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--slate)" }} />
               <input value={conversationSearch} onChange={event => setConversationSearch(event.target.value)} placeholder="Buscar conversa" title="Busca por nome, empresa, telefone ou trecho da mensagem" aria-label="Buscar conversa" className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm" style={{ borderColor: "var(--line)", background: "var(--surface)" }} />
             </div>}
+            {sidebarView === "conversations" && conversations.length > 0 && (
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar conversas por status">
+                {statusFilters.map(key => {
+                  const isActiveFilter = statusFilter === key;
+                  const option = key === "Todas" ? null : conversationStatusMeta(key);
+                  const count = key === "Todas" ? conversations.length : (statusCounts[key] || 0);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setStatusFilter(key)}
+                      aria-pressed={isActiveFilter}
+                      title={option ? option.hint : "Mostrar todas as conversas"}
+                      className="inline-flex items-center gap-1 rounded-full text-[11px] px-2 py-1 transition-colors"
+                      style={isActiveFilter
+                        ? (option ? TONE_STYLE(option.tone) : { background: "var(--accent-soft)", color: "var(--accent-ink)" })
+                        : { background: "var(--surface-sunken)", color: "var(--slate)" }}
+                    >
+                      {option && <span aria-hidden="true">{option.emoji}</span>}
+                      <span className="font-medium">{key}</span>
+                      <span className="opacity-70 gc-mono">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {sidebarView === "leads" && <div className="flex gap-2">
               <input value={leadSearch} onChange={event => setLeadSearch(event.target.value)} placeholder="Buscar lead ou telefone" aria-label="Buscar lead para conversar" className="min-w-0 flex-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: "var(--line)", background: "var(--surface)" }} />
               <Button variant="secondary" icon={RefreshCw} onClick={loadLeads} disabled={loadingLeads}>Atualizar</Button>
             </div>}
           </div>
           {sidebarView === "conversations" ? (
-            loading ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>Carregando conversas…</div> : conversations.length === 0 ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>Nenhuma conversa ainda. Abra a aba Leads para escolher um contato cadastrado ou aguarde uma nova mensagem recebida.</div> : filteredConversations.length === 0 ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>Nenhuma conversa encontrada para “{conversationSearch.trim()}”. Limpe a busca para ver todas as conversas.</div> : <div className="flex-1 min-h-0 overflow-y-auto">{conversationRows.map(({ item, lead }) => (
-            <div key={item.id} className="relative"><button type="button" onClick={() => selectConversation(item.id)} className="w-full text-left px-4 py-3 pr-10 transition-colors" style={{ background: conversation?.id === item.id ? "var(--accent-soft)" : "transparent", borderBottom: "1px solid var(--line)" }}>
+            loading ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>Carregando conversas…</div> : conversations.length === 0 ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>Nenhuma conversa ainda. Abra a aba Leads para escolher um contato cadastrado ou aguarde uma nova mensagem recebida.</div> : conversationRows.length === 0 ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>{conversationSearch.trim() ? `Nenhuma conversa encontrada para “${conversationSearch.trim()}”. Limpe a busca para ver todas as conversas.` : statusFilter !== "Todas" ? `Nenhuma conversa com o status “${statusFilter}”. Escolha “Todas” para ver a fila inteira.` : "Nenhuma conversa encontrada."}</div> : <div className="flex-1 min-h-0 overflow-y-auto">{conversationRows.map(({ item, lead }) => (
+            <div key={item.id} className="relative"><button type="button" onClick={() => selectConversation(item.id)} className="w-full text-left px-4 py-3 pr-10 transition-colors" style={{ background: freshIds.has(item.id) ? "var(--accent-soft-strong)" : conversation?.id === item.id ? "var(--accent-soft)" : item.unreadCount > 0 ? "var(--accent-soft)" : "transparent", borderBottom: "1px solid var(--line)", boxShadow: freshIds.has(item.id) ? "inset 4px 0 0 var(--accent)" : item.unreadCount > 0 ? "inset 3px 0 0 var(--accent)" : "none", fontWeight: freshIds.has(item.id) || item.unreadCount > 0 ? 600 : undefined }}>
               <div className="flex items-center justify-between gap-2"><span className="font-medium text-sm truncate">{item.contact.name}</span><span className="text-[11px] shrink-0" style={{ color: "var(--slate)" }}>{formatTime(item.lastMessage?.timestamp)}</span></div>
               <div className="text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{item.contact.company} · {item.contact.phone}</div>
               <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                {freshIds.has(item.id) && <span className="inline-flex items-center gap-1 rounded-full text-[11px] font-semibold px-2 py-0.5" style={{ background: "var(--accent)", color: "#fff" }}>Nova mensagem</span>}
                 {lead && <span className="inline-flex items-center rounded-full text-[11px] font-medium px-2 py-0.5" style={TONE_STYLE(STATUS_TONE[lead.status] || "slate")} title={`Etapa do funil de ${lead.contactName || lead.company}`}>{lead.status || "Sem etapa"}</span>}
-                <span className="inline-flex items-center gap-1.5 text-[11px]" style={{ color: "var(--slate)" }} title="Status da conversa">
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: `var(--tone-${CONVERSATION_TONE[item.status] || "slate"}-fg, var(--slate))` }} />
-                  {item.status || "Em atendimento"}
+                <span className="inline-flex items-center gap-1 rounded-full text-[11px] font-medium px-2 py-0.5" style={TONE_STYLE(CONVERSATION_TONE[item.status] || conversationStatusMeta(item.status).tone)} title={conversationStatusMeta(item.status).hint}>
+                  <span aria-hidden="true">{conversationStatusMeta(item.status).emoji}</span>
+                  {item.status || DEFAULT_CONVERSATION_STATUS}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-2 mt-1.5"><span className="text-xs truncate" style={{ color: "var(--ink-soft)" }}>{item.lastMessage?.content || "Sem mensagens"}</span>{item.unreadCount > 0 && <span className="text-[10px] rounded-full px-1.5 py-0.5" style={{ background: "var(--accent)", color: "white" }}>{item.unreadCount}</span>}</div>
@@ -4860,9 +5247,41 @@ function WhatsAppView({ currentUser }) {
 
         <section className="overflow-hidden flex flex-col" style={{ ...card, height: "min(860px, max(440px, calc(100dvh - 320px)))" }} aria-label="Mensagens do WhatsApp">
           {conversation ? <>
-            <header className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: "1px solid var(--line)" }}><div className="min-w-0"><div className="font-medium text-sm truncate">{conversation.contact.name}</div><div className="text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{conversation.contact.company} · {conversation.contact.phone}</div></div><div className="flex items-center gap-2 shrink-0">{activeLead && <Pill tone={STATUS_TONE[activeLead.status] || "slate"}>{activeLead.status}</Pill>}<span className="text-xs" style={{ color: "var(--slate)" }}>{conversation.status}</span></div></header>
+            <header className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: "1px solid var(--line)" }}><div className="min-w-0"><div className="font-medium text-sm truncate">{conversation.contact.name}</div><div className="text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{conversation.contact.company} · {conversation.contact.phone}</div></div><div className="flex items-center gap-2 shrink-0">{activeLead && <Pill tone={STATUS_TONE[activeLead.status] || "slate"}>{activeLead.status}</Pill>}{statusMenuControl}</div></header>
             <div className="flex-1 min-h-0 p-4 space-y-3 overflow-y-auto">{conversation.messages.map(message => <div key={message.id} className={`flex ${message.direction === "outgoing" ? "justify-end" : "justify-start"}`}><div className="max-w-[85%] rounded-xl px-3 py-2" style={{ background: message.direction === "outgoing" ? "var(--accent-soft)" : "var(--surface-sunken)", color: "var(--ink)" }}><div className="text-sm whitespace-pre-wrap break-words">{message.content}</div><div className="text-[10px] text-right mt-1" style={{ color: "var(--slate)" }}>{formatTime(message.timestamp)} · {messageStatusLabel(message.status)}</div></div></div>)}<div ref={messagesEndRef} /></div>
-            <form onSubmit={send} className="p-3 space-y-2" style={{ borderTop: "1px solid var(--line)" }}><TextArea value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder="Digite uma mensagem…" rows={2} maxLength={4000} disabled={!connected || sending} aria-label="Mensagem" /><div className="flex items-center justify-between gap-2 flex-wrap"><span className="text-xs" style={{ color: "var(--slate)" }}>Mensagens recebidas aparecem automaticamente.</span><Button type="submit" icon={Send} disabled={!connected || sending || !draft.trim()}>{sending ? "Enviando…" : "Enviar"}</Button></div></form>
+            <form onSubmit={send} className="p-3 space-y-2" style={{ borderTop: "1px solid var(--line)" }}>
+              <button
+                type="button"
+                onClick={() => setQuickRepliesOpen(open => !open)}
+                aria-expanded={quickRepliesOpen}
+                aria-controls="whatsapp-quick-replies"
+                disabled={!connected || sending}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40"
+                style={{ color: "var(--accent-ink)", background: "var(--accent-soft)", border: "1px solid var(--line)" }}
+              >
+                <MessageCircle size={14} />
+                Respostas rápidas
+                <ChevronDown size={13} style={{ transform: quickRepliesOpen ? "rotate(180deg)" : "none" }} />
+              </button>
+              {quickRepliesOpen && (
+                <div id="whatsapp-quick-replies" className="rounded-lg border p-2 space-y-1" style={{ borderColor: "var(--line)", background: "var(--surface-sunken)" }} role="group" aria-label="Modelos de resposta rápida">
+                  <div className="px-2 pb-1 text-[11px]" style={{ color: "var(--slate)" }}>Escolha um modelo para preencher a mensagem; revise antes de enviar.</div>
+                  {WHATSAPP_QUICK_REPLIES.map(reply => (
+                    <button
+                      key={reply.label}
+                      type="button"
+                      onClick={() => selectQuickReply(reply)}
+                      className="w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:opacity-80"
+                      style={{ color: "var(--ink)", background: "var(--surface)" }}
+                    >
+                      {reply.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <TextArea value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder="Digite uma mensagem…" rows={2} maxLength={4000} disabled={!connected || sending} aria-label="Mensagem" />
+              <div className="flex items-center justify-between gap-2 flex-wrap"><span className="text-xs" style={{ color: "var(--slate)" }}>Mensagens recebidas aparecem automaticamente.</span><Button type="submit" icon={Send} disabled={!connected || sending || !draft.trim()}>{sending ? "Enviando…" : "Enviar"}</Button></div>
+            </form>
           </> : <div className="flex-1 flex items-center justify-center p-6"><EmptyState icon={MessageCircle} title="Selecione uma conversa" hint={connected ? "Envie uma mensagem nova para o WhatsApp conectado; o histórico anterior não é importado automaticamente." : "Depois que o WhatsApp estiver conectado, as novas mensagens recebidas serão sincronizadas aqui."} /></div>}
         </section>
       </div>
