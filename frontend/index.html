@@ -1663,6 +1663,7 @@ function LoginScreen({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
+  const [manualPasswordChange, setManualPasswordChange] = useState(false);
 
   const chooseUser = async (user) => {
     setSelectedUser(user);
@@ -1673,6 +1674,7 @@ function LoginScreen({ onLogin }) {
     setChangeError("");
     setChangingPassword(false);
     setRequiresPasswordChange(false);
+    setManualPasswordChange(false);
     if (!user) return;
     try {
       const apiStatus = await authStatusThroughApi(user.id);
@@ -1703,6 +1705,7 @@ function LoginScreen({ onLogin }) {
         }
         if (result.record.mustChangePassword) {
           setRequiresPasswordChange(true);
+          setManualPasswordChange(false);
           setChangingPassword(true);
           return;
         }
@@ -1716,6 +1719,7 @@ function LoginScreen({ onLogin }) {
       }
       if (apiResult.data.mustChangePassword) {
         setRequiresPasswordChange(true);
+        setManualPasswordChange(false);
         setChangingPassword(true);
         return;
       }
@@ -1736,6 +1740,10 @@ function LoginScreen({ onLogin }) {
       setChangeError("A nova senha deve ter pelo menos 8 caracteres.");
       return;
     }
+    if (!password) {
+      setChangeError("Informe sua senha atual.");
+      return;
+    }
     if (newPassword !== confirmPassword) {
       setChangeError("A confirmação da senha não coincide.");
       return;
@@ -1745,6 +1753,11 @@ function LoginScreen({ onLogin }) {
     try {
       const apiResult = await changePasswordThroughApi(selectedUser.id, password, newPassword);
       if (apiResult === null) {
+        const result = await verifyPassword(selectedUser.id, password);
+        if (!result.matches) {
+          setChangeError("Senha atual incorreta.");
+          return;
+        }
         await savePermanentPassword(selectedUser.id, newPassword);
       } else if (!apiResult.ok) {
         setChangeError(apiResult.message || "Não foi possível alterar a senha.");
@@ -1768,7 +1781,7 @@ function LoginScreen({ onLogin }) {
           <div className="w-11 h-11 rounded-xl mx-auto mb-4 flex items-center justify-center gc-display font-semibold text-white" style={{ background: "var(--accent)" }}>GC</div>
           <h1 className="gc-display text-xl font-semibold">Gestão Comercial</h1>
           <p className="text-sm mt-1" style={{ color: "var(--slate)" }}>
-            {selectedUser ? "Informe seus dados de acesso" : "Quem está acessando?"}
+            {changingPassword ? "Altere sua senha" : selectedUser ? "Informe seus dados de acesso" : "Quem está acessando?"}
           </p>
         </div>
 
@@ -1803,24 +1816,46 @@ function LoginScreen({ onLogin }) {
             <button type="button" onClick={() => chooseUser(null)} className="w-full text-center text-sm gc-focus rounded py-1" style={{ color: "var(--slate)" }}>
               Escolher outro usuário
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPassword("");
+                setNewPassword("");
+                setConfirmPassword("");
+                setChangeError("");
+                setManualPasswordChange(true);
+                setChangingPassword(true);
+              }}
+              className="w-full text-center text-sm gc-focus rounded py-1"
+              style={{ color: "var(--accent-ink)" }}
+            >
+              Trocar senha
+            </button>
           </form>
         ) : (
           <form onSubmit={handleChangePassword} className="space-y-4">
             <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "var(--warn-bg)", color: "var(--warn)", border: "1px solid var(--line)" }}>
-              Primeiro acesso confirmado. Crie uma senha permanente para continuar.
+              {manualPasswordChange
+                ? `Altere a senha de ${selectedUser.name}.`
+                : "Primeiro acesso confirmado. Crie uma senha permanente para continuar."}
             </div>
+            {manualPasswordChange && (
+              <Field label="Senha atual" required>
+                <TextInput type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus placeholder="Digite sua senha atual" autoComplete="current-password" />
+              </Field>
+            )}
             <Field label="Nova senha" required hint="Mínimo de 8 caracteres.">
-              <TextInput type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoFocus placeholder="Digite a nova senha" autoComplete="new-password" />
+              <TextInput type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoFocus={!manualPasswordChange} placeholder="Digite a nova senha" autoComplete="new-password" />
             </Field>
             <Field label="Confirmar nova senha" required>
               <TextInput type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repita a nova senha" autoComplete="new-password" />
             </Field>
             {changeError && <div className="text-sm text-center" style={{ color: "var(--danger)" }}>{changeError}</div>}
-            <Button type="submit" className="w-full" disabled={loading || !newPassword || !confirmPassword}>
-              {loading ? "Salvando..." : "Salvar senha e acessar"}
+            <Button type="submit" className="w-full" disabled={loading || (manualPasswordChange && !password) || !newPassword || !confirmPassword}>
+              {loading ? "Salvando..." : manualPasswordChange ? "Salvar nova senha" : "Salvar senha e acessar"}
             </Button>
-            <button type="button" onClick={() => { setChangingPassword(false); setPassword(""); setError(""); }} className="w-full text-center text-sm gc-focus rounded py-1" style={{ color: "var(--slate)" }}>
-              Voltar para a senha
+            <button type="button" onClick={() => { setChangingPassword(false); setManualPasswordChange(false); setPassword(""); setNewPassword(""); setConfirmPassword(""); setError(""); setChangeError(""); }} className="w-full text-center text-sm gc-focus rounded py-1" style={{ color: "var(--slate)" }}>
+              Voltar para o acesso
             </button>
           </form>
         )}
@@ -4599,6 +4634,9 @@ function WhatsAppView({ currentUser }) {
   const [error, setError] = useState("");
   const messagesEndRef = useRef(null);
   const selectedConversationIdRef = useRef(null);
+  const conversationSelectionVersionRef = useRef(0);
+  const conversationLoadVersionRef = useRef(0);
+  const conversationSelectionPendingRef = useRef(false);
   const prevIncomingRef = useRef(new Map());
   const initializedIncomingRef = useRef(false);
   const [freshIds, setFreshIds] = useState(() => new Set());
@@ -4606,7 +4644,6 @@ function WhatsAppView({ currentUser }) {
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [statusMenuPos, setStatusMenuPos] = useState(null);
   const [savingStatus, setSavingStatus] = useState(false);
-  const [statusFilter, setStatusFilter] = useState("Todas");
   const statusMenuRef = useRef(null);
   const imageInputRef = useRef(null);
   const audioInputRef = useRef(null);
@@ -4631,9 +4668,15 @@ function WhatsAppView({ currentUser }) {
   }, []);
 
   const loadConversation = async id => {
+    const loadVersion = ++conversationLoadVersionRef.current;
+    const selectionVersion = conversationSelectionVersionRef.current;
     const selected = await crmApi.whatsapp.conversation(id);
+    if (
+      loadVersion !== conversationLoadVersionRef.current ||
+      selectionVersion !== conversationSelectionVersionRef.current ||
+      selectedConversationIdRef.current !== id
+    ) return;
     setConversation(selected);
-    selectedConversationIdRef.current = id;
   };
 
   const loadLeads = async () => {
@@ -4649,13 +4692,18 @@ function WhatsAppView({ currentUser }) {
 
   const refresh = async (keepLoading = false) => {
     if (!keepLoading) setError("");
+    const selectionVersion = conversationSelectionVersionRef.current;
     try {
       const nextStatus = await crmApi.whatsapp.status();
       setStatus(nextStatus);
       const nextConversations = await crmApi.whatsapp.conversations();
       setConversations(nextConversations);
+      if (selectionVersion !== conversationSelectionVersionRef.current || conversationSelectionPendingRef.current) return;
       const activeId = selectedConversationIdRef.current || nextConversations[0]?.id;
-      if (activeId && nextConversations.some(item => item.id === activeId)) await loadConversation(activeId);
+      if (activeId && nextConversations.some(item => item.id === activeId)) {
+        if (!selectedConversationIdRef.current) selectedConversationIdRef.current = activeId;
+        await loadConversation(activeId);
+      }
       else {
         setConversation(null);
         selectedConversationIdRef.current = null;
@@ -4881,6 +4929,10 @@ function WhatsAppView({ currentUser }) {
   };
 
   const selectConversation = async id => {
+    const selectionVersion = ++conversationSelectionVersionRef.current;
+    conversationLoadVersionRef.current += 1;
+    selectedConversationIdRef.current = id;
+    conversationSelectionPendingRef.current = true;
     setError("");
     clearFresh(id);
     try {
@@ -4888,33 +4940,49 @@ function WhatsAppView({ currentUser }) {
          aplicar a transição de abertura (Novo/Respondido ->
          Atendimento iniciado) antes de devolver o histórico. */
       try {
-        setConversation(await crmApi.whatsapp.openConversation(id));
+        const selected = await crmApi.whatsapp.openConversation(id);
+        if (selectionVersion === conversationSelectionVersionRef.current) setConversation(selected);
       } catch (openError) {
         /* Compatibilidade: um backend ainda sem a rota /open continua abrindo
            a conversa em modo leitura — melhor do que travar o atendimento. */
         await loadConversation(id);
       }
-      selectedConversationIdRef.current = id;
-      setConversations(await crmApi.whatsapp.conversations());
+      if (selectionVersion === conversationSelectionVersionRef.current) {
+        setConversations(await crmApi.whatsapp.conversations());
+      }
     } catch (requestError) {
-      setError(requestError.message || "Não foi possível abrir esta conversa.");
+      if (selectionVersion === conversationSelectionVersionRef.current) {
+        setError(requestError.message || "Não foi possível abrir esta conversa.");
+      }
+    } finally {
+      if (selectionVersion === conversationSelectionVersionRef.current) conversationSelectionPendingRef.current = false;
     }
   };
 
   const openLeadConversation = async lead => {
+    const selectionVersion = ++conversationSelectionVersionRef.current;
+    conversationLoadVersionRef.current += 1;
+    selectedConversationIdRef.current = null;
+    conversationSelectionPendingRef.current = true;
     setError("");
     setOpeningLeadId(lead.id);
     try {
       const selected = await crmApi.whatsapp.openLeadConversation(lead.id);
+      if (selectionVersion !== conversationSelectionVersionRef.current) return;
       setConversation(selected);
       selectedConversationIdRef.current = selected.id;
       clearFresh(selected.id);
       setConversations(await crmApi.whatsapp.conversations());
       setSidebarView("conversations");
     } catch (requestError) {
-      setError(requestError.message || "Não foi possível abrir a conversa deste lead.");
+      if (selectionVersion === conversationSelectionVersionRef.current) {
+        setError(requestError.message || "Não foi possível abrir a conversa deste lead.");
+      }
     } finally {
-      setOpeningLeadId(null);
+      if (selectionVersion === conversationSelectionVersionRef.current) {
+        conversationSelectionPendingRef.current = false;
+        setOpeningLeadId(null);
+      }
     }
   };
 
@@ -4929,6 +4997,9 @@ function WhatsAppView({ currentUser }) {
     try {
       await crmApi.whatsapp.removeConversation(item.id);
       if (selectedConversationIdRef.current === item.id) {
+        conversationSelectionVersionRef.current += 1;
+        conversationLoadVersionRef.current += 1;
+        conversationSelectionPendingRef.current = false;
         selectedConversationIdRef.current = null;
         setConversation(null);
       }
@@ -4943,17 +5014,19 @@ function WhatsAppView({ currentUser }) {
   const send = async event => {
     event?.preventDefault();
     if (!conversation || (!draft.trim() && !attachment) || sending) return;
+    const conversationId = conversation.id;
+    conversationLoadVersionRef.current += 1;
     setSending(true);
     setError("");
     try {
       if (attachment) {
         const kind = attachmentKind || (attachment.type.startsWith("image/") ? "image" : "audio");
         if (kind === "audio" && draft.trim()) {
-          await crmApi.whatsapp.sendText(conversation.id, draft.trim(), currentUser || "Usuário");
+          await crmApi.whatsapp.sendText(conversationId, draft.trim(), currentUser || "Usuário");
           setDraft("");
         }
         await crmApi.whatsapp.sendMedia(
-          conversation.id,
+          conversationId,
           attachment,
           kind,
           kind === "image" ? draft.trim() : "",
@@ -4961,7 +5034,7 @@ function WhatsAppView({ currentUser }) {
         );
         setAttachment(null);
       } else {
-        await crmApi.whatsapp.sendText(conversation.id, draft, currentUser || "Usuário");
+        await crmApi.whatsapp.sendText(conversationId, draft, currentUser || "Usuário");
       }
       setDraft("");
       await refresh(true);
@@ -5109,18 +5182,7 @@ function WhatsAppView({ currentUser }) {
     return [item.contact?.name, item.contact?.company, item.contact?.phone, item.lastMessage?.content, item.status, lead?.status]
       .some(value => normalizeSearch(value).includes(conversationTerm));
   });
-  /* Filtro da fila por status: "Todas" ou um dos estados do ciclo de vida.
-     Só aparece chip de status que realmente existe na lista. */
-  const statusCounts = conversations.reduce((acc, item) => {
-    const key = item.status || DEFAULT_CONVERSATION_STATUS;
-    acc[key] = (acc[key] || 0) + 1;
-    return acc;
-  }, {});
-  const statusFilters = ["Todas", ...CONVERSATION_STATUSES.map(item => item.key).filter(key => statusCounts[key])];
-  const statusFiltered = statusFilter === "Todas"
-    ? filteredConversations
-    : filteredConversations.filter(item => (item.status || DEFAULT_CONVERSATION_STATUS) === statusFilter);
-  const conversationRows = statusFiltered.map(item => ({ item, lead: findConversationLead(item) }));
+  const conversationRows = filteredConversations.map(item => ({ item, lead: findConversationLead(item) }));
   const activeLead = conversation ? findConversationLead(conversation) : null;
   const statusMeta = conversationStatusMeta(conversation?.status);
   /* Menu de status do chat: botão com emoji + rótulo que abre a lista dos
@@ -5192,32 +5254,6 @@ function WhatsAppView({ currentUser }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="gc-display text-xl font-semibold">WhatsApp</h1>
-          <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>
-            Central de atendimento do CRM usando Baileys. O WhatsApp fica conectado por trás da interface.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={toggleSound}
-            aria-pressed={soundOn}
-            title={soundOn ? "Som de nova mensagem ativado — clique para silenciar" : "Som de nova mensagem silenciado — clique para ativar"}
-            aria-label={soundOn ? "Silenciar som de nova mensagem" : "Ativar som de nova mensagem"}
-            className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full transition-colors"
-            style={{ background: soundOn ? "var(--accent-soft)" : "var(--surface-sunken)", color: soundOn ? "var(--accent)" : "var(--slate)" }}
-          >
-            {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
-            <span className="sm:inline hidden">{soundOn ? "Som ligado" : "Som off"}</span>
-          </button>
-          <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full" style={{ background: "var(--surface-sunken)", color: "var(--slate)" }}>
-            <MessageCircle size={14} /> WHATSAPP + BAILEYS
-          </span>
-        </div>
-      </div>
-
       <section className="p-4 flex items-center justify-between gap-3 flex-wrap" style={card}>
         <div className="flex items-center gap-3">
           <span className="w-2.5 h-2.5 rounded-full" style={{ background: connected ? "var(--success, #16a34a)" : "var(--slate)" }} />
@@ -5281,14 +5317,16 @@ function WhatsAppView({ currentUser }) {
         </div>
       )}
 
-      <div className="p-3 rounded-lg text-xs" style={{ background: "var(--warning-bg, var(--surface-sunken))", color: "var(--ink-soft)" }} role="note">
-        {hostedWebApp ? "O CRM está online, mas o WhatsApp usa o backend local deste computador. Deixe run-crm.bat aberto e permita o acesso à rede local no navegador. O atendimento só funciona neste computador." : "Esta integração usa Baileys, uma biblioteca não oficial que conversa com o WhatsApp Web. Não há Cloud API, webhook da Meta ou cobrança de plataforma no CRM. Use a conexão para atendimento legítimo e evite spam/disparos em massa."}
-      </div>
+      {hostedWebApp && (
+        <div className="p-3 rounded-lg text-xs" style={{ background: "var(--warning-bg, var(--surface-sunken))", color: "var(--ink-soft)" }} role="note">
+          O CRM está online, mas o WhatsApp usa o backend local deste computador. Deixe run-crm.bat aberto e permita o acesso à rede local no navegador. O atendimento só funciona neste computador.
+        </div>
+      )}
 
       {error && <div className="text-sm px-3 py-2 rounded-lg" style={{ background: "var(--danger-bg)", color: "var(--danger)" }} role="alert">{error}</div>}
 
       <div className="grid gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
-        <section className="overflow-hidden flex flex-col" style={{ ...card, height: "min(860px, max(440px, calc(100dvh - 320px)))" }} aria-label="Conversas do WhatsApp">
+        <section className="overflow-hidden flex flex-col" style={{ ...card, height: "min(920px, max(500px, calc(100dvh - 260px)))" }} aria-label="Conversas do WhatsApp">
           <div className="p-3 space-y-3" style={{ borderBottom: "1px solid var(--line)" }}>
             <div className="grid grid-cols-2 gap-1 p-1 rounded-lg" style={{ background: "var(--surface-sunken)" }}>
               <button type="button" onClick={() => setSidebarView("conversations")} className="rounded-md px-2 py-1.5 text-xs font-medium" style={{ background: sidebarView === "conversations" ? "var(--surface)" : "transparent", color: "var(--ink)" }}>Conversas ({conversations.length})</button>
@@ -5298,39 +5336,13 @@ function WhatsAppView({ currentUser }) {
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--slate)" }} />
               <input value={conversationSearch} onChange={event => setConversationSearch(event.target.value)} placeholder="Buscar conversa" title="Busca por nome, empresa, telefone ou trecho da mensagem" aria-label="Buscar conversa" className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm" style={{ borderColor: "var(--line)", background: "var(--surface)" }} />
             </div>}
-            {sidebarView === "conversations" && conversations.length > 0 && (
-              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar conversas por status">
-                {statusFilters.map(key => {
-                  const isActiveFilter = statusFilter === key;
-                  const option = key === "Todas" ? null : conversationStatusMeta(key);
-                  const count = key === "Todas" ? conversations.length : (statusCounts[key] || 0);
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setStatusFilter(key)}
-                      aria-pressed={isActiveFilter}
-                      title={option ? option.hint : "Mostrar todas as conversas"}
-                      className="inline-flex items-center gap-1 rounded-full text-[11px] px-2 py-1 transition-colors"
-                      style={isActiveFilter
-                        ? (option ? TONE_STYLE(option.tone) : { background: "var(--accent-soft)", color: "var(--accent-ink)" })
-                        : { background: "var(--surface-sunken)", color: "var(--slate)" }}
-                    >
-                      {option && <span aria-hidden="true">{option.emoji}</span>}
-                      <span className="font-medium">{key}</span>
-                      <span className="opacity-70 gc-mono">{count}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
             {sidebarView === "leads" && <div className="flex gap-2">
               <input value={leadSearch} onChange={event => setLeadSearch(event.target.value)} placeholder="Buscar lead ou telefone" aria-label="Buscar lead para conversar" className="min-w-0 flex-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: "var(--line)", background: "var(--surface)" }} />
               <Button variant="secondary" icon={RefreshCw} onClick={loadLeads} disabled={loadingLeads}>Atualizar</Button>
             </div>}
           </div>
           {sidebarView === "conversations" ? (
-            loading ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>Carregando conversas…</div> : conversations.length === 0 ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>Nenhuma conversa ainda. Abra a aba Leads para escolher um contato cadastrado ou aguarde uma nova mensagem recebida.</div> : conversationRows.length === 0 ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>{conversationSearch.trim() ? `Nenhuma conversa encontrada para “${conversationSearch.trim()}”. Limpe a busca para ver todas as conversas.` : statusFilter !== "Todas" ? `Nenhuma conversa com o status “${statusFilter}”. Escolha “Todas” para ver a fila inteira.` : "Nenhuma conversa encontrada."}</div> : <div className="flex-1 min-h-0 overflow-y-auto">{conversationRows.map(({ item, lead }) => (
+            loading ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>Carregando conversas…</div> : conversations.length === 0 ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>Nenhuma conversa ainda. Abra a aba Leads para escolher um contato cadastrado ou aguarde uma nova mensagem recebida.</div> : conversationRows.length === 0 ? <div className="p-4 text-sm" style={{ color: "var(--slate)" }}>{`Nenhuma conversa encontrada para “${conversationSearch.trim()}”. Limpe a busca para ver todas as conversas.`}</div> : <div className="flex-1 min-h-0 overflow-y-auto">{conversationRows.map(({ item, lead }) => (
             <div key={item.id} className="relative"><button type="button" onClick={() => selectConversation(item.id)} className="w-full text-left px-4 py-3 pr-10 transition-colors" style={{ background: freshIds.has(item.id) ? "var(--accent-soft-strong)" : conversation?.id === item.id ? "var(--accent-soft)" : item.unreadCount > 0 ? "var(--accent-soft)" : "transparent", borderBottom: "1px solid var(--line)", boxShadow: freshIds.has(item.id) ? "inset 4px 0 0 var(--accent)" : item.unreadCount > 0 ? "inset 3px 0 0 var(--accent)" : "none", fontWeight: freshIds.has(item.id) || item.unreadCount > 0 ? 600 : undefined }}>
               <div className="flex items-center justify-between gap-2"><span className="font-medium text-sm truncate">{item.contact.name}</span><span className="text-[11px] shrink-0" style={{ color: "var(--slate)" }}>{formatTime(item.lastMessage?.timestamp)}</span></div>
               <div className="text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{item.contact.company} · {item.contact.phone}</div>
@@ -5363,7 +5375,7 @@ function WhatsAppView({ currentUser }) {
           })}</div>}
         </section>
 
-        <section className="overflow-hidden flex flex-col" style={{ ...card, height: "min(860px, max(440px, calc(100dvh - 320px)))" }} aria-label="Mensagens do WhatsApp">
+        <section className="overflow-hidden flex flex-col" style={{ ...card, height: "min(920px, max(500px, calc(100dvh - 260px)))" }} aria-label="Mensagens do WhatsApp">
           {conversation ? <>
             <header className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: "1px solid var(--line)" }}><div className="min-w-0"><div className="font-medium text-sm truncate">{conversation.contact.name}</div><div className="text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{conversation.contact.company} · {conversation.contact.phone}</div></div><div className="flex items-center gap-2 shrink-0">{activeLead && <Pill tone={STATUS_TONE[activeLead.status] || "slate"}>{activeLead.status}</Pill>}{statusMenuControl}</div></header>
             <div className="flex-1 min-h-0 p-4 space-y-3 overflow-y-auto">{conversation.messages.map(message => <div key={message.id} className={`flex ${message.direction === "outgoing" ? "justify-end" : "justify-start"}`}><div className="max-w-[85%] rounded-xl px-3 py-2" style={{ background: message.direction === "outgoing" ? "var(--accent-soft)" : "var(--surface-sunken)", color: "var(--ink)" }}><div className="text-sm whitespace-pre-wrap break-words">{message.content}</div><div className="text-[10px] text-right mt-1" style={{ color: "var(--slate)" }}>{formatTime(message.timestamp)} · {messageStatusLabel(message.status)}</div></div></div>)}<div ref={messagesEndRef} /></div>
@@ -5396,25 +5408,25 @@ function WhatsAppView({ currentUser }) {
                   <button type="button" onClick={() => setAttachment(null)} className="rounded-md p-1.5" style={{ color: "var(--slate)" }} aria-label="Remover anexo"><X size={16} /></button>
                 </div>
               )}
-              <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" variant="secondary" size="sm" icon={ImageIcon} onClick={() => imageInputRef.current?.click()} disabled={!connected || sending}>Imagem</Button>
-                <Button type="button" variant="secondary" size="sm" icon={Paperclip} onClick={() => audioInputRef.current?.click()} disabled={!connected || sending}>Áudio</Button>
-                <Button type="button" variant={recording ? "danger" : "secondary"} size="sm" icon={Mic} onClick={toggleAudioRecording} disabled={!connected || sending}>{recording ? "Parar gravação" : "Gravar áudio"}</Button>
+              <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
+                <Button type="button" variant="secondary" size="sm" icon={ImageIcon} onClick={() => imageInputRef.current?.click()} disabled={!connected || sending} className="shrink-0">Imagem</Button>
+                <Button type="button" variant="secondary" size="sm" icon={Paperclip} onClick={() => audioInputRef.current?.click()} disabled={!connected || sending} className="shrink-0">Áudio</Button>
+                <Button type="button" variant={recording ? "danger" : "secondary"} size="sm" icon={Mic} onClick={toggleAudioRecording} disabled={!connected || sending} className="shrink-0">{recording ? "Parar gravação" : "Gravar áudio"}</Button>
                 {recording && <span className="text-xs" style={{ color: "var(--danger)" }} role="status">Gravando…</span>}
+                <button
+                  type="button"
+                  onClick={() => setQuickRepliesOpen(open => !open)}
+                  aria-expanded={quickRepliesOpen}
+                  aria-controls="whatsapp-quick-replies"
+                  disabled={!connected || sending}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40"
+                  style={{ color: "var(--accent-ink)", background: "var(--accent-soft)", border: "1px solid var(--line)" }}
+                >
+                  <MessageCircle size={14} />
+                  Respostas rápidas
+                  <ChevronDown size={13} style={{ transform: quickRepliesOpen ? "rotate(180deg)" : "none" }} />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setQuickRepliesOpen(open => !open)}
-                aria-expanded={quickRepliesOpen}
-                aria-controls="whatsapp-quick-replies"
-                disabled={!connected || sending}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40"
-                style={{ color: "var(--accent-ink)", background: "var(--accent-soft)", border: "1px solid var(--line)" }}
-              >
-                <MessageCircle size={14} />
-                Respostas rápidas
-                <ChevronDown size={13} style={{ transform: quickRepliesOpen ? "rotate(180deg)" : "none" }} />
-              </button>
               {quickRepliesOpen && (
                 <div id="whatsapp-quick-replies" className="rounded-lg border p-2 space-y-1" style={{ borderColor: "var(--line)", background: "var(--surface-sunken)" }} role="group" aria-label="Modelos de resposta rápida">
                   <div className="px-2 pb-1 text-[11px]" style={{ color: "var(--slate)" }}>Escolha um modelo para preencher a mensagem; revise antes de enviar.</div>
