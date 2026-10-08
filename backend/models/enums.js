@@ -45,6 +45,8 @@ const PROPOSAL_STATUSES = ['Enviada', 'Em negociação', 'Aprovada', 'Recusada']
 /* 'cancelado' é usado pelo front-end (cancelar/reagendar follow-up) e é aceito
    pelo CHECK da tabela lead_followups — mantido em sincronia com o banco. */
 const FOLLOWUP_STATUSES = ['pendente', 'concluido', 'cancelado'];
+const AGENDA_EVENT_TYPES = ['reuniao', 'demonstracao', 'tarefa', 'compromisso'];
+const AGENDA_EVENT_STATUSES = ['agendado', 'concluido', 'cancelado'];
 
 /* Regra do front-end (suggestTemperature): a temperatura só sobe, nunca desce. */
 const TEMP_RANK = { Frio: 0, Morno: 1, Quente: 2 };
@@ -63,6 +65,8 @@ module.exports = {
   PLANS,
   PROPOSAL_STATUSES,
   FOLLOWUP_STATUSES,
+  AGENDA_EVENT_TYPES,
+  AGENDA_EVENT_STATUSES,
   TEMP_RANK,
   HOT_RESULTS,
   WARM_RESULTS,

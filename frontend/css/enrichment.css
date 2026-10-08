@@ -27,6 +27,15 @@
   background: var(--surface-sunken, rgba(0, 0, 0, 0.02));
 }
 
+.enrichment-results tbody tr {
+  cursor: pointer;
+}
+
+.enrichment-results tbody tr.is-selected,
+.enrichment-results tbody tr.is-selected:hover {
+  background: rgba(0, 0, 0, 0.14);
+}
+
 .enrichment-results tbody tr:last-child td {
   border-bottom: none;
 }

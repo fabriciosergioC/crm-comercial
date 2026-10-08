@@ -24,6 +24,7 @@ router.use('/interactions', require('./interactionsRoutes'));
 
 /* Coleções de apoio ao lead / pós-venda */
 router.use('/followups', require('./followupsRoutes'));
+router.use('/agenda', require('./agendaRoutes'));
 router.use('/demos', require('./demosRoutes'));
 router.use('/proposals', require('./proposalsRoutes'));
 router.use('/clients', require('./clientsRoutes'));

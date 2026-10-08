@@ -9,7 +9,7 @@ Estrutura do banco do CRM. **Nada aqui apaga dados**: só existem
 
 | # | Arquivo | O que faz |
 |---|---|---|
-| 1 | `schema.sql` | 9 tabelas, constraints, índices e trigger de `updated_at` |
+| 1 | `schema.sql` | 10 tabelas, constraints, índices e trigger de `updated_at` |
 | 2 | `functions.sql` | 2 funções RPC: `change_lead_status`, `add_lead_interaction` |
 | 3 | `rls.sql` | Habilita RLS, tira acesso de `anon`/`authenticated`, libera `service_role` |
 | 4 | `migrations/002_auth.sql` | adiciona hash, indicador de troca obrigatória e data da senha em `users` |
@@ -17,6 +17,7 @@ Estrutura do banco do CRM. **Nada aqui apaga dados**: só existem
 | 6 | `migrations/007_whatsapp_conversation_status.sql` | converge `whatsapp_conversations.status` para os 7 status do ciclo de vida e passa o padrão da coluna para `Novo` |
 | 7 | `migrations/008_whatsapp_respondido_status.sql` | alteração anterior: renomeou `Aguardando resposta` para `Respondido` |
 | 8 | `migrations/009_whatsapp_status_labels.sql` | restaura `Aguardando resposta` e renomeia `Aguardando atendente` para `Respondido` |
+| 9 | `migrations/010_agenda_events.sql` | cria eventos persistentes para reuniões, demonstrações agendadas, tarefas e compromissos |
 
 Para corrigir um banco em que a migração 008 já foi executada, rode apenas a
 009, uma vez, antes de usar a versão corrigida do CRM. A 009 também funciona
@@ -33,6 +34,9 @@ não edite o bundle à mão (se precisar regerar, peça que eu recrio).
 Depois de aplicar a estrutura base, execute também
 `migrations/005_whatsapp_baileys.sql` para habilitar a persistência de conversas
 e mensagens do WhatsApp.
+
+Para habilitar a Agenda em um banco existente, execute
+`migrations/010_agenda_events.sql` no SQL Editor do Supabase.
 
 > ⚠️ Cuidado com o arquivo errado — o SQL Editor só aceita SQL:
 > - ✅ `apply_all.sql` (ou `schema.sql` → `functions.sql` → `rls.sql`)
@@ -51,11 +55,12 @@ As tabelas do WhatsApp são uma migração separada e não são incluídas em
 
 | Tabela | Papel | Relações |
 |---|---|---|
-| `users` | Vendedores/donos (espelha a constante `USERS`) e credenciais de acesso | pai de `leads.owner`, `lead_interactions."user"`, `lead_followups.created_by`, `lead_demos.owner`, `clients.owner` |
+| `users` | Vendedores/donos (espelha a constante `USERS`) e credenciais de acesso | pai de `leads.owner`, `lead_interactions."user"`, `lead_followups.created_by`, `agenda_events.owner`, `lead_demos.owner`, `clients.owner` |
 | `leads` | Oportunidade comercial (entidade central) | `owner → users` |
 | `lead_status_history` | Auditoria de mudança de status | `lead_id → leads` (cascade) |
 | `lead_interactions` | Contatos realizados | `lead_id → leads` (cascade) |
 | `lead_followups` | Tarefas de retorno | `lead_id → leads` (cascade) |
+| `agenda_events` | Reuniões, demonstrações agendadas, tarefas e compromissos | `lead_id → leads` (cascade), `owner → users` |
 | `lead_demos` | Prévias com validade (padrão 24h) | `lead_id → leads` (cascade) |
 | `lead_proposals` | Propostas comerciais | `lead_id → leads` (cascade) |
 | `clients` | Cliente convertido | `lead_id → leads` (**1:1**, `unique`) |
@@ -84,7 +89,8 @@ As tabelas do WhatsApp são uma migração separada e não são incluídas em
 7. **`users`** espelha `USERS` (`erick`, `fabricio`) e armazena apenas o hash da
    senha. Usuários sem hash recebem a senha padrão configurada no backend e
    precisam trocá-la no primeiro acesso.
-8. **Sem `DELETE`** — a aplicação não exclui nada: follow-up vira `cancelado`,
+8. **Sem `DELETE`** — a aplicação não exclui nada: follow-up e evento de agenda viram
+   `cancelado`,
    demo vira `deactivated`, proposta vira `Recusada`. Os `on delete cascade`
    existem só para integridade referencial.
 

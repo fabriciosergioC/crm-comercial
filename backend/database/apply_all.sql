@@ -168,6 +168,28 @@ create table if not exists public.lead_followups (
 );
 
 -- ----------------------------------------------------------------------------
+-- agenda_events - reuniões, demonstrações agendadas, tarefas e compromissos.
+-- Retornos continuam usando lead_followups para manter o fluxo existente.
+-- ----------------------------------------------------------------------------
+create table if not exists public.agenda_events (
+  id         text        primary key,
+  type       text        not null,
+  title      text        not null,
+  event_at   timestamptz not null,
+  lead_id    text        references public.leads (id) on delete cascade,
+  owner      text        references public.users (id),
+  notes      text        not null default '',
+  status     text        not null default 'agendado',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint agenda_event_type_chk check (type in ('reuniao','demonstracao','tarefa','compromisso')),
+  constraint agenda_event_status_chk check (status in ('agendado','concluido','cancelado'))
+);
+
+create index if not exists agenda_events_event_at_idx on public.agenda_events (event_at);
+create index if not exists agenda_events_lead_id_idx on public.agenda_events (lead_id);
+
+-- ----------------------------------------------------------------------------
 -- lead_demos - prévias enviadas ao cliente (validade padrão de 24h).
 --   views / last_viewed_at ficam nullable: hoje não existe página que os grave.
 -- ----------------------------------------------------------------------------
@@ -285,7 +307,7 @@ create index if not exists cu_client_date_idx on public.client_updates (client_i
 
 -- ----------------------------------------------------------------------------
 -- updated_at automático nas tabelas que a aplicação ATUALIZA
---   (leads, lead_followups, lead_demos). As outras são somente-inclusão.
+--   (leads, lead_followups, agenda_events, lead_demos).
 --   O DROP TRIGGER abaixo é apenas para permitir reexecução do arquivo:
 --   não toca em dados.
 -- ----------------------------------------------------------------------------
@@ -307,6 +329,11 @@ create trigger leads_set_updated_at
 drop trigger if exists lead_followups_set_updated_at on public.lead_followups;
 create trigger lead_followups_set_updated_at
   before update on public.lead_followups
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists agenda_events_set_updated_at on public.agenda_events;
+create trigger agenda_events_set_updated_at
+  before update on public.agenda_events
   for each row execute function public.set_updated_at();
 
 drop trigger if exists lead_demos_set_updated_at on public.lead_demos;
@@ -490,6 +517,7 @@ begin
   return jsonb_build_object('interaction', v_inter, 'lead', v_lead);
 end;
 $$;
+
 -- #################### FIM functions.sql ####################
 
 -- #################### INICIO rls.sql ####################
@@ -527,6 +555,7 @@ alter table public.leads               enable row level security;
 alter table public.lead_status_history enable row level security;
 alter table public.lead_interactions   enable row level security;
 alter table public.lead_followups      enable row level security;
+alter table public.agenda_events      enable row level security;
 alter table public.lead_demos          enable row level security;
 alter table public.lead_proposals      enable row level security;
 alter table public.clients             enable row level security;
@@ -542,6 +571,7 @@ revoke all on table public.leads               from anon, authenticated;
 revoke all on table public.lead_status_history from anon, authenticated;
 revoke all on table public.lead_interactions   from anon, authenticated;
 revoke all on table public.lead_followups      from anon, authenticated;
+revoke all on table public.agenda_events      from anon, authenticated;
 revoke all on table public.lead_demos          from anon, authenticated;
 revoke all on table public.lead_proposals      from anon, authenticated;
 revoke all on table public.clients             from anon, authenticated;
@@ -552,6 +582,7 @@ grant all on table public.leads               to service_role;
 grant all on table public.lead_status_history to service_role;
 grant all on table public.lead_interactions   to service_role;
 grant all on table public.lead_followups      to service_role;
+grant all on table public.agenda_events      to service_role;
 grant all on table public.lead_demos          to service_role;
 grant all on table public.lead_proposals      to service_role;
 grant all on table public.clients             to service_role;

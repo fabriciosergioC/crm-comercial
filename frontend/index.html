@@ -46,6 +46,7 @@ const Bell = (p) => <Icon {...p}><path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 
 const Plus = (p) => <Icon {...p}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></Icon>;
 const ChevronRight = (p) => <Icon {...p}><polyline points="9 6 15 12 9 18" /></Icon>;
 const Clock = (p) => <Icon {...p}><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 16 14" /></Icon>;
+const CalendarDays = (p) => <Icon {...p}><rect x="3" y="5" width="18" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="3" y1="11" x2="21" y2="11" /><line x1="8" y1="15" x2="8.01" y2="15" /><line x1="12" y1="15" x2="12.01" y2="15" /><line x1="16" y1="15" x2="16.01" y2="15" /></Icon>;
 const AlertTriangle = (p) => <Icon {...p}><path d="M12 3 2 20h20L12 3z" /><line x1="12" y1="10" x2="12" y2="13.5" /><line x1="12" y1="16.5" x2="12" y2="16.6" /></Icon>;
 const CheckCircle2 = (p) => <Icon {...p}><circle cx="12" cy="12" r="9" /><polyline points="8 12 11 15 16 9" /></Icon>;
 const X = (p) => <Icon {...p}><line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" /></Icon>;
@@ -88,7 +89,6 @@ const Edit = (p) => <Icon {...p}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2
 const Trash2 = (p) => <Icon {...p}><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="m19 6-1 14H6L5 6" /><path d="M10 11v5M14 11v5" /></Icon>;
 const Sparkles = (p) => <Icon {...p}><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3z" /><line x1="18" y1="16" x2="18" y2="20" /><line x1="16" y1="18" x2="20" y2="18" /></Icon>;
 const Loader2 = (p) => <Icon {...p}><path d="M12 3a9 9 0 1 0 9 9" /></Icon>;
-const Download = (p) => <Icon {...p}><path d="M12 3v12" /><polyline points="7 11 12 16 17 11" /><line x1="4" y1="20" x2="20" y2="20" /></Icon>;
 const Palette = (p) => <Icon {...p}><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H16a5 5 0 0 0 5-5c0-3.9-4-7-9-7z" /><circle cx="7.5" cy="11.5" r="1" fill="currentColor" stroke="none" /><circle cx="10.5" cy="7.5" r="1" fill="currentColor" stroke="none" /><circle cx="15" cy="8" r="1" fill="currentColor" stroke="none" /></Icon>;
 const Volume2 = (p) => <Icon {...p}><path d="M11 5 6 9H3v6h3l5 4V5z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M18 6a8 8 0 0 1 0 12" /></Icon>;
 const VolumeX = (p) => <Icon {...p}><path d="M11 5 6 9H3v6h3l5 4V5z" /><line x1="16" y1="9" x2="22" y2="15" /><line x1="22" y1="9" x2="16" y2="15" /></Icon>;
@@ -731,6 +731,7 @@ const initialDb = {
   statusHistory: MOCK_STATUS_HISTORY,
   interactions: MOCK_INTERACTIONS,
   followups: MOCK_FOLLOWUPS,
+  agendaEvents: [],
   demos: MOCK_DEMOS,
   proposals: MOCK_PROPOSALS,
   clients: MOCK_CLIENTS,
@@ -902,12 +903,13 @@ const crmApi = {
         .then((r) => (r.ok ? r.json() : { data: [] }))
         .catch(() => ({ data: [] }));
 
-    const [leads, statusHistory, interactions, followups, demos, proposals, clients, clientUpdates] =
+    const [leads, statusHistory, interactions, followups, agendaEvents, demos, proposals, clients, clientUpdates] =
       await Promise.all([
         fetchJson("/leads"),
         fetchJson("/status-history"),
         fetchJson("/interactions"),
         fetchJson("/followups"),
+        fetchJson("/agenda"),
         fetchJson("/demos"),
         fetchJson("/proposals"),
         fetchJson("/clients"),
@@ -919,6 +921,7 @@ const crmApi = {
       statusHistory: statusHistory.data || [],
       interactions: interactions.data || [],
       followups: followups.data || [],
+      agendaEvents: agendaEvents.data || [],
       demos: demos.data || [],
       proposals: proposals.data || [],
       clients: clients.data || [],
@@ -975,6 +978,21 @@ const crmApi = {
       }).then((r) => r.json()),
     update: (id, patch) =>
       fetch(`${CRM_API_BASE}/followups/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }).then((r) => r.json()),
+  },
+
+  agenda: {
+    create: (event) =>
+      fetch(`${CRM_API_BASE}/agenda`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(event),
+      }).then((r) => r.json()),
+    update: (id, patch) =>
+      fetch(`${CRM_API_BASE}/agenda/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
@@ -1082,7 +1100,7 @@ function dbReducer(db, action) {
     case "DELETE_LEAD": {
       if (db.clients.some(c => c.leadId === action.id)) return db;
       const next = { ...db, leads: db.leads.filter(l => l.id !== action.id) };
-      for (const collection of ["statusHistory", "interactions", "followups", "demos", "proposals"]) {
+      for (const collection of ["statusHistory", "interactions", "followups", "agendaEvents", "demos", "proposals"]) {
         next[collection] = db[collection].filter(item => item.leadId !== action.id);
       }
       return next;
@@ -1119,6 +1137,12 @@ function dbReducer(db, action) {
     }
     case "UPDATE_FOLLOWUP": {
       return { ...db, followups: db.followups.map(f => f.id === action.id ? { ...f, ...action.patch } : f) };
+    }
+    case "ADD_AGENDA_EVENT": {
+      return { ...db, agendaEvents: [action.event, ...db.agendaEvents] };
+    }
+    case "UPDATE_AGENDA_EVENT": {
+      return { ...db, agendaEvents: db.agendaEvents.map(event => event.id === action.id ? { ...event, ...action.patch } : event) };
     }
     case "ADD_DEMO": {
       return { ...db, demos: [action.demo, ...db.demos] };
@@ -1644,12 +1668,13 @@ function globalSearch(query, db) {
 const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", icon: Building2 },
   { id: "leads", label: "Leads", icon: Users },
+  { id: "agenda", label: "Agenda", icon: CalendarDays },
   { id: "followups", label: "Follow-ups", icon: Clock },
   { id: "demos", label: "Demos", icon: Timer },
   { id: "proposals", label: "Propostas", icon: FileText },
   { id: "clients", label: "Clientes", icon: UserCheck },
   { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { id: "enrichment", label: "Enriquecimento", icon: Sparkles },
+  { id: "enrichment", label: "Captar Leads", icon: Sparkles },
   { id: "reports", label: "Relatórios", icon: TrendingUp },
 ];
 
@@ -3954,6 +3979,265 @@ function FollowupGroup({ title, items, sel, onOpenLead, dispatch, notify }) {
   );
 }
 
+const AGENDA_TYPES = [
+  { id: "reuniao", label: "Reunião" },
+  { id: "demonstracao", label: "Demonstração" },
+  { id: "retorno", label: "Retorno" },
+  { id: "tarefa", label: "Tarefa" },
+  { id: "compromisso", label: "Compromisso" },
+];
+const AGENDA_STATUSES = [
+  { id: "agendado", label: "Agendados" },
+  { id: "concluido", label: "Concluídos" },
+  { id: "cancelado", label: "Cancelados" },
+];
+
+function AgendaEventForm({ event, leads, currentUser, onSave, onCancel }) {
+  const [form, setForm] = useState(() => ({
+    type: event?.type || "reuniao",
+    title: event?.title || "",
+    eventAt: toLocalDateTimeInput(event?.eventAt || daysFromNow(0, 10, 0)),
+    leadId: event?.leadId || "",
+    owner: event?.owner || currentUser,
+    notes: event?.notes || "",
+  }));
+  const set = key => value => setForm(current => ({ ...current, [key]: value }));
+
+  return (
+    <form
+      className="rounded-xl p-4 space-y-3"
+      style={{ background: "var(--surface-sunken)", border: "1px solid var(--line)" }}
+      onSubmit={eventObject => {
+        eventObject.preventDefault();
+        onSave({ ...form, leadId: form.leadId || null, eventAt: new Date(form.eventAt).toISOString() });
+      }}
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="Tipo" required>
+          <Select value={form.type} onChange={eventObject => set("type")(eventObject.target.value)}>
+            {AGENDA_TYPES.filter(type => type.id !== "retorno" || !event).map(type => <option key={type.id} value={type.id}>{type.label}</option>)}
+          </Select>
+        </Field>
+        <Field label="Data e horário" required>
+          <TextInput type="datetime-local" value={form.eventAt} onChange={eventObject => set("eventAt")(eventObject.target.value)} required />
+        </Field>
+      </div>
+      <Field label="Título" required>
+        <TextInput value={form.title} onChange={eventObject => set("title")(eventObject.target.value)} maxLength={200} placeholder="Ex.: Apresentar proposta comercial" required />
+      </Field>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="Lead relacionado" required={form.type === "retorno"}>
+          <Select value={form.leadId} onChange={eventObject => set("leadId")(eventObject.target.value)} required={form.type === "retorno"}>
+            <option value="">Sem lead relacionado</option>
+            {leads.map(lead => <option key={lead.id} value={lead.id}>{lead.company}</option>)}
+          </Select>
+        </Field>
+        <Field label="Responsável">
+          <Select value={form.owner} onChange={eventObject => set("owner")(eventObject.target.value)}>
+            {USERS.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
+          </Select>
+        </Field>
+      </div>
+      <Field label="Observações">
+        <TextArea value={form.notes} onChange={eventObject => set("notes")(eventObject.target.value)} maxLength={2000} rows={2} placeholder="Detalhes opcionais" />
+      </Field>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="secondary" size="sm" onClick={onCancel}>Cancelar</Button>
+        <Button type="submit" size="sm" icon={CheckCircle2}>{event ? "Salvar alterações" : "Adicionar à agenda"}</Button>
+      </div>
+    </form>
+  );
+}
+
+function AgendaView({ db, currentUser, onOpenLead, dispatch, notify }) {
+  const [typeFilter, setTypeFilter] = useState("todos");
+  const [statusFilter, setStatusFilter] = useState("agendado");
+  const [periodFilter, setPeriodFilter] = useState("todos");
+  const [showForm, setShowForm] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const leadsById = useMemo(() => Object.fromEntries(db.leads.map(lead => [lead.id, lead])), [db.leads]);
+  const entries = useMemo(() => [
+    ...db.agendaEvents.map(event => ({ ...event, source: "agenda", eventStatus: event.status })),
+    ...db.followups.map(followup => ({
+      id: followup.id,
+      type: "retorno",
+      title: followup.note || "Retorno",
+      eventAt: followup.dueDate,
+      leadId: followup.leadId,
+      owner: followup.createdBy,
+      notes: "",
+      source: "followup",
+      eventStatus: followup.status === "concluido" ? "concluido" : followup.status === "cancelado" ? "cancelado" : "agendado",
+    })),
+  ].filter(entry => entry.eventAt), [db.agendaEvents, db.followups]);
+
+  const filteredEntries = useMemo(() => entries
+    .filter(entry => typeFilter === "todos" || entry.type === typeFilter)
+    .filter(entry => statusFilter === "todos" || entry.eventStatus === statusFilter)
+    .filter(entry => {
+      if (periodFilter === "todos") return true;
+      const date = new Date(entry.eventAt);
+      const now = new Date();
+      if (periodFilter === "hoje") return date.toDateString() === now.toDateString();
+      if (periodFilter === "atrasados") return entry.eventStatus === "agendado" && startOfDay(date) < startOfDay(now);
+      const end = new Date(now);
+      end.setDate(end.getDate() + 7);
+      return entry.eventStatus === "agendado" && date >= startOfDay(now) && date <= end;
+    })
+    .sort((a, b) => new Date(a.eventAt) - new Date(b.eventAt)), [entries, periodFilter, statusFilter, typeFilter]);
+
+  const saveEntry = data => {
+    if (data.type === "retorno") {
+      const note = [data.title.trim(), data.notes.trim()].filter(Boolean).join(" — ");
+      if (editingEvent?.source === "followup") {
+        dispatch({ type: "UPDATE_FOLLOWUP", id: editingEvent.id, patch: { dueDate: data.eventAt, note } });
+      } else {
+        dispatch({
+          type: "ADD_FOLLOWUP",
+          followup: {
+            id: `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            leadId: data.leadId,
+            dueDate: data.eventAt,
+            note,
+            status: "pendente",
+            createdBy: data.owner,
+          },
+        });
+      }
+    } else if (editingEvent) {
+      dispatch({ type: "UPDATE_AGENDA_EVENT", id: editingEvent.id, patch: data });
+    } else {
+      dispatch({
+        type: "ADD_AGENDA_EVENT",
+        event: { id: `a_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, ...data, status: "agendado" },
+      });
+    }
+    notify(editingEvent ? "Evento atualizado." : "Evento adicionado à agenda.");
+    setShowForm(false);
+    setEditingEvent(null);
+  };
+
+  const updateEntryStatus = (entry, status) => {
+    if (entry.source === "followup") {
+      dispatch({ type: "UPDATE_FOLLOWUP", id: entry.id, patch: { status: status === "agendado" ? "pendente" : status } });
+    } else {
+      dispatch({ type: "UPDATE_AGENDA_EVENT", id: entry.id, patch: { status } });
+    }
+    notify(status === "concluido" ? "Evento concluído." : status === "cancelado" ? "Evento cancelado." : "Evento reaberto.");
+  };
+
+  const rescheduleFollowup = entry => {
+    const newDate = window.prompt("Informe a nova data e hora no formato AAAA-MM-DD HH:MM:", `${toLocalDateTimeInput(daysFromNow(1, 9, 0)).replace("T", " ")}`);
+    if (!newDate) return;
+    const parsed = new Date(newDate.replace(" ", "T"));
+    if (Number.isNaN(parsed.getTime())) {
+      notify("Data inválida. Use o formato AAAA-MM-DD HH:MM.", "danger");
+      return;
+    }
+    dispatch({ type: "UPDATE_FOLLOWUP", id: entry.id, patch: { dueDate: parsed.toISOString(), status: "pendente" } });
+    notify("Retorno reagendado.");
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="gc-display text-xl font-semibold">Agenda</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>
+            Reuniões, demonstrações, retornos, tarefas e compromissos em um só lugar.
+          </p>
+        </div>
+        <Button icon={Plus} onClick={() => { setEditingEvent(null); setShowForm(value => !value); }}>
+          Novo evento
+        </Button>
+      </div>
+
+      {(showForm || editingEvent) && (
+        <AgendaEventForm
+          key={editingEvent?.id || "new-agenda-event"}
+          event={editingEvent}
+          leads={db.leads}
+          currentUser={currentUser}
+          onSave={saveEntry}
+          onCancel={() => { setShowForm(false); setEditingEvent(null); }}
+        />
+      )}
+
+      <div className="flex items-center gap-2 overflow-x-auto gc-scroll pb-1">
+        <FilterChip label="Todos os tipos" active={typeFilter === "todos"} onClick={() => setTypeFilter("todos")} />
+        {AGENDA_TYPES.map(type => (
+          <FilterChip key={type.id} label={type.label} active={typeFilter === type.id} onClick={() => setTypeFilter(type.id)} />
+        ))}
+      </div>
+
+      <div className="flex items-center gap-2 overflow-x-auto gc-scroll pb-1">
+        <FilterChip label="Todos os status" active={statusFilter === "todos"} onClick={() => setStatusFilter("todos")} />
+        {AGENDA_STATUSES.map(status => (
+          <FilterChip key={status.id} label={status.label} active={statusFilter === status.id} onClick={() => setStatusFilter(status.id)} />
+        ))}
+        <span className="w-px h-5 shrink-0 mx-1" style={{ background: "var(--line-strong)" }} />
+        {[["todos", "Qualquer data"], ["hoje", "Hoje"], ["proximos", "Próximos 7 dias"], ["atrasados", "Atrasados"]].map(([id, label]) => (
+          <FilterChip key={id} label={label} active={periodFilter === id} onClick={() => setPeriodFilter(id)} />
+        ))}
+      </div>
+
+      <SectionCard title={`Eventos · ${filteredEntries.length}`}>
+        {filteredEntries.length === 0 ? (
+          <div className="px-5 py-8">
+            <EmptyState icon={CalendarDays} title="Nenhum evento neste período" hint="Adicione uma reunião, demonstração, retorno, tarefa ou compromisso." />
+          </div>
+        ) : filteredEntries.map(entry => {
+          const lead = leadsById[entry.leadId];
+          const typeLabel = AGENDA_TYPES.find(type => type.id === entry.type)?.label || "Evento";
+          const completed = entry.eventStatus !== "agendado";
+          const late = !completed && startOfDay(entry.eventAt) < startOfDay(new Date());
+          return (
+            <div key={`${entry.source}-${entry.id}`} className="flex items-start gap-3 px-4 py-3.5 flex-wrap sm:flex-nowrap" style={{ borderBottom: "1px solid var(--line)", opacity: completed ? 0.7 : 1 }}>
+              <div className="w-24 shrink-0">
+                <div className="gc-mono text-xs font-medium" style={{ color: late ? "var(--danger)" : "var(--ink-soft)" }}>{fmtDate(entry.eventAt)}</div>
+                <div className="gc-mono text-xs mt-1" style={{ color: "var(--slate)" }}>{fmtTime(entry.eventAt)}</div>
+              </div>
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Pill tone={entry.type === "retorno" ? "amber" : entry.type === "demonstracao" ? "violet" : entry.type === "reuniao" ? "blue" : "slate"}>{typeLabel}</Pill>
+                  {late && <Pill tone="red">Atrasado</Pill>}
+                  {completed && <Pill tone={entry.eventStatus === "concluido" ? "green" : "slate"}>{entry.eventStatus === "concluido" ? "Concluído" : "Cancelado"}</Pill>}
+                  <span className={`text-sm font-medium ${completed ? "line-through" : ""}`}>{entry.title}</span>
+                </div>
+                {lead ? (
+                  <button type="button" onClick={() => onOpenLead(lead.id, entry.source === "followup" ? "followups" : "geral")} className="text-xs gc-focus rounded" style={{ color: "var(--accent-ink)" }}>
+                    {lead.company}
+                  </button>
+                ) : null}
+                {entry.notes && <p className="text-xs whitespace-pre-wrap" style={{ color: "var(--slate)" }}>{entry.notes}</p>}
+                {entry.owner && <p className="text-[11px]" style={{ color: "var(--slate)" }}>Responsável: {userName(entry.owner)}</p>}
+              </div>
+              {!completed ? (
+                <div className="flex items-center gap-1 shrink-0 ml-auto">
+                  {entry.source === "followup" ? (
+                    <>
+                      <IconButton icon={CheckCircle2} label="Concluir retorno" onClick={() => updateEntryStatus(entry, "concluido")} />
+                      <IconButton icon={RotateCcw} label="Reagendar retorno" onClick={() => rescheduleFollowup(entry)} />
+                    </>
+                  ) : (
+                    <>
+                      <IconButton icon={CheckCircle2} label="Concluir evento" onClick={() => updateEntryStatus(entry, "concluido")} />
+                      <IconButton icon={Edit} label="Editar evento" onClick={() => { setShowForm(false); setEditingEvent(entry); }} />
+                    </>
+                  )}
+                  <IconButton icon={Ban} label="Cancelar evento" onClick={() => updateEntryStatus(entry, "cancelado")} />
+                </div>
+              ) : entry.source === "agenda" ? (
+                <Button size="sm" variant="secondary" onClick={() => updateEntryStatus(entry, "agendado")}>Reabrir</Button>
+              ) : null}
+            </div>
+          );
+        })}
+      </SectionCard>
+    </div>
+  );
+}
+
 function FollowupsView({ sel, onOpenLead, dispatch, notify }) {
   return (
     <div className="space-y-5">
@@ -4253,7 +4537,7 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
   const [enriching, setEnriching] = useState(() => new Set());
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
-  const [selected, setSelected] = useState(() => new Set());
+  const [activeLeadKey, setActiveLeadKey] = useState(null);
   const [onlyContact, setOnlyContact] = useState(true);
 
   const results = result?.resultados || [];
@@ -4270,7 +4554,7 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
     setLoading(true);
     setError(null);
     setResult(null);
-    setSelected(new Set());
+    setActiveLeadKey(null);
     try {
       const data = await window.CRMEnrichment.search({
         city: city.trim(),
@@ -4352,8 +4636,6 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
           `${outcome.succeeded || 0} leads salvos; ${failures.length} não puderam ser adicionados. Tente novamente ou confira a conexão.`,
           "error"
         );
-      } else {
-        setSelected(new Set());
       }
     } catch (e) {
       notify(e.message || "Falha ao importar.", "error");
@@ -4361,15 +4643,6 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
       setImporting(false);
     }
   };
-
-  const toggle = (k) => setSelected(prev => {
-    const next = new Set(prev);
-    next.has(k) ? next.delete(k) : next.add(k);
-    return next;
-  });
-  const toggleAll = () => setSelected(prev =>
-    prev.size === visible.length ? new Set() : new Set(visible.map(keyOf))
-  );
 
   const card = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14 };
 
@@ -4414,7 +4687,21 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
             </Select>
           </Field>
           <Field label="Termo / categoria" required>
-            <TextInput value={term} onChange={e => setTerm(e.target.value)} placeholder="barbearia, clínica, pet..." onKeyDown={e => e.key === "Enter" && runSearch()} />
+            <Select value={term} onChange={e => setTerm(e.target.value)}>
+              <option value="barbearia">Barbearia</option>
+              <option value="salão de beleza">Salão de beleza</option>
+              <option value="estética">Estética</option>
+              <option value="clínica">Clínica / saúde</option>
+              <option value="restaurante">Restaurante / alimentação</option>
+              <option value="academia">Academia / fitness</option>
+              <option value="pet shop">Pet shop / veterinária</option>
+              <option value="imobiliária">Imobiliária</option>
+              <option value="advocacia">Advocacia</option>
+              <option value="contabilidade">Contabilidade</option>
+              <option value="arquitetura">Arquitetura / engenharia</option>
+              <option value="móveis">Móveis / marcenaria</option>
+              <option value="oficina mecânica">Oficina / automotivo</option>
+            </Select>
           </Field>
           <Field label="Raio (metros)">
             <TextInput type="number" value={radius} onChange={e => setRadius(e.target.value)} min="1000" step="1000" />
@@ -4425,7 +4712,7 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
               onChange={e => {
                 setSource(e.target.value);
                 setResult(null);
-                setSelected(new Set());
+                setActiveLeadKey(null);
                 setError(null);
               }}
             >
@@ -4437,11 +4724,6 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
           <Button icon={loading ? Loader2 : Search} onClick={runSearch} disabled={loading} className={loading ? "gc-spin" : ""}>
             {loading ? "Buscando…" : "Buscar empresas"}
           </Button>
-          {results.length > 0 && !isGooglePlaces && (
-            <Button variant="secondary" icon={Download} onClick={() => doImport(results.filter(i => selected.has(keyOf(i))))} disabled={importing || selected.size === 0}>
-              {importing ? "Importando…" : `Importar selecionados (${selected.size})`}
-            </Button>
-          )}
           {results.length > 0 && isGooglePlaces && (
             <span className="text-xs" style={{ color: "var(--slate)" }}>
               Consulta temporária · importação desativada
@@ -4461,7 +4743,7 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
         )}
         {!isGooglePlaces && result?.origem === "OpenStreetMap + Overpass" && (
           <p className="mt-3 text-xs" style={{ color: "var(--slate)" }} role="note">
-            Use “Adicionar ao Leads” na linha da empresa ou selecione várias e clique em “Importar selecionados”.
+            Use “Adicionar ao Leads” na linha da empresa.
           </p>
         )}
         {error && (
@@ -4495,11 +4777,6 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
               <table>
                 <thead>
                   <tr style={{ color: "var(--slate)" }}>
-                    {!isGooglePlaces && (
-                      <th style={{ width: 40 }}>
-                        <input type="checkbox" checked={selected.size === visible.length} onChange={toggleAll} aria-label="Selecionar todos" />
-                      </th>
-                    )}
                     <th>Empresa</th>
                     <th>Categoria</th>
                     <th>Contato</th>
@@ -4511,10 +4788,21 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
                   {visible.map(item => {
                     const k = keyOf(item);
                     return (
-                      <tr key={k}>
-                        {!isGooglePlaces && (
-                          <td><input type="checkbox" checked={selected.has(k)} onChange={() => toggle(k)} aria-label={`Selecionar ${item.nome}`} /></td>
-                        )}
+                      <tr
+                        key={k}
+                        className={activeLeadKey === k ? "is-selected" : ""}
+                        aria-selected={activeLeadKey === k}
+                        tabIndex={0}
+                        onClick={event => {
+                          if (event.target.closest("input")) return;
+                          setActiveLeadKey(k);
+                        }}
+                        onKeyDown={event => {
+                          if (event.target !== event.currentTarget || !["Enter", " "].includes(event.key)) return;
+                          event.preventDefault();
+                          setActiveLeadKey(k);
+                        }}
+                      >
                         <td>
                           <div className="font-medium">{item.nome}</div>
                           {item.endereco && <div className="text-xs" style={{ color: "var(--slate)" }}>{item.endereco}</div>}
@@ -5617,6 +5905,16 @@ function App() {
             if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao atualizar follow-up");
             break;
           }
+          case "ADD_AGENDA_EVENT": {
+            const res = await crmApi.agenda.create(action.event);
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao salvar evento da agenda");
+            break;
+          }
+          case "UPDATE_AGENDA_EVENT": {
+            const res = await crmApi.agenda.update(action.id, action.patch);
+            if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao atualizar evento da agenda");
+            break;
+          }
           case "ADD_DEMO": {
             const res = await crmApi.demos.create(action.demo);
             if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao salvar demonstração");
@@ -5845,6 +6143,8 @@ function App() {
     body = <Dashboard db={db} sel={sel} currentUser={currentUser} onOpenLead={openLead} setView={setView} setLeadsFilter={setLeadsFilterAndGo} setLeadsViewMode={setLeadsViewMode} dispatch={dispatch} notify={notify} />;
   } else if (view === "leads") {
     body = <LeadsView db={db} sel={sel} search={search} filter={leadsFilter} setFilter={setLeadsFilter} onOpenLead={openLead} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} deletingLeadId={deletingLeadId} onCreateLead={() => { leadFormOpenedFromEnrichment.current = false; setShowLeadForm(true); }} onImportLeads={() => setShowLeadImport(true)} currentUser={currentUser} viewMode={leadsViewMode} setViewMode={setLeadsViewMode} dispatch={dispatch} />;
+  } else if (view === "agenda") {
+    body = <AgendaView db={db} currentUser={currentUser} onOpenLead={openLead} dispatch={dispatch} notify={notify} />;
   } else if (view === "followups") {
     body = <FollowupsView sel={sel} onOpenLead={openLead} dispatch={dispatch} notify={notify} />;
   } else if (view === "demos") {
