@@ -495,7 +495,7 @@ const DEFAULT_CONVERSATION_STATUS = "Novo";
 const WHATSAPP_QUICK_REPLIES = [
   {
     label: "Primeiro contato",
-    message: "Olá, tudo bem? Falo com o responsável pela {empresa}?\nEstou fazendo uma análise rápida de algumas clínicas da região e vi uma oportunidade na presença digital de vocês relacionada à captação de clientes pelo WhatsApp.\nHoje, quando alguém encontra vocês pelo Instagram ou Google e quer saber mais sobre um procedimento, essa pessoa normalmente vai direto para o WhatsApp ou passa por algum outro caminho?",
+    message: "Olá, tudo bem? Falo com o responsável pela [EMPRESA]?\nMeu nome é [SEU NOME]. Estou entrando em contato porque estou fazendo uma análise de algumas empresas da região para entender como elas estão utilizando tecnologia no dia a dia, principalmente para melhorar atendimento, organização, vendas e alguns processos internos.\nNão quero te tomar muito tempo. Queria entender uma coisa: hoje, vocês têm alguma parte da operação que ainda dá bastante trabalho para a equipe ou que vocês acham que poderia funcionar melhor?",
   },
   {
     label: "Sem Retorno",
@@ -5406,7 +5406,13 @@ function WhatsAppView({ currentUser }) {
     const greeting = contactName && String(contactName).replace(/\D/g, "") !== phone
       ? `Olá, ${contactName}!`
       : "Olá!";
-    setDraft(reply.message.replaceAll("{saudacao}", greeting).replaceAll("{empresa}", company));
+    setDraft(
+      reply.message
+        .replaceAll("{saudacao}", greeting)
+        .replaceAll("{empresa}", company)
+        .replaceAll("[EMPRESA]", company)
+        .replaceAll("[SEU NOME]", status?.accountName || userName(currentUser))
+    );
     setQuickRepliesOpen(false);
   };
 
