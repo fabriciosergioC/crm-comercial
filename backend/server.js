@@ -8,6 +8,7 @@ const cors = require('cors');
 const routes = require('./routes');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 const followupNotifier = require('./services/followupNotifier');
+const agendaNotifier = require('./services/agendaNotifier');
 const whatsappService = require('./services/whatsapp/WhatsAppService');
 
 const app = express();
@@ -92,10 +93,12 @@ if (require.main === module) {
       console.log('[backend] AVISO: credenciais do Supabase ausentes no .env — os endpoints de dados responderão 503 até serem configuradas.');
     }
     /* O agendador e o WhatsApp precisam de processo Node persistente;
-       na Vercel serverless nenhum dos dois roda (Baileys exige socket contínuo). */
+       na Vercel serverless nenhum dos dois roda (Baileys exige socket contínuo).
+       followupNotifier avisa por WhatsApp; agendaNotifier avisa no Windows. */
     if (process.env.VERCEL !== '1') {
       autostartWhatsApp();
       followupNotifier.start();
+      agendaNotifier.start();
     }
   });
 }

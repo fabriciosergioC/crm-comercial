@@ -18,6 +18,10 @@ backend/.env*
 /data/whatsapp-auth*/
 /backend/data/whatsapp-auth*/
 
+# Estado dos lembretes do Windows e backups de status (contêm dados dos clientes)
+/data/agenda-notifier-state.json
+/data/*.json
+
 # Dependências e artefatos
 node_modules/
 backend/node_modules/

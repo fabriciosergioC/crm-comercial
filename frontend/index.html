@@ -458,7 +458,7 @@ async function changePasswordThroughApi(userId, currentPassword, newPassword) {
   return { ok: true, data: response.data };
 }
 
-const STATUS_LIST = ["Novo","Contato pendente","MSG 1: Saudação","Contatado","Respondeu","MSG 2: Apresentação","Demo enviada","Demo em análise","Interessado","Proposta enviada","Negociação","Fechado","Perdido"];
+const STATUS_LIST = ["Novo","Contato pendente","Contatado","Respondeu","Demo enviada","Demo em análise","Interessado","Proposta enviada","Negociação","Fechado","Perdido"];
 const TEMPERATURES = ["Frio","Morno","Quente"];
 const PRIORITIES = ["Baixa","Média","Alta"];
 const CHANNELS = ["Ligação","WhatsApp","Instagram","E-mail","Presencial","Outro"];
@@ -469,7 +469,7 @@ const SEGMENTS = ["Alimentação","Saúde","Fitness","Jurídico","Beleza","Imóv
 const PLANS = ["Site institucional","Landing page","E-commerce","Site + manutenção mensal"];
 
 const STATUS_TONE = {
-  "Novo": "slate", "Contato pendente": "amber", "MSG 1: Saudação": "blue", "MSG 2: Apresentação": "blue",
+  "Novo": "slate", "Contato pendente": "amber",
   "Contatado": "blue", "Respondeu": "blue",
   "Demo enviada": "violet", "Demo em análise": "violet", "Interessado": "amber",
   "Proposta enviada": "teal", "Negociação": "teal", "Fechado": "green", "Perdido": "red",
@@ -495,7 +495,7 @@ const DEFAULT_CONVERSATION_STATUS = "Novo";
 const WHATSAPP_QUICK_REPLIES = [
   {
     label: "Primeiro contato",
-    message: "Olá! Tudo bem? Aqui é o Erick.\n\nEstou conversando com profissionais de diferentes clínicas para compreender melhor os desafios da rotina e os processos do dia a dia.\n\nGostaria de fazer uma pergunta rápida: existe alguma atividade na rotina da clínica que demanda muito tempo, gera retrabalho ou que você acredita que poderia ser realizada de maneira mais simples e eficiente?\n\nEstou realizando esse levantamento para conhecer de perto as principais dificuldades enfrentadas pelos profissionais do setor e entender quais processos poderiam ser aprimorados.\n\nQuando tiver um momento, fique à vontade para me responder por áudio ou mensagem. Agradeço desde já pela atenção e disponibilidade!",
+    message: "Olá! Tudo bem? Meu nome é Erick Santos e trabalho com prestação de serviços na área de tecnologia.\n\nEstou conversando com empresas da região para entender melhor os desafios do dia a dia e identificar oportunidades de melhoria por meio da tecnologia.\n\nGostaria de saber: existe alguma atividade na sua empresa que poderia ser mais simples, rápida ou eficiente?\n\n*Quando puder, me dê um retorno. Será um prazer conhecer um pouco da realidade da sua empresa!*",
   },
   {
     label: "Sem Retorno",
@@ -535,8 +535,8 @@ const CHANNEL_ICON = {
    Dashboard funnel and the Pipeline (Kanban) view, so the two stay consistent. */
 const STAGE_GROUPS = [
   { key: "novo", label: "Novo", statuses: ["Novo"] },
-  { key: "contato", label: "Contato", statuses: ["Contato pendente", "MSG 1: Saudação", "Contatado"] },
-  { key: "respondeu", label: "Respondeu", statuses: ["Respondeu", "MSG 2: Apresentação"] },
+  { key: "contato", label: "Contato", statuses: ["Contato pendente", "Contatado"] },
+  { key: "respondeu", label: "Respondeu", statuses: ["Respondeu"] },
   { key: "demo", label: "Demo", statuses: ["Demo enviada", "Demo em análise"] },
   { key: "interessado", label: "Interessado", statuses: ["Interessado"] },
   { key: "proposta", label: "Proposta", statuses: ["Proposta enviada"] },
@@ -1535,6 +1535,57 @@ function ToastStack({ toasts }) {
    never gets out of sync with the underlying records.
    ========================================================================= */
 
+/* =========================================================================
+   AGENDA — fonte única dos itens que aparecem no menu Agenda e no Dashboard.
+   Junta eventos da agenda com os retornos de follow-up, exatamente como o
+   menu sempre fez, para os dois lugares mostrarem as mesmas informações.
+   ========================================================================= */
+
+const byEventAt = (a, b) => new Date(a.eventAt) - new Date(b.eventAt);
+
+function agendaEntriesOf(db) {
+  return [
+    ...(db.agendaEvents || []).map(event => ({ ...event, source: "agenda", eventStatus: event.status || "agendado" })),
+    ...(db.followups || []).map(followup => ({
+      id: followup.id,
+      type: "retorno",
+      title: followup.note || "Retorno",
+      eventAt: followup.dueDate,
+      leadId: followup.leadId,
+      owner: followup.createdBy,
+      notes: "",
+      source: "followup",
+      eventStatus: followup.status === "concluido" ? "concluido" : followup.status === "cancelado" ? "cancelado" : "agendado",
+    })),
+  ].filter(entry => entry.eventAt);
+}
+
+/* Mesmos critérios dos filtros do menu Agenda. */
+function isAgendaToday(entry) { return new Date(entry.eventAt).toDateString() === new Date().toDateString(); }
+function isAgendaOverdue(entry) { return entry.eventStatus === "agendado" && startOfDay(entry.eventAt) < startOfDay(new Date()); }
+function isAgendaWithinWeek(entry) {
+  if (entry.eventStatus !== "agendado") return false;
+  const end = new Date();
+  end.setDate(end.getDate() + 7);
+  return new Date(entry.eventAt) >= startOfDay(new Date()) && new Date(entry.eventAt) <= end;
+}
+
+function agendaTypeLabel(type) { return (AGENDA_TYPES.find(t => t.id === type) || {}).label || "Evento"; }
+function agendaTypeTone(type) {
+  return type === "retorno" ? "amber" : type === "demonstracao" ? "violet" : type === "reuniao" ? "blue" : "slate";
+}
+
+/* Concluir / cancelar / reabrir um item — vale para evento da agenda e para
+   retorno de follow-up, que é como o menu Agenda trata as duas origens. */
+function setAgendaEntryStatus(dispatch, notify, entry, status) {
+  if (entry.source === "followup") {
+    dispatch({ type: "UPDATE_FOLLOWUP", id: entry.id, patch: { status: status === "agendado" ? "pendente" : status } });
+  } else {
+    dispatch({ type: "UPDATE_AGENDA_EVENT", id: entry.id, patch: { status } });
+  }
+  notify(status === "concluido" ? "Evento concluído." : status === "cancelado" ? "Evento cancelado." : "Evento reaberto.");
+}
+
 function useSelectors(db) {
   return useMemo(() => {
     const leadById = Object.fromEntries(db.leads.map(l => [l.id, l]));
@@ -1593,6 +1644,19 @@ function useSelectors(db) {
         .map(d => ({ kind: "demo", id: d.id, leadId: d.leadId, date: d.expiresAt, label: `Demo de ${leadById[d.leadId]?.company || "lead"} expira` })),
     ].sort((a, b) => new Date(a.date) - new Date(b.date));
 
+    /* Agenda para o Dashboard: os mesmos itens do menu Agenda, agrupados por
+       quando acontecem. Pendente = ainda não concluído nem cancelado. */
+    const agendaEntries = agendaEntriesOf(db);
+    const agendaPending = agendaEntries.filter(e => e.eventStatus === "agendado");
+    const agendaOverdue = agendaPending.filter(isAgendaOverdue).sort(byEventAt);
+    const agendaToday = agendaPending.filter(isAgendaToday).sort(byEventAt);
+    const agendaUpcoming = agendaPending.filter(e => !isAgendaToday(e) && isAgendaWithinWeek(e)).sort(byEventAt);
+    const agendaCompletedToday = agendaEntries.filter(e => e.eventStatus === "concluido" && isAgendaToday(e)).sort(byEventAt);
+    /* Ordem do bloco do Dashboard: o que é hoje vem primeiro (é o que ele tem
+       que fazer agora), depois a semana, e os atrasados por último — os
+       atrasados de follow-up já aparecem na Central de atenção logo acima. */
+    const agendaHighlights = [...agendaToday, ...agendaUpcoming, ...agendaOverdue];
+
     /* "Central de atenção" — the five categories called out in the brief,
        each carrying enough context for the UI to offer a one-tap action. */
     const attention = [
@@ -1639,6 +1703,8 @@ function useSelectors(db) {
       leadById, openLeads, pendingFollowups, followupsToday, followupsOverdue, followupsUpcoming,
       demosActive, demosExpiringSoon, demosExpired, demosDraft, proposalsPending, proposalsStale,
       hotLeads, hotNoNextAction, closedLeads, lostLeads, newLeads, noMovement, todaysActions,
+      agendaEntries, agendaPending, agendaToday, agendaOverdue, agendaUpcoming,
+      agendaCompletedToday, agendaHighlights,
       attention: attentionSorted, proposalValueByLead, negotiationValue, closedValue, pipelineStages,
       bySegment, byCity, byOwner, bySource, funnel, lossByReason, channelStats, perOwner,
     };
@@ -2229,10 +2295,104 @@ function PipelineFunnel({ stages, onOpenStage }) {
   );
 }
 
+/* Bloco de agenda no Dashboard: as mesmas informações do menu Agenda (eventos
+   + retornos) resumidas para a tela inicial — contadores e a lista do que está
+   atrasado, de hoje e dos próximos 7 dias, com concluir/cancelar num clique. */
+function DashboardAgenda({ sel, leadById, onOpenLead, onOpenAgenda, dispatch, notify }) {
+  const MAX_ROWS = 8;
+  const items = sel.agendaHighlights;
+  const visible = items.slice(0, MAX_ROWS);
+  const hidden = items.length - visible.length;
+
+  const counters = [
+    { label: "Hoje", value: sel.agendaToday.length, tone: sel.agendaToday.length ? "blue" : "slate" },
+    { label: "Atrasados", value: sel.agendaOverdue.length, tone: sel.agendaOverdue.length ? "red" : "slate" },
+    { label: "Próximos 7 dias", value: sel.agendaUpcoming.length, tone: "slate" },
+    { label: "Concluídos hoje", value: sel.agendaCompletedToday.length, tone: sel.agendaCompletedToday.length ? "green" : "slate" },
+  ];
+
+  return (
+    <SectionCard
+      title="Agenda"
+      action={(
+        <button type="button" onClick={onOpenAgenda} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full gc-focus gc-pressable"
+          style={{ background: "var(--surface-sunken)", color: "var(--ink-soft)", border: "1px solid var(--line)" }}>
+          Abrir agenda <ArrowRight size={12} />
+        </button>
+      )}
+    >
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-5 py-4" style={{ borderBottom: "1px solid var(--line)" }}>
+        {counters.map(c => (
+          <div key={c.label} className="rounded-xl px-3 py-2.5" style={{ background: "var(--surface-sunken)" }}>
+            <div className="gc-mono text-lg font-medium leading-none" style={{ color: `var(--tone-${c.tone}-fg)` }}>{c.value}</div>
+            <div className="text-[11px] mt-1.5" style={{ color: "var(--slate)" }}>{c.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {visible.length === 0 ? (
+        <EmptyState icon={CalendarDays} title="Nenhum evento pendente" hint="Agende reuniões, demonstrações, retornos, tarefas e compromissos no menu Agenda — eles aparecem aqui." />
+      ) : visible.map(entry => {
+        const lead = leadById[entry.leadId];
+        const late = isAgendaOverdue(entry);
+        const today = isAgendaToday(entry);
+        return (
+          <div key={`${entry.source}-${entry.id}`} className="flex items-start gap-3 px-5 py-3.5 flex-wrap sm:flex-nowrap" style={{ borderBottom: "1px solid var(--line)" }}>
+            <div className="w-20 shrink-0">
+              <div className="gc-mono text-xs font-medium" style={{ color: late ? "var(--danger)" : "var(--ink-soft)" }}>
+                {today ? "Hoje" : fmtDate(entry.eventAt)}
+              </div>
+              <div className="gc-mono text-xs mt-1" style={{ color: "var(--slate)" }}>{fmtTime(entry.eventAt)}</div>
+            </div>
+            <div className="flex-1 min-w-0 space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Pill tone={agendaTypeTone(entry.type)}>{agendaTypeLabel(entry.type)}</Pill>
+                {late && <Pill tone="red">Atrasado</Pill>}
+                <span className="text-sm font-medium truncate">{entry.title}</span>
+              </div>
+              {lead ? (
+                <button type="button" onClick={() => onOpenLead(lead.id, entry.source === "followup" ? "followups" : "geral")} className="text-xs gc-focus rounded block truncate" style={{ color: "var(--accent-ink)" }}>
+                  {lead.company}
+                </button>
+              ) : null}
+              {entry.notes && <p className="text-xs truncate" style={{ color: "var(--slate)" }}>{entry.notes}</p>}
+              {entry.owner && <p className="text-[11px]" style={{ color: "var(--slate)" }}>Responsável: {userName(entry.owner)}</p>}
+            </div>
+            <div className="flex items-center gap-1 shrink-0 ml-auto">
+              <IconButton icon={CheckCircle2} label="Concluir" onClick={() => setAgendaEntryStatus(dispatch, notify, entry, "concluido")} />
+              <IconButton icon={Ban} label="Cancelar evento" onClick={() => setAgendaEntryStatus(dispatch, notify, entry, "cancelado")} />
+            </div>
+          </div>
+        );
+      })}
+
+      {hidden > 0 && (
+        <button type="button" onClick={onOpenAgenda} className="w-full text-center text-xs py-3 gc-focus gc-row-hover" style={{ color: "var(--accent-ink)" }}>
+          +{hidden} evento(s) na agenda — ver todos
+        </button>
+      )}
+    </SectionCard>
+  );
+}
+
 function Dashboard({ db, sel, currentUser, onOpenLead, setView, setLeadsFilter, setLeadsViewMode, dispatch, notify }) {
   const tiles = [
     { label: "Leads abertos", value: sel.openLeads.length, icon: Users, onClick: () => { setLeadsFilter({ open: true }); setView("leads"); } },
     { label: "Oportunidades quentes", value: sel.hotLeads.length, tone: sel.hotLeads.length ? "hot" : undefined, icon: Flame, onClick: () => { setLeadsFilter({ temperature: "Quente" }); setView("leads"); } },
+    {
+      label: "Agenda de hoje",
+      value: sel.agendaToday.length,
+      sub: sel.agendaOverdue.length
+        ? `${sel.agendaOverdue.length} atrasado(s)`
+        : sel.agendaUpcoming.length
+          ? `${sel.agendaUpcoming.length} nos próximos 7 dias`
+          : sel.agendaToday.length
+            ? "nada após hoje"
+            : "nada pendente",
+      tone: sel.agendaOverdue.length ? "danger" : undefined,
+      icon: CalendarDays,
+      onClick: () => setView("agenda"),
+    },
     { label: "Propostas em aberto", value: sel.proposalsPending.length, icon: FileText, onClick: () => setView("proposals") },
     { label: "Valor em negociação", value: fmtMoney(sel.negotiationValue), icon: TrendingUp, onClick: () => setView("proposals") },
     { label: "Vendas fechadas", value: sel.closedLeads.length, sub: sel.closedValue > 0 ? fmtMoney(sel.closedValue) : undefined, tone: "success", icon: CheckCircle2, onClick: () => setView("clients") },
@@ -2252,7 +2412,7 @@ function Dashboard({ db, sel, currentUser, onOpenLead, setView, setLeadsFilter, 
         <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>Olá, {userName(currentUser)}. Aqui está o que precisa de você agora.</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {tiles.map((t, i) => <StatTile key={i} {...t} />)}
       </div>
 
@@ -2268,6 +2428,15 @@ function Dashboard({ db, sel, currentUser, onOpenLead, setView, setLeadsFilter, 
           </div>
         )}
       </div>
+
+      <DashboardAgenda
+        sel={sel}
+        leadById={sel.leadById}
+        onOpenLead={onOpenLead}
+        onOpenAgenda={() => setView("agenda")}
+        dispatch={dispatch}
+        notify={notify}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <SectionCard title="Ações de hoje">
@@ -2743,9 +2912,9 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
     const name = lead.contactName || lead.company;
     const message = personalizeMessage(clinicaMessageText, name);
     window.open(`https://wa.me/${lead.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`, "_blank");
-    if (lead.status === "Novo") {
-      dispatch({ type: "CHANGE_STATUS", id: lead.id, status: "MSG 1: Saudação", user: currentUser });
-    } else if (lead.status === "Contato pendente") {
+    /* As etapas "MSG 1/MSG 2" saíram do funil: abrir a saudação no WhatsApp já
+       conta como contato feito. */
+    if (lead.status === "Novo" || lead.status === "Contato pendente") {
       dispatch({ type: "CHANGE_STATUS", id: lead.id, status: "Contatado", user: currentUser });
     }
   };
@@ -2892,9 +3061,16 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
 
 const LEAD_SCORE_FIELDS = [["dor", "Dor"], ["facilidade", "Facilidade de contato"], ["pagamento", "Capacidade de pagamento"], ["recorrencia", "Potencial de recorrência"]];
 
-function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
+/* LeadForm é o formulário de lead, usado em dois lugares:
+   - dentro da Modal "Novo lead" (LeadFormModal), com showCommercial={false}:
+     só o cadastro inicial, como sempre foi em Captar leads;
+   - dentro da aba "Visão geral" da ficha (LeadDetail), já que o lead existe:
+     ali ele é a própria tela, com o bloco Comercial, sem modal por cima.
+   Sem `initialLead` criamos um lead novo; com ele, salvamos sobre o lead aberto.
+   O status padrão é a primeira entrada de STATUS_LIST ("Novo") e a próxima ação
+   vem pré-agendada para o dia seguinte às 17h. */
+function LeadForm({ onSave, onCancel, currentUser, initialLead, hint, showCommercial = true }) {
   const isEditing = !!initialLead;
-  const [expanded, setExpanded] = useState(isEditing);
   const [form, setForm] = useState({
     company: initialLead?.company || "",
     contactName: initialLead?.contactName || "",
@@ -2915,8 +3091,10 @@ function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
   const [commercial, setCommercial] = useState({
     status: initialLead?.status || STATUS_LIST[0],
     lossReason: initialLead?.lossReason || LOSS_REASONS[0],
-    nextActionDate: toLocalDateTimeInput(initialLead?.nextAction?.date),
-    nextActionNote: initialLead?.nextAction?.note || "",
+    nextActionDate: toLocalDateTimeInput(initialLead?.nextAction?.date)
+      || toLocalDateTimeInput(daysFromNow(1, 17, 0)),
+    nextActionNote: initialLead?.nextAction?.note
+      ?? (isEditing ? "" : "Primeiro contato"),
     score: initialLead?.score || null,
   });
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -2924,7 +3102,6 @@ function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
   const canSave = form.company.trim().length > 0;
   const save = () => {
     if (!canSave) return;
-    if (!isEditing) { onSave(form); return; }
     onSave({
       ...form,
       status: commercial.status,
@@ -2933,6 +3110,7 @@ function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
       nextActionNote: commercial.nextActionNote,
       ...(commercial.score ? { score: commercial.score } : {}),
     });
+    onCancel?.();
   };
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -2945,13 +3123,9 @@ function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [canSave, save]);
   return (
-    <Modal title={isEditing ? `Editar lead — ${initialLead.company}` : "Novo lead"} onClose={onClose} width={isEditing ? 560 : 520} draggable={!isEditing}>
+    <>
       <div className="space-y-4">
-        {!isEditing ? (
-          <p className="text-xs -mt-1" style={{ color: "var(--slate)" }}>Cadastro rápido — complete os outros dados depois, na ficha do lead.</p>
-        ) : (
-          <p className="text-xs -mt-1" style={{ color: "var(--slate)" }}>Edite todos os dados do lead: cadastro, comercial, status e próxima ação.</p>
-        )}
+        {hint && <p className="text-xs -mt-1" style={{ color: "var(--slate)" }}>{hint}</p>}
         <Field label="Nome da empresa" required><TextInput autoFocus={!isEditing} value={form.company} onChange={set("company")} placeholder="Ex.: Padaria Ponto Doce" /></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Contato"><TextInput value={form.contactName} onChange={set("contactName")} placeholder="Nome do responsável" /></Field>
@@ -2963,58 +3137,70 @@ function LeadFormModal({ onClose, onSave, currentUser, initialLead }) {
         </div>
         <Field label="Cidade"><TextInput value={form.city} onChange={set("city")} placeholder="Ex.: Ipatinga" /></Field>
 
-        {!expanded ? (
-          <button type="button" onClick={() => setExpanded(true)} className="text-xs font-medium gc-focus flex items-center gap-1" style={{ color: "var(--accent-ink)" }}>
-            <ChevronDown size={13} /> Mostrar mais campos
-          </button>
-        ) : (
-          <div className="space-y-4 pt-1 gc-fade-in" style={{ borderTop: isEditing ? "none" : "1px solid var(--line)" }}>
-            <div className="grid grid-cols-2 gap-3 pt-3">
-              <Field label="Telefone"><TextInput value={form.phone} onChange={set("phone")} placeholder="(31) 3000-0000" /></Field>
-              <Field label="Site atual"><TextInput value={form.currentSite} onChange={set("currentSite")} placeholder="https://exemplo.com.br" /></Field>
+        <div className="space-y-4 gc-fade-in">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Telefone"><TextInput value={form.phone} onChange={set("phone")} placeholder="(31) 3000-0000" /></Field>
+            <Field label="Site atual"><TextInput value={form.currentSite} onChange={set("currentSite")} placeholder="https://exemplo.com.br" /></Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Bairro"><TextInput value={form.neighborhood} onChange={set("neighborhood")} placeholder="Bairro" /></Field>
+            <Field label="Google Maps (link)"><TextInput value={form.gmaps} onChange={set("gmaps")} placeholder="https://maps.app.goo.gl/..." /></Field>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Responsável interno"><Select value={form.owner} onChange={set("owner")}>{USERS.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></Field>
+            <Field label="Prioridade"><Select value={form.priority} onChange={set("priority")}>{PRIORITIES.map(p => <option key={p}>{p}</option>)}</Select></Field>
+            <Field label="Temperatura"><Select value={form.temperature} onChange={set("temperature")}>{TEMPERATURES.map(t => <option key={t}>{t}</option>)}</Select></Field>
+          </div>
+          <Field label="Origem"><Select value={form.source} onChange={set("source")}>{SOURCES.map(s => <option key={s}>{s}</option>)}</Select></Field>
+          <Field label="Observações"><TextArea value={form.notes} onChange={set("notes")} placeholder="Anotações gerais..." /></Field>
+
+          {showCommercial && (
+          <div className="space-y-4 pt-4" style={{ borderTop: "1px solid var(--line)" }}>
+            <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--slate)" }}>Comercial</div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Status"><Select value={commercial.status} onChange={setC("status")}>{STATUS_LIST.map(s => <option key={s}>{s}</option>)}</Select></Field>
+              {commercial.status === "Perdido" ? (
+                <Field label="Motivo da perda"><Select value={commercial.lossReason} onChange={setC("lossReason")}>{LOSS_REASONS.map(r => <option key={r}>{r}</option>)}</Select></Field>
+              ) : null}
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Bairro"><TextInput value={form.neighborhood} onChange={set("neighborhood")} placeholder="Bairro" /></Field>
-              <Field label="Google Maps (link)"><TextInput value={form.gmaps} onChange={set("gmaps")} placeholder="https://maps.app.goo.gl/..." /></Field>
+              <Field label="Próxima ação — data e hora"><TextInput type="datetime-local" value={commercial.nextActionDate} onChange={setC("nextActionDate")} /></Field>
+              <Field label="Próxima ação — o que fazer"><TextInput value={commercial.nextActionNote} onChange={setC("nextActionNote")} placeholder="Ex.: Retornar amanhã às 10h" /></Field>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Responsável interno"><Select value={form.owner} onChange={set("owner")}>{USERS.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></Field>
-              <Field label="Prioridade"><Select value={form.priority} onChange={set("priority")}>{PRIORITIES.map(p => <option key={p}>{p}</option>)}</Select></Field>
-              <Field label="Temperatura"><Select value={form.temperature} onChange={set("temperature")}>{TEMPERATURES.map(t => <option key={t}>{t}</option>)}</Select></Field>
-            </div>
-            <Field label="Origem"><Select value={form.source} onChange={set("source")}>{SOURCES.map(s => <option key={s}>{s}</option>)}</Select></Field>
-            <Field label="Observações"><TextArea value={form.notes} onChange={set("notes")} placeholder="Anotações gerais..." /></Field>
-            {isEditing && (
-              <div className="space-y-4 pt-4" style={{ borderTop: "1px solid var(--line)" }}>
-                <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--slate)" }}>Comercial</div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Status"><Select value={commercial.status} onChange={setC("status")}>{STATUS_LIST.map(s => <option key={s}>{s}</option>)}</Select></Field>
-                  {commercial.status === "Perdido" ? (
-                    <Field label="Motivo da perda"><Select value={commercial.lossReason} onChange={setC("lossReason")}>{LOSS_REASONS.map(r => <option key={r}>{r}</option>)}</Select></Field>
-                  ) : null}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Próxima ação — data e hora"><TextInput type="datetime-local" value={commercial.nextActionDate} onChange={setC("nextActionDate")} /></Field>
-                  <Field label="Próxima ação — o que fazer"><TextInput value={commercial.nextActionNote} onChange={setC("nextActionNote")} placeholder="Ex.: Retornar amanhã às 10h" /></Field>
-                </div>
-                {commercial.score && (
-                  <div className="space-y-2">
-                    <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--slate)" }}>Score comercial</div>
-                    {LEAD_SCORE_FIELDS.map(([key, label]) => (
-                      <ScoreBar key={key} label={label} value={commercial.score[key] || 0} onChange={(v) => setCommercial(c => ({ ...c, score: { ...c.score, [key]: v } }))} />
-                    ))}
-                  </div>
-                )}
+            {commercial.score && (
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--slate)" }}>Score comercial</div>
+                {LEAD_SCORE_FIELDS.map(([key, label]) => (
+                  <ScoreBar key={key} label={label} value={commercial.score[key] || 0} onChange={(v) => setCommercial(c => ({ ...c, score: { ...c.score, [key]: v } }))} />
+                ))}
               </div>
             )}
           </div>
-        )}
+          )}
+        </div>
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
           <Button disabled={!canSave} onClick={save}>{isEditing ? "Salvar alterações" : "Salvar lead"}</Button>
         </div>
       </div>
+    </>
+  );
+}
+
+/* Casca em Modal — só para cadastro de lead novo ("Novo lead" na lista e
+   "Criar lead em branco" em Captar leads). Sem bloco Comercial: status e
+   próxima ação entram com os padrões e se ajustam na ficha. */
+function LeadFormModal({ onClose, onSave, currentUser }) {
+  return (
+    <Modal title="Novo lead" onClose={onClose} width={520} draggable>
+      <LeadForm
+        currentUser={currentUser}
+        onSave={onSave}
+        onCancel={onClose}
+        showCommercial={false}
+        hint="Cadastro rápido — complete os outros dados depois, na ficha do lead."
+      />
     </Modal>
   );
 }
@@ -3788,6 +3974,30 @@ function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initia
 
   const scoreAvg = lead.score ? Math.round(((lead.score.dor + lead.score.facilidade + lead.score.pagamento + lead.score.recorrencia) / 4) * 10) / 10 : null;
 
+  /* Salvar da própria ficha: o formulário é a aba "Visão geral", então não há
+     janela para fechar — só persistir e avisar. */
+  const saveLead = (form) => {
+    const company = (form.company || "").trim();
+    const contactName = (form.contactName && form.contactName.trim()) ? form.contactName.trim() : company;
+    const { status, lossReason, nextActionDate, nextActionNote, score, ...rest } = form;
+    const patch = { ...rest, company, contactName };
+    if (score) patch.score = score;
+    if (status === "Perdido" && lossReason) patch.lossReason = lossReason;
+    dispatch({ type: "UPDATE_LEAD", id: leadId, patch });
+    if (status && status !== lead.status) {
+      dispatch({ type: "CHANGE_STATUS", id: leadId, status, user: currentUser });
+    }
+    const dateStr = nextActionDate || "";
+    const noteStr = (nextActionNote || "").trim();
+    const prevDateStr = toLocalDateTimeInput(lead.nextAction?.date);
+    const prevNoteStr = (lead.nextAction?.note || "").trim();
+    if (dateStr !== prevDateStr || noteStr !== prevNoteStr) {
+      const nextAction = (!dateStr && !noteStr) ? null : { date: dateStr ? new Date(dateStr).toISOString() : null, note: noteStr };
+      dispatch({ type: "SET_NEXT_ACTION", leadId, nextAction });
+    }
+    notify("Lead atualizado com sucesso.");
+  };
+
   return (
     <Drawer
       title={lead.company}
@@ -3795,11 +4005,6 @@ function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initia
       onClose={onClose}
       headerRight={
         <div className="flex items-center gap-2">
-          {onEditLead && (
-            <Button size="sm" variant="secondary" icon={Edit} onClick={() => onEditLead(lead)}>
-              Editar
-            </Button>
-          )}
           {onDeleteLead && (
             <Button size="sm" variant="danger" icon={Trash2} onClick={() => onDeleteLead(lead)}>
               Excluir
@@ -3841,41 +4046,15 @@ function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initia
 
       {tab === "geral" && (
         <div className="space-y-5 gc-fade-in">
-          <SectionCard title="Próxima ação">
-            <div className="p-4"><NextActionEditor lead={lead} onSave={(na) => dispatch({ type: "SET_NEXT_ACTION", leadId, nextAction: na })} /></div>
-          </SectionCard>
-          <SectionCard
-            title="Contato"
-            action={onEditLead ? (
-              <button type="button" onClick={() => onEditLead(lead)} className="text-xs font-medium gc-focus flex items-center gap-1 hover:underline" style={{ color: "var(--accent-ink)" }}>
-                <Edit size={12} /> Editar
-              </button>
-            ) : null}
-          >
-            <div className="px-5 py-2">
-              <InfoRow icon={Users} label="Responsável" value={lead.contactName} />
-              <InfoRow icon={Phone} label="Telefone" value={lead.phone} />
-              <InfoRow icon={MessageCircle} label="WhatsApp" value={lead.whatsapp} href={waLink(lead.whatsapp)} />
-              <InfoRow icon={Instagram} label="Instagram" value={lead.instagram} href={igLink(lead.instagram)} />
-              <InfoRow icon={Globe} label="Site atual" value={lead.currentSite} href={siteLink(lead.currentSite)} />
-              <InfoRow icon={MapPin} label="Google Maps" value={lead.gmaps ? "Ver localização" : ""} href={lead.gmaps} />
-            </div>
-          </SectionCard>
-          <SectionCard
-            title="Classificação"
-            action={onEditLead ? (
-              <button type="button" onClick={() => onEditLead(lead)} className="text-xs font-medium gc-focus flex items-center gap-1 hover:underline" style={{ color: "var(--accent-ink)" }}>
-                <Edit size={12} /> Editar
-              </button>
-            ) : null}
-          >
-            <div className="px-5 py-4 grid grid-cols-2 gap-y-2 text-sm">
-              <span style={{ color: "var(--slate)" }}>Origem</span><span>{lead.source}</span>
-              <span style={{ color: "var(--slate)" }}>Cadastrado em</span><span className="gc-mono">{fmtDateFull(lead.createdAt)}</span>
-              <span style={{ color: "var(--slate)" }}>Último contato</span><span className="gc-mono">{lead.lastContactAt ? fmtDateTime(lead.lastContactAt) : "—"}</span>
-            </div>
-            {lead.notes && <div className="px-5 pb-4 text-sm">{lead.notes}</div>}
-          </SectionCard>
+          {/* Lead já cadastrado: a própria ficha é a tela de edição. Um único
+              formulário com todos os campos, sem div de leitura separada. */}
+          <LeadForm
+            key={`${lead.id}|${lead.status}|${lead.temperature}|${lead.priority}|${lead.nextAction?.date || ""}`}
+            currentUser={currentUser}
+            initialLead={lead}
+            onSave={saveLead}
+            hint="Todos os dados do lead nesta tela — altere o que precisar e salve."
+          />
           {lead.score && (
             <SectionCard title={`Score comercial${scoreAvg !== null ? ` · ${scoreAvg}/5` : ""}`}>
               <div className="px-5 py-4 space-y-3">
@@ -4077,21 +4256,11 @@ function AgendaView({ db, currentUser, onOpenLead, dispatch, notify }) {
   const [periodFilter, setPeriodFilter] = useState("todos");
   const [showForm, setShowForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
+  const [notifyStatus, setNotifyStatus] = useState(null);
+  const [sendingTest, setSendingTest] = useState(false);
   const leadsById = useMemo(() => Object.fromEntries(db.leads.map(lead => [lead.id, lead])), [db.leads]);
-  const entries = useMemo(() => [
-    ...db.agendaEvents.map(event => ({ ...event, source: "agenda", eventStatus: event.status })),
-    ...db.followups.map(followup => ({
-      id: followup.id,
-      type: "retorno",
-      title: followup.note || "Retorno",
-      eventAt: followup.dueDate,
-      leadId: followup.leadId,
-      owner: followup.createdBy,
-      notes: "",
-      source: "followup",
-      eventStatus: followup.status === "concluido" ? "concluido" : followup.status === "cancelado" ? "cancelado" : "agendado",
-    })),
-  ].filter(entry => entry.eventAt), [db.agendaEvents, db.followups]);
+  /* Mesma fonte do bloco de Agenda do Dashboard — ver agendaEntriesOf(). */
+  const entries = useMemo(() => agendaEntriesOf(db), [db.agendaEvents, db.followups]);
 
   const filteredEntries = useMemo(() => entries
     .filter(entry => typeFilter === "todos" || entry.type === typeFilter)
@@ -4139,14 +4308,7 @@ function AgendaView({ db, currentUser, onOpenLead, dispatch, notify }) {
     setEditingEvent(null);
   };
 
-  const updateEntryStatus = (entry, status) => {
-    if (entry.source === "followup") {
-      dispatch({ type: "UPDATE_FOLLOWUP", id: entry.id, patch: { status: status === "agendado" ? "pendente" : status } });
-    } else {
-      dispatch({ type: "UPDATE_AGENDA_EVENT", id: entry.id, patch: { status } });
-    }
-    notify(status === "concluido" ? "Evento concluído." : status === "cancelado" ? "Evento cancelado." : "Evento reaberto.");
-  };
+  const updateEntryStatus = (entry, status) => setAgendaEntryStatus(dispatch, notify, entry, status);
 
   const rescheduleFollowup = entry => {
     const newDate = window.prompt("Informe a nova data e hora no formato AAAA-MM-DD HH:MM:", `${toLocalDateTimeInput(daysFromNow(1, 9, 0)).replace("T", " ")}`);
@@ -4158,6 +4320,33 @@ function AgendaView({ db, currentUser, onOpenLead, dispatch, notify }) {
     }
     dispatch({ type: "UPDATE_FOLLOWUP", id: entry.id, patch: { dueDate: parsed.toISOString(), status: "pendente" } });
     notify("Retorno reagendado.");
+  };
+
+  /* Lembretes no Windows: quem dispara é o agendador do backend local
+     (backend/services/agendaNotifier.js), então falamos com ele pela mesma base
+     usada no WhatsApp — em produção, http://localhost:3001/api. */
+  useEffect(() => {
+    let alive = true;
+    fetch(`${getWhatsAppApiBaseUrl()}/agenda/notify/status`)
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error("sem resposta"))))
+      .then(payload => { if (alive) setNotifyStatus(payload && payload.data ? payload.data : null); })
+      .catch(() => { if (alive) setNotifyStatus(null); });
+    return () => { alive = false; };
+  }, []);
+
+  const sendTestNotification = async () => {
+    setSendingTest(true);
+    try {
+      const res = await fetch(`${getWhatsAppApiBaseUrl()}/agenda/notify-test`, { method: "POST" });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok || !payload || !payload.success) throw new Error((payload && payload.message) || "O backend local não respondeu.");
+      if (payload.data && payload.data.ok === false) throw new Error(payload.data.reason || "O Windows recusou a notificação.");
+      notify("Notificação enviada ao Windows — olhe no canto direito da tela.");
+    } catch (error) {
+      notify(`Não foi possível notificar: ${error.message} Confirme que o run-crm.bat está aberto.`, "danger");
+    } finally {
+      setSendingTest(false);
+    }
   };
 
   return (
@@ -4173,6 +4362,25 @@ function AgendaView({ db, currentUser, onOpenLead, dispatch, notify }) {
           Novo evento
         </Button>
       </div>
+
+      {/* Só aparece com o backend local no ar (é dele o agendador do Windows). */}
+      {notifyStatus && notifyStatus.windows && (
+        <div className="flex items-center gap-3 flex-wrap rounded-xl px-4 py-3" style={{ background: "var(--surface-sunken)", border: "1px solid var(--line)" }}>
+          <Pill tone={notifyStatus.enabled ? "green" : "slate"}>
+            {notifyStatus.enabled ? "Lembretes no Windows ativos" : "Lembretes desativados"}
+          </Pill>
+          <span className="text-xs min-w-0 flex-1" style={{ color: "var(--slate)" }}>
+            {notifyStatus.enabled ? (
+              <>Cada agendamento avisa {notifyStatus.leadMin} min antes, na hora marcada e {notifyStatus.lateMin} min depois de atrasar{notifyStatus.summary ? ", além do resumo do dia ao abrir o CRM" : ""}. Varredura a cada {notifyStatus.intervalMin} min — cada aviso sai uma só vez.</>
+            ) : (
+              <>Para ligar, troque AGENDA_NOTIFY_ENABLED para true no backend/.env e reabra o run-crm.bat.</>
+            )}
+          </span>
+          <Button size="sm" variant="secondary" icon={Bell} onClick={sendTestNotification} disabled={sendingTest}>
+            {sendingTest ? "Enviando..." : "Testar notificação"}
+          </Button>
+        </div>
+      )}
 
       {(showForm || editingEvent) && (
         <AgendaEventForm
@@ -4210,7 +4418,7 @@ function AgendaView({ db, currentUser, onOpenLead, dispatch, notify }) {
           </div>
         ) : filteredEntries.map(entry => {
           const lead = leadsById[entry.leadId];
-          const typeLabel = AGENDA_TYPES.find(type => type.id === entry.type)?.label || "Evento";
+          const typeLabel = agendaTypeLabel(entry.type);
           const completed = entry.eventStatus !== "agendado";
           const late = !completed && startOfDay(entry.eventAt) < startOfDay(new Date());
           return (
@@ -4221,7 +4429,7 @@ function AgendaView({ db, currentUser, onOpenLead, dispatch, notify }) {
               </div>
               <div className="flex-1 min-w-0 space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Pill tone={entry.type === "retorno" ? "amber" : entry.type === "demonstracao" ? "violet" : entry.type === "reuniao" ? "blue" : "slate"}>{typeLabel}</Pill>
+                  <Pill tone={agendaTypeTone(entry.type)}>{typeLabel}</Pill>
                   {late && <Pill tone="red">Atrasado</Pill>}
                   {completed && <Pill tone={entry.eventStatus === "concluido" ? "green" : "slate"}>{entry.eventStatus === "concluido" ? "Concluído" : "Cancelado"}</Pill>}
                   <span className={`text-sm font-medium ${completed ? "line-through" : ""}`}>{entry.title}</span>
@@ -5909,7 +6117,6 @@ function App() {
   const [showLeadForm, setShowLeadForm] = useState(false);
   const leadFormOpenedFromEnrichment = useRef(false);
   const [showLeadImport, setShowLeadImport] = useState(false);
-  const [editingLead, setEditingLead] = useState(null);
   const [deletingLeadId, setDeletingLeadId] = useState(null);
   const deleteInProgress = useRef(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -6121,7 +6328,7 @@ function App() {
       if (isNewLeadShortcut || isNewLeadFallback) {
         e.preventDefault();
         e.stopPropagation();
-        if (currentUser && !bootLoading && !showLeadForm && !editingLead) {
+        if (currentUser && !bootLoading && !showLeadForm) {
           setShowLeadForm(true);
         }
         return;
@@ -6134,7 +6341,7 @@ function App() {
     }
     window.addEventListener("keydown", handleKey, true);
     return () => window.removeEventListener("keydown", handleKey, true);
-  }, [bootLoading, currentUser, editingLead, showLeadForm]);
+  }, [bootLoading, currentUser, showLeadForm]);
 
   const sel = useSelectors(db);
 
@@ -6158,18 +6365,26 @@ function App() {
     const stayOnEnrichment = leadFormOpenedFromEnrichment.current;
     leadFormOpenedFromEnrichment.current = false;
     const id = `l_${Date.now()}`;
-    const company = (form.company || "").trim();
-    const contactName = (form.contactName && form.contactName.trim()) ? form.contactName.trim() : company;
+    /* A tela única manda também os campos comerciais; aqui eles viram as
+       colunas do lead. Score começa zerado e só é ajustável na edição. */
+    const { status, lossReason, nextActionDate, nextActionNote, score, ...rest } = form;
+    const company = (rest.company || "").trim();
+    const contactName = (rest.contactName && rest.contactName.trim()) ? rest.contactName.trim() : company;
+    const actionDate = (nextActionDate || "").trim();
+    const actionNote = (nextActionNote || "").trim();
     const leadData = {
       id,
-      ...form,
+      ...rest,
       company,
       contactName,
-      status: "Novo",
+      status: status || "Novo",
+      ...(status === "Perdido" && lossReason ? { lossReason } : {}),
       createdAt: new Date().toISOString(),
       lastContactAt: null,
-      nextAction: { date: daysFromNow(0, 17, 0), note: "Primeiro contato" },
-      score: { dor: 0, facilidade: 0, pagamento: 0, recorrencia: 0 },
+      nextAction: (!actionDate && !actionNote)
+        ? null
+        : { date: actionDate ? new Date(actionDate).toISOString() : null, note: actionNote },
+      score: score || { dor: 0, facilidade: 0, pagamento: 0, recorrencia: 0 },
     };
     dispatch({
       type: "ADD_LEAD",
@@ -6258,32 +6473,10 @@ function App() {
     }
   };
 
+  /* Editar não abre mais modal: a ficha do lead É a tela de edição, então o
+     botão "Editar" da lista só leva para a aba Visão geral da ficha. */
   const handleEditLead = (lead) => {
-    setEditingLead(lead);
-  };
-
-  const handleSaveEditedLead = (form) => {
-    if (!editingLead) return;
-    const company = (form.company || "").trim();
-    const contactName = (form.contactName && form.contactName.trim()) ? form.contactName.trim() : company;
-    const { status, lossReason, nextActionDate, nextActionNote, score, ...rest } = form;
-    const patch = { ...rest, company, contactName };
-    if (score) patch.score = score;
-    if (status === "Perdido" && lossReason) patch.lossReason = lossReason;
-    dispatch({ type: "UPDATE_LEAD", id: editingLead.id, patch });
-    if (status && status !== editingLead.status) {
-      dispatch({ type: "CHANGE_STATUS", id: editingLead.id, status, user: currentUser });
-    }
-    const dateStr = nextActionDate || "";
-    const noteStr = (nextActionNote || "").trim();
-    const prevDateStr = toLocalDateTimeInput(editingLead.nextAction?.date);
-    const prevNoteStr = (editingLead.nextAction?.note || "").trim();
-    if (dateStr !== prevDateStr || noteStr !== prevNoteStr) {
-      const nextAction = (!dateStr && !noteStr) ? null : { date: dateStr ? new Date(dateStr).toISOString() : null, note: noteStr };
-      dispatch({ type: "SET_NEXT_ACTION", leadId: editingLead.id, nextAction });
-    }
-    setEditingLead(null);
-    notify("Lead atualizado com sucesso.");
+    openLead(lead.id, "geral");
   };
 
   const setLeadsFilterAndGo = (patch) => setLeadsFilter(f => ({ ...f, ...patch }));
@@ -6344,9 +6537,16 @@ function App() {
       {selectedLeadId && (
         <LeadDetail leadId={selectedLeadId} db={db} onClose={() => setSelectedLeadId(null)} currentUser={currentUser} dispatch={dispatch} notify={notify} initialTab={initialTab} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} />
       )}
-      {showLeadForm && <LeadFormModal onClose={() => { leadFormOpenedFromEnrichment.current = false; setShowLeadForm(false); }} onSave={handleCreateLead} currentUser={currentUser} />}
       {showLeadImport && <LeadImportModal onClose={() => setShowLeadImport(false)} onImport={handleImportLeads} />}
-      {editingLead && <LeadFormModal initialLead={editingLead} onClose={() => setEditingLead(null)} onSave={handleSaveEditedLead} currentUser={currentUser} />}
+      {/* Único formulário de lead que abre em janela: cadastro novo. A edição
+          acontece dentro da ficha (aba Visão geral), sem modal. */}
+      {showLeadForm && (
+        <LeadFormModal
+          onClose={() => { leadFormOpenedFromEnrichment.current = false; setShowLeadForm(false); }}
+          onSave={handleCreateLead}
+          currentUser={currentUser}
+        />
+      )}
       <ToastStack toasts={toasts} />
     </div>
   );
