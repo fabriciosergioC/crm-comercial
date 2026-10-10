@@ -1,0 +1,26 @@
+# Sessoes do WhatsApp (milhares de arquivos pequenos de banco/keys) - nao vao para o deploy
+/data/
+
+# Builds e dependencias locais
+/dist/
+node_modules/
+backend/node_modules/
+backend/install.log
+
+# Amostras de audio de teste
+*/*.mp3
+*/*.ogg
+*/*.wav
+/*.mp3
+/*.ogg
+/*.wav
+
+# Git e ferramentas
+.git/
+.vercel/
+.kilo/
+.freebuff/
+
+# Binarios/logs de teste
+tts_test_out.bin
+run-crm____.bat

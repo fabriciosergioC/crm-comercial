@@ -33,3 +33,5 @@ dist/
 /*.mp3
 /*.ogg
 /*.wav
+
+.vercel
