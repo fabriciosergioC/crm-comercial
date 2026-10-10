@@ -92,7 +92,7 @@ class WhatsAppService {
     const allowedTypes = {
       image: new Set(["image/jpeg", "image/png", "image/webp"]),
       audio: new Set(["audio/ogg", "audio/mpeg", "audio/mp4", "audio/webm", "audio/wav", "audio/x-wav", "audio/aac"]),
-      voice: new Set(["audio/ogg", "audio/mp4", "audio/webm"]),
+      voice: new Set(["audio/ogg", "audio/mpeg", "audio/mp4", "audio/webm", "audio/wav", "audio/x-wav", "audio/aac"]),
     };
     if (!allowedTypes[kind] || !Buffer.isBuffer(buffer) || buffer.length === 0) {
       throw new ApiError(400, "Anexo inválido. Escolha uma imagem ou um arquivo de áudio.");

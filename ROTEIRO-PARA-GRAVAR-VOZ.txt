@@ -1,0 +1,47 @@
+ROTEIRO PARA GRAVAR AS AMOSTRAS DA SUA VOZ (clone ElevenLabs)
+
+COMO GRAVAR
+- Celular a uns 20 cm do rosto, em ambiente fechado, sem música e sem TV.
+- Fale como você fala no WhatsApp, não como locutor. Errar e corrigir é bom,
+  o clone aprende o seu ritmo real.
+- Leia este texto todo de uma vez, sem pressa. Dá cerca de 2 minutos e meio.
+- Se puder, grave uma segunda tomada no dia seguinte. Duas gravações curtas
+  saem melhor que uma longa.
+- Salve como MP3 ou WAV. O arquivo "amostra-clone-56s.wav" que já está pronto
+  nesta pasta serve de terceira amostra.
+
+O que a ElevenLabs pede: no mínimo 1 minuto de fala limpa. Entre 2 e 3 minutos é
+o ponto ideal para o clone Instant Voice Cloning.
+
+------------------------------------------------------------
+LEIA EM VOZ ALTA:
+
+Fala, tudo bem? Aqui é o Erick.
+
+Então, eu tô conversando com algumas clínicas de estética aqui da região,
+principalmente de Coronel Fabriciano e dos bairros por perto, pra entender
+melhor como é a rotina de quem tá no dia a dia da clínica.
+
+E aí eu queria te fazer uma pergunta rápida. Tem alguma coisa que vocês fazem
+com muita frequência, que acaba tomando tempo ou dando muito trabalho? Sei lá,
+aquele monte de cliente que manda mensagem no WhatsApp e a pessoa precisa
+responder uma por uma, agendar, remarcar, confirmar de novo no dia.
+
+Porque o que eu tô vendo é que uma clínica com vinte, trinta clientes na semana
+gasta umas quatro, cinco horas só respondendo mensagem. E isso é tempo que
+poderia ir pra procedimento, pra venda, pra cliente novo.
+
+Aí o que eu faço é o seguinte: eu monto uma página, um link, que o cliente abre,
+vê os serviços, vê os valores, e já agenda sozinho. Cai direto no seu WhatsApp
+com o nome, o serviço e o horário. Sem você precisar digitar nada.
+
+Não sei se faz sentido pra você agora. Talvez você já tenha alguém cuidando
+disso, ou talvez a agenda nem seja o problema aí. Só me conta o que é que hoje
+toma mais tempo de vocês, que eu quero entender antes de falar qualquer coisa.
+
+Se puder, me responde por áudio mesmo, que é mais rápido. Valeu, um abraço!
+
+------------------------------------------------------------
+Depois de gravar: no painel da ElevenLabs, em VoiceLab, escolha "Add Generative
+Voice" e depois Instant Voice Cloning, e envie as gravações. Quando o clone
+ficar pronto, copie o Voice ID e me mande.

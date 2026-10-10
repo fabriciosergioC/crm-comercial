@@ -495,7 +495,7 @@ const DEFAULT_CONVERSATION_STATUS = "Novo";
 const WHATSAPP_QUICK_REPLIES = [
   {
     label: "Primeiro contato",
-    message: "Olá, tudo bem? Falo com o responsável pela [EMPRESA]?\nMeu nome é [SEU NOME]. Estou entrando em contato porque estou fazendo uma análise de algumas empresas da região para entender como elas estão utilizando tecnologia no dia a dia, principalmente para melhorar atendimento, organização, vendas e alguns processos internos.\nNão quero te tomar muito tempo. Queria entender uma coisa: hoje, vocês têm alguma parte da operação que ainda dá bastante trabalho para a equipe ou que vocês acham que poderia funcionar melhor?",
+    message: "Olá! Tudo bem? Aqui é o Erick.\n\nEstou conversando com profissionais de diferentes clínicas para compreender melhor os desafios da rotina e os processos do dia a dia.\n\nGostaria de fazer uma pergunta rápida: existe alguma atividade na rotina da clínica que demanda muito tempo, gera retrabalho ou que você acredita que poderia ser realizada de maneira mais simples e eficiente?\n\nEstou realizando esse levantamento para conhecer de perto as principais dificuldades enfrentadas pelos profissionais do setor e entender quais processos poderiam ser aprimorados.\n\nQuando tiver um momento, fique à vontade para me responder por áudio ou mensagem. Agradeço desde já pela atenção e disponibilidade!",
   },
   {
     label: "Sem Retorno",
@@ -850,6 +850,28 @@ const crmApi = {
         `/conversations/${encodeURIComponent(id)}/messages/media?${query}`,
         { method: "POST", headers: { "Content-Type": file.type }, body: file }
       );
+    },
+    async generateAudioPreview(text, profile) {
+      const baseUrl = getWhatsAppApiBaseUrl();
+      const response = await fetch(`${baseUrl}/whatsapp/tts/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, profile }),
+      });
+      if (!response.ok) {
+        let data = null;
+        try { data = await response.json(); } catch (_) {}
+        throw new Error(data?.message || "Não foi possível gerar a prévia de áudio.");
+      }
+      return response.blob();
+    },
+    /* Perfis de voz vindos do backend ("Rápida" / "Natural"). */
+    async voiceProfiles() {
+      const baseUrl = getWhatsAppApiBaseUrl();
+      const response = await fetch(`${baseUrl}/whatsapp/tts/profiles`, { method: "GET" });
+      if (!response.ok) throw new Error("Não foi possível carregar os tipos de voz.");
+      const data = await response.json();
+      return Array.isArray(data?.data) ? data.data : [];
     },
     openLeadConversation: leadId =>
       crmApi.whatsapp.request(`/conversations/lead/${encodeURIComponent(leadId)}`, {
@@ -4693,6 +4715,7 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
               <option value="estética">Estética</option>
               <option value="clínica">Clínica / saúde</option>
               <option value="restaurante">Restaurante / alimentação</option>
+              <option value="delivery">Delivery</option>
               <option value="academia">Academia / fitness</option>
               <option value="pet shop">Pet shop / veterinária</option>
               <option value="imobiliária">Imobiliária</option>
@@ -4911,6 +4934,12 @@ function WhatsAppView({ currentUser }) {
   const [openingLeadId, setOpeningLeadId] = useState(null);
   const [removingConversationId, setRemovingConversationId] = useState(null);
   const [draft, setDraft] = useState("");
+  const [generatedAudioUrl, setGeneratedAudioUrl] = useState("");
+  const [generatedAudioBlob, setGeneratedAudioBlob] = useState(null);
+  const [generatingAudio, setGeneratingAudio] = useState(false);
+  const [sendingGeneratedAudio, setSendingGeneratedAudio] = useState(false);
+  const [voiceProfiles, setVoiceProfiles] = useState([]);
+  const [voiceProfile, setVoiceProfile] = useState(() => localStorage.getItem("gc_wa_voice") || "");
   const [attachment, setAttachment] = useState(null);
   const [attachmentKind, setAttachmentKind] = useState(null);
   const [quickRepliesOpen, setQuickRepliesOpen] = useState(false);
@@ -4948,12 +4977,42 @@ function WhatsAppView({ currentUser }) {
     setAttachment(null);
     setAttachmentKind(null);
     setQuickRepliesOpen(false);
+    setGeneratedAudioUrl("");
+    setGeneratedAudioBlob(null);
   }, [conversation?.id]);
+
+  useEffect(() => () => {
+    if (generatedAudioUrl) URL.revokeObjectURL(generatedAudioUrl);
+  }, [generatedAudioUrl]);
 
   useEffect(() => () => {
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
     mediaStreamRef.current?.getTracks().forEach(track => track.stop());
   }, []);
+
+  /* Carrega os tipos de voz do backend; se a API estiver fora, o botão único continua funcionando. */
+  useEffect(() => {
+    let alive = true;
+    crmApi.whatsapp.voiceProfiles()
+      .then(profiles => {
+        if (!alive || !profiles.length) return;
+        setVoiceProfiles(profiles);
+        setVoiceProfile(current => (
+          profiles.some(p => p.key === current) ? current
+            : (profiles.find(p => p.isDefault) || profiles[0]).key
+        ));
+      })
+      .catch(() => { if (alive) setVoiceProfiles([]); });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    if (voiceProfile) localStorage.setItem("gc_wa_voice", voiceProfile);
+    setGeneratedAudioUrl("");
+    setGeneratedAudioBlob(null);
+  }, [voiceProfile]);
+
+  const activeVoiceProfile = voiceProfiles.find(profile => profile.key === voiceProfile);
 
   const loadConversation = async id => {
     const loadVersion = ++conversationLoadVersionRef.current;
@@ -5299,6 +5358,41 @@ function WhatsAppView({ currentUser }) {
     }
   };
 
+  const generateDraftAudio = async () => {
+    if (!conversation || !draft.trim() || generatingAudio || sendingGeneratedAudio || !connected) return;
+    setError("");
+    setGeneratingAudio(true);
+    try {
+      const blob = await crmApi.whatsapp.generateAudioPreview(draft.trim(), voiceProfile);
+      const nextUrl = URL.createObjectURL(blob);
+      setGeneratedAudioBlob(blob);
+      setGeneratedAudioUrl(nextUrl);
+    } catch (requestError) {
+      setError(requestError.message || "Não foi possível gerar o áudio por IA.");
+    } finally {
+      setGeneratingAudio(false);
+    }
+  };
+
+  const sendGeneratedDraftAudio = async () => {
+    if (!conversation || !draft.trim() || !generatedAudioBlob || sendingGeneratedAudio || generatingAudio || !connected) return;
+    const conversationId = conversation.id;
+    setError("");
+    setSendingGeneratedAudio(true);
+    try {
+      const audioFile = new File([generatedAudioBlob], `voz-ia-${Date.now()}.mp3`, { type: "audio/mpeg" });
+      await crmApi.whatsapp.sendMedia(conversationId, audioFile, "voice", "", currentUser || "Usuário");
+      setDraft("");
+      setGeneratedAudioUrl("");
+      setGeneratedAudioBlob(null);
+      await refresh(true);
+    } catch (requestError) {
+      setError(requestError.message || "Não foi possível enviar a nota de voz.");
+    } finally {
+      setSendingGeneratedAudio(false);
+    }
+  };
+
   const send = async event => {
     event?.preventDefault();
     if (!conversation || (!draft.trim() && !attachment) || sending) return;
@@ -5403,15 +5497,23 @@ function WhatsAppView({ currentUser }) {
     const contactName = conversation?.contact?.name;
     const phone = String(conversation?.contact?.phone || "").replace(/\D/g, "");
     const company = conversation?.contact?.company || "empresa";
-    const greeting = contactName && String(contactName).replace(/\D/g, "") !== phone
-      ? `Olá, ${contactName}!`
-      : "Olá!";
+    const hasName = Boolean(contactName) && String(contactName).replace(/\D/g, "") !== phone;
+    const greeting = hasName ? `Olá, ${contactName}!` : "Olá!";
+    /* Primeiro nome para o marcador [NOME]; sem nome conhecido, o vocativo sai
+       da frase em vez de enviar um colchete ao cliente. */
+    const firstName = hasName ? String(contactName).trim().split(/\s+/)[0] : "";
+    const filled = reply.message
+      .replaceAll("{saudacao}", greeting)
+      .replaceAll("{empresa}", company)
+      .replaceAll("[EMPRESA]", company)
+      .replaceAll("[SEU NOME]", status?.accountName || userName(currentUser));
     setDraft(
-      reply.message
-        .replaceAll("{saudacao}", greeting)
-        .replaceAll("{empresa}", company)
-        .replaceAll("[EMPRESA]", company)
-        .replaceAll("[SEU NOME]", status?.accountName || userName(currentUser))
+      firstName
+        ? filled.replaceAll("[NOME]", firstName)
+        : filled
+          .replace(/, \[NOME\]/g, "")
+          .replace(/\[NOME\], /g, "")
+          .replace(/(^|\n)([a-zà-ú])/g, (_, start, letter) => start + letter.toUpperCase())
     );
     setQuickRepliesOpen(false);
   };
@@ -5737,8 +5839,50 @@ function WhatsAppView({ currentUser }) {
                   ))}
                 </div>
               )}
-              <TextArea value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder={attachment?.type.startsWith("image/") ? "Legenda da imagem (opcional)…" : "Digite uma mensagem…"} rows={2} maxLength={4000} disabled={!connected || sending} aria-label={attachment?.type.startsWith("image/") ? "Legenda da imagem" : "Mensagem"} />
-              <div className="flex items-center justify-between gap-2 flex-wrap"><span className="text-xs" style={{ color: "var(--slate)" }}>Mensagens recebidas aparecem automaticamente.</span><Button type="submit" icon={Send} disabled={!connected || sending || (!draft.trim() && !attachment)}>{sending ? "Enviando…" : "Enviar"}</Button></div>
+              <TextArea value={draft} onChange={event => { setDraft(event.target.value); setGeneratedAudioUrl(""); setGeneratedAudioBlob(null); }} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder={attachment?.type.startsWith("image/") ? "Legenda da imagem (opcional)…" : "Digite uma mensagem…"} rows={2} maxLength={4000} disabled={!connected || sending || generatingAudio || sendingGeneratedAudio} aria-label={attachment?.type.startsWith("image/") ? "Legenda da imagem" : "Mensagem"} />
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button type="button" variant="secondary" size="sm" icon={Sparkles} onClick={generateDraftAudio} disabled={!connected || !draft.trim() || sending || generatingAudio || sendingGeneratedAudio || Boolean(attachment)}>
+                  {generatingAudio ? "Gerando voz…" : "Gerar áudio com IA"}
+                </Button>
+                {voiceProfiles.length > 1 && (
+                  <div className="flex items-center gap-0.5 rounded-lg border p-0.5" role="radiogroup" aria-label="Tipo de voz" style={{ borderColor: "var(--line)", background: "var(--surface-sunken)" }}>
+                    {voiceProfiles.map(profile => {
+                      const active = profile.key === voiceProfile;
+                      return (
+                        <button
+                          key={profile.key}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          title={profile.hint}
+                          onClick={() => setVoiceProfile(profile.key)}
+                          className="rounded-md px-2 py-1 text-[11px] transition-colors hover:opacity-80"
+                          style={active
+                            ? { background: "var(--surface)", color: "var(--ink)", fontWeight: 600, border: "1px solid var(--line)" }
+                            : { background: "transparent", color: "var(--slate)", border: "1px solid transparent" }}
+                        >
+                          {profile.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <span className="text-[11px]" style={{ color: "var(--slate)" }}>
+                  {activeVoiceProfile?.hint || "Gera uma voz natural em português; confira a prévia antes de enviar."}
+                </span>
+                {activeVoiceProfile?.moreExpensive && (
+                  <span className="rounded-md px-1.5 py-0.5 text-[10px]" style={{ background: "var(--tone-amber-bg)", color: "var(--tone-amber-fg)" }}>gasta mais crédito</span>
+                )}
+              </div>
+              {generatedAudioUrl && (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border p-2" style={{ borderColor: "var(--line)", background: "var(--surface-sunken)" }}>
+                  <audio src={generatedAudioUrl} controls className="min-w-0 flex-1" aria-label="Prévia do áudio gerado por IA" />
+                  <Button type="button" icon={Mic} onClick={sendGeneratedDraftAudio} disabled={!connected || sending || generatingAudio || sendingGeneratedAudio}>
+                    {sendingGeneratedAudio ? "Enviando voz…" : "Enviar nota de voz"}
+                  </Button>
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-2 flex-wrap"><span className="text-xs" style={{ color: "var(--slate)" }}>Mensagens recebidas aparecem automaticamente.</span><Button type="submit" icon={Send} disabled={!connected || sending || generatingAudio || sendingGeneratedAudio || (!draft.trim() && !attachment)}>{sending ? "Enviando…" : "Enviar"}</Button></div>
             </form>
           </> : <div className="flex-1 flex items-center justify-center p-6"><EmptyState icon={MessageCircle} title="Selecione uma conversa" hint={connected ? "Envie uma mensagem nova para o WhatsApp conectado; o histórico anterior não é importado automaticamente." : "Depois que o WhatsApp estiver conectado, as novas mensagens recebidas serão sincronizadas aqui."} /></div>}
         </section>

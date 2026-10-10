@@ -3,6 +3,30 @@
 const express = require("express");
 const router = express.Router();
 const whatsappService = require("../services/whatsapp/WhatsAppService");
+const { generateSpeech, listVoiceProfiles } = require("../services/ttsService");
+
+
+/* Lista os perfis de voz ("Rápida" / "Natural") para o seletor do chat. */
+router.get("/tts/profiles", async (req, res, next) => {
+  try {
+    res.set("Cache-Control", "no-store");
+    res.json({ success: true, data: listVoiceProfiles() });
+  } catch (error) { next(error); }
+});
+
+/* Gera uma prévia de voz IA e devolve MP3 para reprodução no navegador. */
+router.post("/tts/preview", async (req, res, next) => {
+  try {
+    const audio = await generateSpeech(req.body?.text, req.body?.profile);
+    res.set({
+      "Content-Type": "audio/mpeg",
+      "Content-Length": String(audio.length),
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    res.status(200).send(audio);
+  } catch (error) { next(error); }
+});
 
 router.get("/status", async (req, res, next) => {
   try { res.set("Cache-Control", "no-store"); res.json({ success: true, data: await whatsappService.getStatus() }); } catch (error) { next(error); }

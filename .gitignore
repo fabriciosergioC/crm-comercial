@@ -28,3 +28,8 @@ backend/install.log
 
 # Artefatos de build do executável-ponte (contém credencial injetada no bundle)
 dist/
+
+# Amostras de teste de voz/áudio geradas localmente (só na raiz; assets do app seguem versionados)
+/*.mp3
+/*.ogg
+/*.wav

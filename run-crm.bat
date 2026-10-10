@@ -115,6 +115,11 @@ if exist "%ENV_FILE%" goto INICIAR_BACKEND
 >> "%ENV_FILE%" echo WHATSAPP_PROVIDER=baileys
 >> "%ENV_FILE%" echo WHATSAPP_PAIRING_PHONE=
 >> "%ENV_FILE%" echo WHATSAPP_AUTH_DIR=./data/whatsapp-auth
+>> "%ENV_FILE%" echo.
+>> "%ENV_FILE%" echo # Geracao de audio por IA (ElevenLabs) - use CONFIGURAR_AUDIO_IA.bat para preencher
+>> "%ENV_FILE%" echo ELEVENLABS_API_KEY=
+>> "%ENV_FILE%" echo ELEVENLABS_VOICE_ID=
+>> "%ENV_FILE%" echo ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 echo ✅ Arquivo .env criado: %ENV_FILE%
 goto INICIAR_BACKEND
 

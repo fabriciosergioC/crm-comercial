@@ -258,6 +258,14 @@ const CATEGORY_RULES = [
     ]
   },
   {
+    match: /delivery|entrega|domic[ií]lio|ifood/i,
+    filters: [
+      '["delivery"="yes"]',
+      '["amenity"~"^(restaurant|fast_food|cafe)$"]',
+      '["shop"~"^(bakery|deli|convenience|butcher)$"]'
+    ]
+  },
+  {
     match: /academia|fitness|crossfit|pilates|yoga|personal|gym/i,
     filters: [
       '["leisure"~"^(fitness_centre|sports_centre)$"]',
