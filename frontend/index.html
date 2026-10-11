@@ -62,6 +62,7 @@ const Link2 = (p) => <Icon {...p}><path d="M9 15l6-6" /><path d="M13 5h3a4 4 0 0
 const Users = (p) => <Icon {...p}><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6" /><circle cx="17" cy="9" r="2.5" /><path d="M15 20c0-2.5 1.5-4.5 3.5-5.3" /></Icon>;
 const Timer = (p) => <Icon {...p}><line x1="10" y1="2" x2="14" y2="2" /><line x1="12" y1="2" x2="12" y2="6" /><circle cx="12" cy="14" r="8" /><polyline points="12 10 12 14 15 16" /></Icon>;
 const FileText = (p) => <Icon {...p}><path d="M6 2h9l5 5v15H6z" /><polyline points="15 2 15 7 20 7" /><line x1="9" y1="13" x2="16" y2="13" /><line x1="9" y1="17" x2="16" y2="17" /></Icon>;
+const Printer = (p) => <Icon {...p}><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" /><line x1="9" y1="17" x2="15" y2="17" /></Icon>;
 const UserCheck = (p) => <Icon {...p}><circle cx="9" cy="8" r="4" /><path d="M2 20c0-4 3-7 7-7s7 3 7 7" /><polyline points="16 11 18 13 22 9" /></Icon>;
 const LogOut = (p) => <Icon {...p}><path d="M9 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" /><polyline points="15 16 20 12 15 8" /><line x1="20" y1="12" x2="9" y2="12" /></Icon>;
 const Menu = (p) => <Icon {...p}><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></Icon>;
@@ -1517,7 +1518,7 @@ function useToastStack() {
 function ToastStack({ toasts }) {
   if (toasts.length === 0) return null;
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 sm:left-auto sm:right-4 sm:translate-x-0 z-[100] flex flex-col gap-2 items-center sm:items-end pointer-events-none w-[calc(100%-2rem)] sm:w-auto">
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 sm:left-auto sm:right-4 sm:translate-x-0 z-[100] flex flex-col gap-2 items-center sm:items-end pointer-events-none w-[calc(100%-2rem)] sm:w-auto gc-no-print">
       {toasts.map((t) => {
         const tone = t.tone === "error" ? "danger" : t.tone === "info" ? "accent" : "success";
         const Icon = t.tone === "error" ? AlertTriangle : CheckCircle2;
@@ -2021,11 +2022,11 @@ function Sidebar({ view, setView, mobileOpen, setMobileOpen, collapsed, onToggle
   );
   return (
     <>
-      <div className="hidden md:block shrink-0 h-screen sticky top-0 overflow-hidden gc-sidebar" style={{ borderRight: "1px solid var(--line)", width: collapsed ? 68 : 240 }}>
+      <div className="hidden md:block shrink-0 h-screen sticky top-0 overflow-hidden gc-sidebar gc-no-print" style={{ borderRight: "1px solid var(--line)", width: collapsed ? 68 : 240 }}>
         {renderContent(collapsed)}
       </div>
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
+        <div className="fixed inset-0 z-50 md:hidden gc-no-print">
           <div className="absolute inset-0" style={{ background: "rgba(23,25,28,0.4)" }} onClick={() => setMobileOpen(false)} />
           <div className="absolute left-0 top-0 h-full w-[84vw] max-w-[320px] gc-slide-in" style={{ animation: "none" }}>{renderContent(false)}</div>
         </div>
@@ -2144,7 +2145,7 @@ function Topbar({ db, currentUser, setCurrentUser, onSearch, search, attention, 
   const results = useMemo(() => globalSearch(search, db), [db, search]);
 
   return (
-    <div className="sticky top-0 z-20 flex items-center gap-2 md:gap-3 px-3 md:px-6 py-2 md:py-3" style={{ background: "var(--paper)", borderBottom: "1px solid var(--line)" }}>
+    <div className="sticky top-0 z-20 flex items-center gap-2 md:gap-3 px-3 md:px-6 py-2 md:py-3 gc-no-print" style={{ background: "var(--paper)", borderBottom: "1px solid var(--line)" }}>
       <button className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center shrink-0" onClick={onMenu} style={{ color: "var(--ink-soft)" }}>
         <Menu size={20} />
       </button>
@@ -5072,7 +5073,7 @@ const perfFootnote = (stats) =>
 
 function PerfPeriodToggle({ period, setPeriodDays }) {
   return (
-    <div className="inline-flex rounded-lg p-0.5 gap-0.5" style={{ background: "var(--surface-sunken)", border: "1px solid var(--line)" }}>
+    <div className="inline-flex rounded-lg p-0.5 gap-0.5 gc-no-print" style={{ background: "var(--surface-sunken)", border: "1px solid var(--line)" }}>
       {PERF_PERIODS.map((p) => {
         const active = p.days === period.days;
         return (
@@ -5166,7 +5167,7 @@ function perfSorter(sort) {
 
 const PERF_COLUMNS = "minmax(0,1.5fr) 1fr 0.55fr 0.7fr 0.5fr 0.7fr";
 
-function PerfLeadList({ outcomes, period, filter, setFilter, sort, setSort, query, setQuery, onOpenLead }) {
+function PerfLeadList({ outcomes, period, filter, setFilter, sort, setSort, query, setQuery, onOpenLead, printing = false }) {
   const [limit, setLimit] = useState(15);
 
   const rows = useMemo(() => {
@@ -5180,15 +5181,23 @@ function PerfLeadList({ outcomes, period, filter, setFilter, sort, setSort, quer
       .sort(perfSorter(sort));
   }, [outcomes, period, filter, sort, query]);
 
-  const visible = rows.slice(0, limit);
+  /* Na impressão a lista inteira entra no papel — o corte de 15 linhas existe
+     só para a tela, senão o PDF sairia incompleto. */
+  const visible = printing ? rows : rows.slice(0, limit);
+  const recorte = PERF_FILTERS.find(f => f.key === filter)?.label || "Todas as empresas";
+  const ordenacao = PERF_SORTS.find(s => s.key === sort)?.label || "";
   const gridCols = (extra) => ({ gridTemplateColumns: PERF_COLUMNS, ...extra });
 
   return (
     <SectionCard
+      className="gc-print-allow-break"
       title="Resultado por empresa"
       action={<span className="gc-mono text-xs" style={{ color: "var(--slate)" }}>{rows.length} de {perfInPeriod(outcomes, period.days).length}</span>}
     >
-      <div className="px-5 py-3 flex flex-wrap items-center gap-2" style={{ borderBottom: "1px solid var(--line)" }}>
+      <p className="gc-print-only px-5 pt-3 text-xs" style={{ color: "var(--slate)" }}>
+        Recorte do PDF: {recorte} · {period.phrase} · ordenado por {String(ordenacao).toLowerCase()} · {rows.length} {rows.length === 1 ? "empresa" : "empresas"}
+      </p>
+      <div className="px-5 py-3 flex flex-wrap items-center gap-2 gc-no-print" style={{ borderBottom: "1px solid var(--line)" }}>
         <Select value={filter} onChange={(e) => { setFilter(e.target.value); setLimit(15); }} style={{ ...inputBorder, width: "auto" }}>
           {PERF_FILTERS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
         </Select>
@@ -5234,7 +5243,7 @@ function PerfLeadList({ outcomes, period, filter, setFilter, sort, setSort, quer
       </div>
 
       {rows.length > visible.length && (
-        <div className="px-5 py-3 flex justify-center" style={{ borderTop: "1px solid var(--line)" }}>
+        <div className="px-5 py-3 flex justify-center gc-no-print" style={{ borderTop: "1px solid var(--line)" }}>
           <Button variant="secondary" size="sm" icon={ChevronDown} onClick={() => setLimit(limit + 25)}>
             Ver mais {rows.length - visible.length} empresas
           </Button>
@@ -5249,7 +5258,47 @@ function ReportsView({ db, sel, onOpenLead }) {
   const [outcomeFilter, setOutcomeFilter] = useState("todos");
   const [outcomeSort, setOutcomeSort] = useState("recentes");
   const [outcomeQuery, setOutcomeQuery] = useState("");
+  /* Impressão: "printing" faz a lista de empresas sair inteira no papel (sem o
+     corte de 15) e o título da aba vira o nome sugerido do arquivo PDF. */
+  const [printing, setPrinting] = useState(false);
+  const tituloAba = useRef(null);
+
   const period = PERF_PERIODS.find(p => p.days === periodDays) || PERF_PERIODS[1];
+
+  const handlePrint = () => {
+    const agora = new Date();
+    tituloAba.current = document.title;
+    document.title = `Relatorio de leads - ${period.days ? `ultimos ${period.days} dias` : "historico completo"} - ${pad(agora.getDate())}-${pad(agora.getMonth() + 1)}-${agora.getFullYear()}`;
+    setPrinting(true);
+    /* Pequena espera para o React entregar a lista completa antes de o
+       navegador fotografar a página. */
+    setTimeout(() => window.print(), 180);
+  };
+
+  useEffect(() => {
+    function restaurar() {
+      setPrinting(false);
+      if (tituloAba.current !== null) {
+        document.title = tituloAba.current;
+        tituloAba.current = null;
+      }
+    }
+    window.addEventListener("afterprint", restaurar);
+    return () => window.removeEventListener("afterprint", restaurar);
+  }, []);
+
+  /* Ctrl/Cmd+P aqui dentro faz a mesma coisa que o botão. Sem isso, o atalho
+     nativo imprimiria a tela com a lista cortada em 15 empresas. */
+  useEffect(() => {
+    function atalho(eventObject) {
+      if ((eventObject.ctrlKey || eventObject.metaKey) && !eventObject.altKey && eventObject.key.toLowerCase() === "p") {
+        eventObject.preventDefault();
+        handlePrint();
+      }
+    }
+    window.addEventListener("keydown", atalho);
+    return () => window.removeEventListener("keydown", atalho);
+  });
 
   const perf = useMemo(() => {
     const outcomes = buildPerfOutcomes(db);
@@ -5262,9 +5311,26 @@ function ReportsView({ db, sel, onOpenLead }) {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="gc-display text-xl font-semibold">Relatórios</h1>
-        <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>O resultado do trabalho com os leads até agora e onde estamos perdendo oportunidade.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="gc-display text-xl font-semibold">Relatórios</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>O resultado do trabalho com os leads até agora e onde estamos perdendo oportunidade.</p>
+        </div>
+        <div className="flex flex-col items-end gap-1 gc-no-print">
+          <Button variant="secondary" icon={Printer} onClick={handlePrint}>Imprimir / PDF</Button>
+          <span className="text-[11px]" style={{ color: "var(--slate)" }}>No destino, escolha &quot;Salvar como PDF&quot;.</span>
+        </div>
+      </div>
+
+      {/* Cabeçalho que só aparece no papel / no PDF. */}
+      <div className="gc-print-only flex items-end justify-between gap-3 pb-2" style={{ borderBottom: "2px solid var(--ink)" }}>
+        <div>
+          <div className="gc-display text-[17px] font-semibold">Relatório de leads — Gestão Comercial</div>
+          <div className="text-[11px] mt-0.5" style={{ color: "var(--slate)" }}>Período analisado: {period.label.toLowerCase()} · recorte da lista: {PERF_FILTERS.find(f => f.key === outcomeFilter)?.label?.toLowerCase()}</div>
+        </div>
+        <div className="text-right text-[11px]" style={{ color: "var(--slate)" }}>
+          Emitido em {fmtDateFull(new Date())}<br />{db.leads.length} {db.leads.length === 1 ? "empresa" : "empresas"} cadastradas
+        </div>
       </div>
 
       <PerfSummary stats={perf.stats} baseline={perf.baseline} period={period} setPeriodDays={setPeriodDays} />
@@ -5291,6 +5357,7 @@ function ReportsView({ db, sel, onOpenLead }) {
         query={outcomeQuery}
         setQuery={setOutcomeQuery}
         onOpenLead={onOpenLead}
+        printing={printing}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

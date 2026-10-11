@@ -55,3 +55,29 @@
 .min-w-\[180px\]{min-width:180px}
 .min-w-\[720px\]{min-width:720px}
 .hover\:underline:hover{text-decoration-line:underline}
+.text-\[17px\]{font-size:17px}
+
+/* Impressão da guia Relatórios ("Imprimir / PDF") */
+.gc-print-only{display:none}
+@media print{
+  @page{size:A4 portrait;margin:12mm 10mm}
+  html,body{background:#fff!important}
+  /* Sai de cena tudo que é sistema (menu lateral, barra de busca, avisos,
+     botões e caixas de filtro). Vai para o papel somente o relatório. */
+  .gc-no-print{display:none!important}
+  .gc-print-only{display:block}
+  .gc-print-only.flex{display:flex}
+  .gc-root{display:block!important;min-height:0!important}
+  main{padding:0!important;max-width:none!important;margin:0!important}
+  /* O navegador não imprime as cores dos selos e gráficos sem esta ordem. */
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;box-shadow:none!important}
+  /* As tabelas têm largura mínima para rolar na tela; no papel têm de caber. */
+  [class*=overflow-x-auto]{overflow:visible!important}
+  [class*="min-w-"]{min-width:0!important}
+  /* Cartões inteiros no papel; só as linhas da tabela podem partir página. */
+  [class*=rounded-2xl]{break-inside:avoid;page-break-inside:avoid}
+  .gc-print-allow-break{break-inside:auto;page-break-inside:auto}
+  [class*="py-2.5"],[class*="py-3"]{break-inside:avoid;page-break-inside:avoid}
+  h1,h3{break-after:avoid;page-break-after:avoid}
+  a{color:inherit;text-decoration:none}
+}
