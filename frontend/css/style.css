@@ -46,3 +46,12 @@
   .md\:py-3{padding-top:.75rem;padding-bottom:.75rem}
   .md\:grid-cols-\[280px_minmax\(0\,1fr\)\]{grid-template-columns:280px minmax(0,1fr)}
 }
+
+/* Novas — guia Relatórios (desempenho dos leads) */
+.gap-0\.5{gap:.125rem}
+.w-14{width:3.5rem}
+.w-40{width:10rem}
+.leading-relaxed{line-height:1.625}
+.min-w-\[180px\]{min-width:180px}
+.min-w-\[720px\]{min-width:720px}
+.hover\:underline:hover{text-decoration-line:underline}

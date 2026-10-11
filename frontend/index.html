@@ -4663,7 +4663,7 @@ function BreakdownList({ title, data }) {
 function FunnelReport({ funnel }) {
   const max = Math.max(1, ...funnel.map(f => f.value));
   return (
-    <SectionCard title="Conversão do funil">
+    <SectionCard title="Funil só do que foi lançado">
       <div className="px-5 py-4 space-y-3">
         {funnel.map((f, i) => {
           const prev = i > 0 ? funnel[i - 1].value : null;
@@ -4677,6 +4677,9 @@ function FunnelReport({ funnel }) {
             </div>
           );
         })}
+      </div>
+      <div className="px-5 pb-4 pt-1 text-xs leading-relaxed" style={{ color: "var(--slate)" }}>
+        Este funil usa apenas as interações lançadas uma a uma, por isso é menor que a escada de conversão ao lado — a escada aproveita o histórico de status de todas as empresas.
       </div>
     </SectionCard>
   );
@@ -4726,13 +4729,545 @@ function OwnerReport({ perOwner }) {
   );
 }
 
-function ReportsView({ db, sel }) {
+/* =========================================================================
+   DESEMPENHO COMERCIAL — prévia explicativa + resultado por empresa
+   As datas de cada etapa vêm do histórico de status e das interações, não
+   apenas do status atual: um lead que voltou para "Novo" continua aparecendo
+   como contatado, porque o contato ficou registrado. Quando não há registro
+   de histórico, usamos a última data de contato do lead como aproximada e
+   avisamos isso no rodapé — número aproximado nunca é apresentado como exato.
+   ========================================================================= */
+
+const PERF_STEPS = [
+  {
+    key: "contato",
+    label: "Contato feito",
+    statuses: ["Contatado", "Respondeu", "Demo enviada", "Demo em análise", "Interessado", "Proposta enviada", "Negociação", "Fechado"],
+    tone: "blue",
+    icon: Phone,
+  },
+  {
+    key: "resposta",
+    label: "Respondeu",
+    statuses: ["Respondeu", "Demo enviada", "Demo em análise", "Interessado", "Proposta enviada", "Negociação", "Fechado"],
+    tone: "teal",
+    icon: MessageCircle,
+  },
+  {
+    key: "demo",
+    label: "Demo enviada",
+    statuses: ["Demo enviada", "Demo em análise"],
+    tone: "violet",
+    icon: Eye,
+  },
+  {
+    key: "proposta",
+    label: "Proposta enviada",
+    statuses: ["Proposta enviada", "Negociação", "Fechado"],
+    tone: "amber",
+    icon: FileText,
+  },
+  {
+    key: "fechado",
+    label: "Venda fechada",
+    statuses: ["Fechado"],
+    tone: "green",
+    icon: CheckCircle2,
+  },
+];
+
+const PERF_RESULT_LABELS = ["Respondeu", "Atendeu", "Pediu preço", "Pediu proposta", "Demonstrou interesse", "Demo enviada"];
+
+const PERF_PERIODS = [
+  { days: 7, label: "7 dias", phrase: "nos últimos 7 dias" },
+  { days: 30, label: "30 dias", phrase: "nos últimos 30 dias" },
+  { days: 90, label: "90 dias", phrase: "nos últimos 90 dias" },
+  { days: 0, label: "Tudo", phrase: "em todo o histórico" },
+];
+
+const PERF_FILTERS = [
+  { key: "todos", label: "Todas as empresas" },
+  { key: "sem_contato", label: "Ainda sem contato" },
+  { key: "sem_resposta", label: "Contatadas sem resposta" },
+  { key: "com_resposta", label: "Que responderam" },
+  { key: "demo", label: "Receberam demo" },
+  { key: "proposta", label: "Receberam proposta" },
+  { key: "fechadas", label: "Fechadas" },
+  { key: "perdidas", label: "Perdidas" },
+  { key: "paradas", label: "Paradas há +7 dias" },
+];
+
+const PERF_SORTS = [
+  { key: "recentes", label: "Mais movimentadas recentemente" },
+  { key: "paradas", label: "Mais tempo sem movimentar" },
+  { key: "avanco", label: "Etapa mais avançada" },
+  { key: "nome", label: "Nome da empresa (A-Z)" },
+];
+
+function perfDate(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+function perfEarliest(dates) {
+  let best = null;
+  for (const date of dates) {
+    if (!date) continue;
+    if (!best || date < best) best = date;
+  }
+  return best;
+}
+function perfLatest(dates) {
+  let best = null;
+  for (const date of dates) {
+    if (!date) continue;
+    if (!best || date > best) best = date;
+  }
+  return best;
+}
+function perfTime(date) { return date ? date.getTime() : 0; }
+function perfPct(part, whole) { return whole > 0 ? Math.round((part / whole) * 100) : null; }
+function perfCount(n, singular, plural) { return `${n} ${n === 1 ? singular : plural}`; }
+function capFirst(text) { return text ? text.charAt(0).toUpperCase() + text.slice(1) : text; }
+function perfGroupByLead(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    if (!row || !row.leadId) continue;
+    const list = map.get(row.leadId);
+    if (list) list.push(row);
+    else map.set(row.leadId, [row]);
+  }
+  return map;
+}
+function perfReached(o, key) { return Boolean(o.steps[key]); }
+function perfRank(o) {
+  let rank = -1;
+  for (const step of PERF_STEPS) if (perfReached(o, step.key)) rank += 1;
+  return rank;
+}
+
+function perfOutcome(lead, indexes) {
+  const history = indexes.history.get(lead.id) || [];
+  const interactions = indexes.interactions.get(lead.id) || [];
+  const demos = indexes.demos.get(lead.id) || [];
+  const proposals = indexes.proposals.get(lead.id) || [];
+
+  const created = perfDate(lead.createdAt);
+  const fallback = perfDate(lead.lastContactAt) || created;
+
+  const steps = {};
+  let estimated = false;
+
+  for (const step of PERF_STEPS) {
+    const fromHistory = perfEarliest(history.filter(h => step.statuses.includes(h.to)).map(h => perfDate(h.date)));
+    const evidence = [];
+    if (step.key === "contato") evidence.push(...interactions.map(i => perfDate(i.date)));
+    if (step.key === "resposta") evidence.push(...interactions.filter(i => PERF_RESULT_LABELS.includes(i.result)).map(i => perfDate(i.date)));
+    if (step.key === "demo") evidence.push(...demos.map(d => perfDate(d.sentAt) || perfDate(d.createdAt)));
+    if (step.key === "proposta") evidence.push(...proposals.map(p => perfDate(p.proposalDate) || perfDate(p.createdAt)));
+    const fromEvidence = perfEarliest(evidence);
+
+    let date = fromHistory || fromEvidence || null;
+    if (!date && step.statuses.includes(lead.status)) date = fallback || null;
+    if (!date) { steps[step.key] = null; continue; }
+    if (!fromHistory && !fromEvidence) estimated = true;
+    steps[step.key] = date;
+  }
+
+  const reached = PERF_STEPS.filter(step => steps[step.key]);
+  const furthest = reached.length ? reached[reached.length - 1] : null;
+
+  const lostHistory = perfEarliest(history.filter(h => h.to === "Perdido").map(h => perfDate(h.date)));
+  const lostAt = lostHistory || (lead.status === "Perdido" ? fallback : null);
+
+  const lastActivity = perfLatest([
+    created,
+    perfDate(lead.lastContactAt),
+    ...history.map(h => perfDate(h.date)),
+    ...interactions.map(i => perfDate(i.date)),
+    ...demos.map(d => perfDate(d.sentAt) || perfDate(d.createdAt)),
+    ...proposals.map(p => perfDate(p.proposalDate) || perfDate(p.createdAt)),
+  ]);
+
+  const done = lead.status === "Fechado" || lead.status === "Perdido";
+  const replyGapDays = steps.contato && steps.resposta ? daysDiff(steps.resposta, steps.contato) : null;
+  const proposalValue = proposals.reduce((sum, p) => sum + (Number(p.implementationValue) || 0), 0);
+
+  return {
+    id: lead.id,
+    company: lead.company || "Sem nome",
+    city: lead.city || "",
+    segment: lead.segment || "",
+    owner: lead.owner,
+    status: lead.status,
+    temperature: lead.temperature,
+    steps,
+    furthest: furthest ? furthest.key : null,
+    furthestLabel: furthest ? furthest.label : "Sem contato",
+    furthestTone: furthest ? furthest.tone : "slate",
+    lostAt: lostAt || null,
+    /* Fechado/Perdido é o que o lead É hoje — igual ao resto do CRM. Se ele
+       passou por "Fechado" e voltou para negociação, a venda não conta como
+       fechada, mas a etapa alcançada continua visível na linha. */
+    won: lead.status === "Fechado",
+    lost: lead.status === "Perdido",
+    startAt: perfEarliest([created, ...reached.map(step => steps[step.key])]),
+    lastActivity,
+    daysIdle: lastActivity ? Math.max(0, daysSince(lastActivity)) : null,
+    idle: !done && steps.contato && !steps.resposta && (lastActivity ? daysSince(lastActivity) >= 7 : true),
+    replyGapDays,
+    proposalValue,
+    estimated,
+  };
+}
+
+function buildPerfOutcomes(db) {
+  const indexes = {
+    history: perfGroupByLead(db.statusHistory),
+    interactions: perfGroupByLead(db.interactions),
+    demos: perfGroupByLead(db.demos),
+    proposals: perfGroupByLead(db.proposals),
+  };
+  return (db.leads || []).map(lead => perfOutcome(lead, indexes));
+}
+
+function perfInPeriod(outcomes, periodDays) {
+  if (!periodDays) return outcomes.slice();
+  const limit = new Date(Date.now() - periodDays * 86400000);
+  return outcomes.filter(o => o.startAt && o.startAt >= limit);
+}
+
+function perfStats(outcomes, periodDays) {
+  const scoped = perfInPeriod(outcomes, periodDays);
+  const has = (o, key) => perfReached(o, key);
+  const contacted = scoped.filter(o => has(o, "contato"));
+  const replied = scoped.filter(o => has(o, "resposta"));
+  const demoed = scoped.filter(o => has(o, "demo"));
+  const proposed = scoped.filter(o => has(o, "proposta"));
+  const won = scoped.filter(o => o.won);
+  const lost = scoped.filter(o => o.lost);
+  const stuck = contacted.filter(o => o.idle);
+
+  const gaps = replied.map(o => o.replyGapDays).filter(g => g !== null && g >= 0).sort((a, b) => a - b);
+  let medianReply = null;
+  if (gaps.length) {
+    medianReply = gaps.length % 2 ? gaps[(gaps.length - 1) / 2] : Math.round((gaps[gaps.length / 2 - 1] + gaps[gaps.length / 2]) / 2);
+  }
+
+  const proposedValue = scoped.reduce((sum, o) => sum + o.proposalValue, 0);
+  const wonValue = won.reduce((sum, o) => sum + o.proposalValue, 0);
+
+  const values = [scoped.length, contacted.length, replied.length, demoed.length, proposed.length, won.length];
+  const ladder = [{ key: "base", label: "Empresas no período", value: scoped.length, tone: "slate", icon: Users, prev: null }]
+    .concat(PERF_STEPS.map((step, i) => ({
+      key: step.key,
+      label: step.label,
+      value: values[i + 1],
+      tone: step.tone,
+      icon: step.icon,
+      prev: values[i],
+    })));
+
+  let weakest = null;
+  for (const row of ladder.slice(1)) {
+    /* Menos de 3 empresas na etapa anterior não forma taxa confiável — melhor
+       não apontar gargalo com amostra minúscula. */
+    if (!row.prev || row.prev < 3) continue;
+    const ratio = row.value / row.prev;
+    if (!weakest || ratio < weakest.ratio) weakest = { ...row, ratio };
+  }
+
+  return {
+    periodDays,
+    total: scoped.length,
+    contacted: contacted.length,
+    neverContacted: scoped.length - contacted.length,
+    replied: replied.length,
+    demoed: demoed.length,
+    proposed: proposed.length,
+    won: won.length,
+    lost: lost.length,
+    stuck: stuck.length,
+    estimated: scoped.filter(o => o.estimated).length,
+    rateReply: perfPct(replied.length, contacted.length),
+    rateDemo: perfPct(demoed.length, replied.length),
+    rateProposta: perfPct(proposed.length, demoed.length),
+    rateFechado: perfPct(won.length, proposed.length),
+    rateWon: perfPct(won.length, scoped.length),
+    medianReply,
+    proposedValue,
+    wonValue,
+    ladder,
+    weakest,
+  };
+}
+
+/* Texto que explica o número antes dele: o que aconteceu, o que ainda falta
+   e onde o processo está travando. Cada linha é uma frase curta. */
+function perfNarrative(stats, baseline, period) {
+  const lines = [];
+
+  if (!stats.total) {
+    lines.push(`${capFirst(period.phrase)} não entrou nenhuma empresa no funil, então ainda não há desempenho para comparar.`);
+    return lines;
+  }
+
+  lines.push(
+    `${capFirst(period.phrase)} o funil teve ${perfCount(stats.total, "empresa", "empresas")}. ` +
+    `O primeiro contato foi feito com ${stats.contacted} delas` +
+    (stats.neverContacted ? `, e ${perfCount(stats.neverContacted, "empresa ficou", "empresas ficaram")} aguardando uma mensagem` : "") +
+    "."
+  );
+
+  if (stats.contacted) {
+    const oneIn = stats.rateReply ? ` ou seja, 1 a cada ${Math.max(2, Math.round(100 / stats.rateReply))}` : "";
+    lines.push(
+      `Responderam ${stats.replied} — ${stats.rateReply === null ? "ainda sem taxa calculável" : `${stats.rateReply}% dos contatos,${oneIn}`}. ` +
+      `Demos enviadas: ${stats.demoed}. Propostas enviadas: ${stats.proposed}` +
+      (stats.proposedValue ? ` (${fmtMoney(stats.proposedValue)} em projetos)` : "") +
+      "."
+    );
+  } else {
+    lines.push(`Ainda não houve contato registrado nesse período, então resposta, demo e proposta ficam em zero.`);
+  }
+
+  lines.push(
+    stats.won
+      ? `Fechamento: ${perfCount(stats.won, "venda fechada", "vendas fechadas")}` +
+        (stats.wonValue ? `, ${fmtMoney(stats.wonValue)} contratados` : "") +
+        ` — ${stats.rateWon}% das empresas do período.`
+      : "Ainda não há venda fechada nesse período; o resultado disponível é o avanço de etapa."
+  );
+
+  if (stats.lost) {
+    lines.push(`Saíram perdidas ${perfCount(stats.lost, "empresa", "empresas")} (${perfPct(stats.lost, stats.total)}% do período).`);
+  }
+
+  if (stats.stuck) {
+    lines.push(
+      `${stats.stuck} ${stats.stuck === 1 ? "empresa foi contatada e está sem responder" : "empresas foram contatadas e estão sem responder"} há mais de uma semana — ${stats.stuck === 1 ? "é" : "são"} o ${stats.stuck === 1 ? "primeiro alvo" : "lote"} da próxima cobrança.`
+    );
+  }
+
+  if (stats.medianReply !== null) {
+    lines.push(`A metade das empresas que respondeu o fez em até ${perfCount(stats.medianReply, "dia", "dias")} depois do primeiro contato.`);
+  }
+
+  if (stats.weakest) {
+    lines.push(`O gargalo mais forte agora é ${stats.weakest.label}: apenas ${stats.weakest.value} de ${stats.weakest.prev} avançaram (${Math.round(stats.weakest.ratio * 100)}%).`);
+  }
+
+  if (baseline && baseline.rateReply !== null && stats.rateReply !== null) {
+    const diff = stats.rateReply - baseline.rateReply;
+    const verdict = Math.abs(diff) < 3 ? "praticamente igual ao" : diff > 0 ? `${diff} pontos acima do` : `${Math.abs(diff)} pontos abaixo do`;
+    lines.push(`Frente a todo o histórico (${baseline.rateReply}% de resposta), este período está ${verdict} desempenho geral.`);
+  }
+
+  return lines;
+}
+
+const perfFootnote = (stats) =>
+  `Prévia: cada linha é uma empresa, não uma conversa. As datas vêm do histórico de status e das interações` +
+  (stats.estimated ? `; ${perfCount(stats.estimated, "empresa usa", "empresas usam")} data aproximada porque o status mudou sem registro de histórico.` : " — nenhuma data precisou ser aproximada.");
+
+function PerfPeriodToggle({ period, setPeriodDays }) {
+  return (
+    <div className="inline-flex rounded-lg p-0.5 gap-0.5" style={{ background: "var(--surface-sunken)", border: "1px solid var(--line)" }}>
+      {PERF_PERIODS.map((p) => {
+        const active = p.days === period.days;
+        return (
+          <button
+            key={p.days}
+            type="button"
+            onClick={() => setPeriodDays(p.days)}
+            className="gc-mono text-xs px-2.5 py-1 rounded-md gc-focus gc-pressable"
+            style={{ background: active ? "var(--surface)" : "transparent", color: active ? "var(--accent-ink)" : "var(--slate)", fontWeight: active ? 600 : 500, border: active ? "1px solid var(--line-strong)" : "1px solid transparent" }}
+          >
+            {p.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function PerfSummary({ stats, baseline, period, setPeriodDays }) {
+  const lines = perfNarrative(stats, baseline, period);
+  return (
+    <SectionCard title="Desempenho até o momento" action={<PerfPeriodToggle period={period} setPeriodDays={setPeriodDays} />}>
+      <div className="px-5 py-4 space-y-2.5">
+        {lines.map((line, i) => (
+          <p key={i} className={`leading-relaxed ${i === 0 ? "text-[15px] font-medium" : "text-sm"}`} style={{ color: i === 0 ? "var(--ink)" : "var(--ink-soft)" }}>
+            {line}
+          </p>
+        ))}
+
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2">
+          <StatTile label="Empresas no período" value={stats.total} icon={Users} />
+          <StatTile label="Contato feito" value={stats.contacted} sub={stats.neverContacted ? `${stats.neverContacted} sem contatar` : undefined} icon={Phone} />
+          <StatTile label="Taxa de resposta" value={stats.rateReply === null ? "—" : `${stats.rateReply}%`} tone="accent" icon={MessageCircle} />
+          <StatTile label="Demos / propostas" value={`${stats.demoed} / ${stats.proposed}`} icon={Eye} />
+          <StatTile label="Fechadas" value={stats.won} sub={stats.wonValue ? fmtMoney(stats.wonValue) : `${stats.lost} perdidas`} tone={stats.won ? "success" : undefined} icon={CheckCircle2} />
+        </div>
+
+        <p className="text-xs pt-1 leading-relaxed" style={{ color: "var(--slate)" }}>{perfFootnote(stats)}</p>
+      </div>
+    </SectionCard>
+  );
+}
+
+function PerfLadder({ stats }) {
+  const max = Math.max(1, ...stats.ladder.map(row => row.value));
+  return (
+    <SectionCard title="Escada de conversão">
+      <div className="px-5 py-4 space-y-3">
+        {stats.ladder.map((row) => {
+          const rate = row.prev ? perfPct(row.value, row.prev) : null;
+          return (
+            <div key={row.key} className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5 text-sm w-40 shrink-0" style={{ color: "var(--ink-soft)" }}>
+                {React.createElement(row.icon, { size: 13, style: { color: `var(--tone-${row.tone}-fg)` } })}
+                <span className="truncate">{row.label}</span>
+              </span>
+              <div className="flex-1"><Bar value={row.value} max={max} tone={`tone-${row.tone}-fg`} /></div>
+              <span className="gc-mono text-sm w-8 text-right shrink-0">{row.value}</span>
+              <span className="gc-mono text-xs w-14 text-right shrink-0" style={{ color: "var(--slate)" }}>
+                {row.key === "base" ? "base" : row.prev ? `${rate}%` : "sem base"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="px-5 pb-4 pt-1 text-xs leading-relaxed" style={{ color: "var(--slate)" }}>
+        Cada barra é uma etapa alcançada, e a porcentagem à direita é a conversão sobre a etapa de cima. Uma empresa perdida continua aparecendo na etapa em que parou.
+      </div>
+    </SectionCard>
+  );
+}
+
+function perfMatches(outcome, filter) {
+  if (filter === "sem_contato") return !perfReached(outcome, "contato") && !outcome.lost;
+  if (filter === "sem_resposta") return perfReached(outcome, "contato") && !perfReached(outcome, "resposta") && !outcome.lost && !outcome.won;
+  if (filter === "com_resposta") return perfReached(outcome, "resposta");
+  if (filter === "demo") return perfReached(outcome, "demo");
+  if (filter === "proposta") return perfReached(outcome, "proposta");
+  if (filter === "fechadas") return outcome.won;
+  if (filter === "perdidas") return outcome.lost;
+  if (filter === "paradas") return outcome.idle;
+  return true;
+}
+
+function perfSorter(sort) {
+  if (sort === "paradas") return (a, b) => perfTime(b.lastActivity) - perfTime(a.lastActivity);
+  if (sort === "avanco") return (a, b) => perfRank(b) - perfRank(a) || perfTime(b.lastActivity) - perfTime(a.lastActivity);
+  if (sort === "nome") return (a, b) => String(a.company).localeCompare(String(b.company), "pt-BR");
+  return (a, b) => perfTime(b.lastActivity) - perfTime(a.lastActivity) || perfRank(b) - perfRank(a);
+}
+
+const PERF_COLUMNS = "minmax(0,1.5fr) 1fr 0.55fr 0.7fr 0.5fr 0.7fr";
+
+function PerfLeadList({ outcomes, period, filter, setFilter, sort, setSort, query, setQuery, onOpenLead }) {
+  const [limit, setLimit] = useState(15);
+
+  const rows = useMemo(() => {
+    const term = (query || "").trim().toLowerCase();
+    return perfInPeriod(outcomes, period.days)
+      .filter(o => perfMatches(o, filter))
+      .filter(o => !term
+        || String(o.company).toLowerCase().includes(term)
+        || String(o.city).toLowerCase().includes(term)
+        || String(userName(o.owner)).toLowerCase().includes(term))
+      .sort(perfSorter(sort));
+  }, [outcomes, period, filter, sort, query]);
+
+  const visible = rows.slice(0, limit);
+  const gridCols = (extra) => ({ gridTemplateColumns: PERF_COLUMNS, ...extra });
+
+  return (
+    <SectionCard
+      title="Resultado por empresa"
+      action={<span className="gc-mono text-xs" style={{ color: "var(--slate)" }}>{rows.length} de {perfInPeriod(outcomes, period.days).length}</span>}
+    >
+      <div className="px-5 py-3 flex flex-wrap items-center gap-2" style={{ borderBottom: "1px solid var(--line)" }}>
+        <Select value={filter} onChange={(e) => { setFilter(e.target.value); setLimit(15); }} style={{ ...inputBorder, width: "auto" }}>
+          {PERF_FILTERS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+        </Select>
+        <Select value={sort} onChange={(e) => setSort(e.target.value)} style={{ ...inputBorder, width: "auto" }}>
+          {PERF_SORTS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+        </Select>
+        <TextInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar empresa, cidade ou responsável" className="flex-1 min-w-[180px]" />
+      </div>
+
+      <div className="gc-scroll overflow-x-auto">
+        <div className="min-w-[720px]">
+          <div className="grid gap-2 px-5 py-2 text-xs font-medium" style={{ ...gridCols(), color: "var(--slate)" }}>
+            <span>Empresa</span><span>Etapa alcançada</span><span className="text-right">Início</span><span className="text-right">Última ação</span><span className="text-right">Parada há</span><span className="text-right">Responsável</span>
+          </div>
+          {visible.map((o) => {
+            const idleTone = o.idle ? "var(--danger)" : (o.daysIdle !== null && o.daysIdle >= 4 && !o.won && !o.lost ? "var(--warn)" : "var(--ink-soft)");
+            return (
+              <div key={o.id} className="grid gap-2 px-5 py-2.5 text-sm items-center min-w-[720px]" style={{ ...gridCols({ borderTop: "1px solid var(--line)" }) }}>
+                <div className="min-w-0">
+                  <button onClick={() => onOpenLead(o.id)} className="block w-full text-left truncate font-medium gc-focus rounded hover:underline">
+                    {o.company}
+                  </button>
+                  <span className="block text-[11px] truncate" style={{ color: "var(--slate)" }}>{[o.city, o.segment].filter(Boolean).join(" · ") || "—"}</span>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Pill tone={o.won ? "green" : o.furthestTone}>{o.won ? "Fechada" : o.furthestLabel}</Pill>
+                  {o.lost && <Pill tone="red">Perdida</Pill>}
+                  {o.estimated && <span className="gc-mono text-[10px]" style={{ color: "var(--slate)" }} title="Data aproximada: o status mudou sem registro no histórico">~</span>}
+                </div>
+                <span className="gc-mono text-xs text-right" style={{ color: "var(--slate)" }}>{o.startAt ? fmtDate(o.startAt) : "—"}</span>
+                <span className="gc-mono text-xs text-right" style={{ color: "var(--slate)" }}>{o.lastActivity ? fmtDate(o.lastActivity) : "—"}</span>
+                <span className="gc-mono text-xs text-right" style={{ color: idleTone }}>{o.won || o.lost ? "—" : o.daysIdle === null ? "—" : `${o.daysIdle}d`}</span>
+                <span className="text-xs text-right truncate">{userName(o.owner)}</span>
+              </div>
+            );
+          })}
+          {!rows.length && (
+            <div className="px-5">
+              <EmptyState icon={Search} title="Nenhuma empresa neste recorte" hint="Troque o período ou o filtro para ver outras empresas." />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {rows.length > visible.length && (
+        <div className="px-5 py-3 flex justify-center" style={{ borderTop: "1px solid var(--line)" }}>
+          <Button variant="secondary" size="sm" icon={ChevronDown} onClick={() => setLimit(limit + 25)}>
+            Ver mais {rows.length - visible.length} empresas
+          </Button>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+function ReportsView({ db, sel, onOpenLead }) {
+  const [periodDays, setPeriodDays] = useState(30);
+  const [outcomeFilter, setOutcomeFilter] = useState("todos");
+  const [outcomeSort, setOutcomeSort] = useState("recentes");
+  const [outcomeQuery, setOutcomeQuery] = useState("");
+  const period = PERF_PERIODS.find(p => p.days === periodDays) || PERF_PERIODS[1];
+
+  const perf = useMemo(() => {
+    const outcomes = buildPerfOutcomes(db);
+    return {
+      outcomes,
+      stats: perfStats(outcomes, periodDays),
+      baseline: periodDays ? perfStats(outcomes, 0) : null,
+    };
+  }, [db, periodDays]);
+
   return (
     <div className="space-y-5">
       <div>
         <h1 className="gc-display text-xl font-semibold">Relatórios</h1>
-        <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>Como estamos vendendo e onde estamos perdendo oportunidades.</p>
+        <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>O resultado do trabalho com os leads até agora e onde estamos perdendo oportunidade.</p>
       </div>
+
+      <PerfSummary stats={perf.stats} baseline={perf.baseline} period={period} setPeriodDays={setPeriodDays} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatTile label="Total de leads" value={db.leads.length} />
@@ -4741,7 +5276,22 @@ function ReportsView({ db, sel }) {
         <StatTile label="Leads perdidos" value={sel.lostLeads.length} />
       </div>
 
-      <FunnelReport funnel={sel.funnel} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <PerfLadder stats={perf.stats} />
+        <FunnelReport funnel={sel.funnel} />
+      </div>
+
+      <PerfLeadList
+        outcomes={perf.outcomes}
+        period={period}
+        filter={outcomeFilter}
+        setFilter={setOutcomeFilter}
+        sort={outcomeSort}
+        setSort={setOutcomeSort}
+        query={outcomeQuery}
+        setQuery={setOutcomeQuery}
+        onOpenLead={onOpenLead}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <BreakdownList title="Leads por segmento" data={sel.bySegment} />
@@ -6513,7 +7063,7 @@ function App() {
       notify={notify}
     />;
   } else if (view === "reports") {
-    body = <ReportsView db={db} sel={sel} />;
+    body = <ReportsView db={db} sel={sel} onOpenLead={openLead} />;
   }
 
   return (
