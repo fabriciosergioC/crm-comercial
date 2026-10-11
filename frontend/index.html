@@ -6916,7 +6916,6 @@ function App() {
   const openLead = (id, tab) => { setSelectedLeadId(id); setInitialTab(tab || "geral"); };
 
   const handleCreateLead = (form) => {
-    const stayOnEnrichment = leadFormOpenedFromEnrichment.current;
     leadFormOpenedFromEnrichment.current = false;
     const id = `l_${Date.now()}`;
     /* A tela única manda também os campos comerciais; aqui eles viram as
@@ -6944,12 +6943,11 @@ function App() {
       type: "ADD_LEAD",
       lead: leadData,
     });
+    /* Salvar fecha SOMENTE o formulário. Antes disso a rotina ainda trocava para
+       a tela de leads e abria a ficha do lead novo — quem abria o cadastro pelo
+       Ctrl+N dentro de outra tela era jogado de volta para o início da lista. */
     setShowLeadForm(false);
-    if (!stayOnEnrichment) {
-      setView("leads");
-      openLead(id);
-    }
-    notify(stayOnEnrichment ? "Lead criado. Você continua na tela de enriquecimento." : "Lead salvo no Supabase.");
+    notify("Lead salvo no Supabase.");
   };
 
   const handleImportLeads = async (records) => {
