@@ -4,6 +4,25 @@ const express = require("express");
 const router = express.Router();
 const whatsappService = require("../services/whatsapp/WhatsAppService");
 const { generateSpeech, listVoiceProfiles } = require("../services/ttsService");
+const { generateReplySuggestions, aiInfo } = require("../services/replySuggestionService");
+
+
+/* Diz se a IA de sugestões está configurada (sem expor a chave nem a conta). */
+router.get("/sugestoes/status", async (req, res, next) => {
+  try {
+    res.set("Cache-Control", "no-store");
+    res.json({ success: true, data: aiInfo() });
+  } catch (error) { next(error); }
+});
+
+/* Pede 3 sugestões de resposta para a conversa aberta.
+   O backend só devolve texto: o envio continua sendo decisão de quem está na tela. */
+router.post("/sugestoes", async (req, res, next) => {
+  try {
+    res.set("Cache-Control", "no-store");
+    res.json({ success: true, data: await generateReplySuggestions(req.body) });
+  } catch (error) { next(error); }
+});
 
 
 /* Lista os perfis de voz ("Rápida" / "Natural") para o seletor do chat. */

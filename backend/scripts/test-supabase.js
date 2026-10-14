@@ -84,7 +84,7 @@ async function main() {
 
   console.log('\n[4/7] Funcoes RPC');
   const probes = [
-    ['change_lead_status', { p_lead_id: '__probe__', p_to: 'Novo', p_user: null }],
+    ['change_lead_status', { p_lead_id: '__probe__', p_to: 'Contato pendente', p_user: null }],
     ['add_lead_interaction', { p_lead_id: '__probe__', p_user: null, p_channel: 'Ligação', p_result: 'Atendeu', p_note: '' }],
   ];
   const rpcFails = [];
@@ -109,7 +109,7 @@ async function main() {
 
     const l = await db.from('leads').insert({
       id: LEAD_ID, company: 'TESTE - REMOVER', contact_name: 'Contato de teste',
-      owner: USER_ID, status: 'Novo', temperature: 'Frio', priority: 'Média',
+      owner: USER_ID, status: 'Contato pendente', temperature: 'Frio', priority: 'Média',
       score: { dor: 1, facilidade: 1, pagamento: 1, recorrencia: 1 },
       next_action: { date: new Date().toISOString(), note: 'Acao de teste' },
     }).select().single();
@@ -138,12 +138,12 @@ async function main() {
     if (accepted.length) fail('o banco ACEITOU dado invalido: ' + accepted.join(' | '));
 
     console.log('\n[6/7] RPC, UPDATE e SELECT');
-    const st = await db.rpc('change_lead_status', { p_lead_id: LEAD_ID, p_to: 'Contatado', p_user: USER_ID });
+    const st = await db.rpc('change_lead_status', { p_lead_id: LEAD_ID, p_to: 'Interessado', p_user: USER_ID });
     if (st.error) fail('rpc change_lead_status: ' + st.error.message);
-    if (!st.data || !st.data.entry || st.data.entry.from_status !== 'Novo' || st.data.entry.to_status !== 'Contatado') {
+    if (!st.data || !st.data.entry || st.data.entry.from_status !== 'Contato pendente' || st.data.entry.to_status !== 'Interessado') {
       fail('change_lead_status fora do formato esperado: ' + JSON.stringify(st.data));
     }
-    ok('change_lead_status: "Novo" -> "Contatado" + entrada de historico');
+    ok('change_lead_status: "Contato pendente" -> "Interessado" + entrada de historico');
 
     const it = await db.rpc('add_lead_interaction', {
       p_lead_id: LEAD_ID, p_user: USER_ID, p_channel: 'WhatsApp', p_result: 'Pediu preço', p_note: 'Interacao de teste',

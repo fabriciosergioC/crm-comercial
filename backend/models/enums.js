@@ -3,12 +3,7 @@
    para validar a entrada no servidor sem inventar valores novos. */
 
 const STATUS_LIST = [
-  'Novo',
   'Contato pendente',
-  'Contatado',
-  'Respondeu',
-  'Demo enviada',
-  'Demo em análise',
   'Interessado',
   'Proposta enviada',
   'Negociação',

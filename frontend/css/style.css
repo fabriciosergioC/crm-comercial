@@ -81,3 +81,13 @@
   h1,h3{break-after:avoid;page-break-after:avoid}
   a{color:inherit;text-decoration:none}
 }
+
+/* Utilitários que o Tailwind congelado não chegou a gerar e o chat usa
+   (painel de resposta rápida, painel de sugestões da IA, células da prévia de
+   importação, QR Code). Sem eles, p-2 / p-1.5 / space-y-1 / hover:opacity-80
+   ficavam mudos no JSX. Mesma sintaxe do restante do arquivo. */
+.p-2{padding:.5rem}
+.p-1\.5{padding:.375rem}
+.opacity-80{opacity:.8}
+.hover\:opacity-80:hover{opacity:.8}
+.space-y-1>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.25rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.25rem*var(--tw-space-y-reverse))}

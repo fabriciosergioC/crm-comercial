@@ -81,7 +81,7 @@ async function main() {
     console.log('\n[3/8] Ciclo de vida do lead pela API');
     const created = await req('POST', '/leads', {
       id: LEAD_ID, company: 'TESTE - REMOVER', contactName: 'Contato de teste',
-      owner: USER_ID, status: 'Novo', temperature: 'Frio', priority: 'Média',
+      owner: USER_ID, status: 'Contato pendente', temperature: 'Frio', priority: 'Média',
       city: 'Coronel Fabriciano', segment: 'Alimentação', source: 'Indicação',
       score: { dor: 2, facilidade: 3, pagamento: 2, recorrencia: 1 },
       nextAction: { date: new Date().toISOString(), note: 'Acao de teste' },
@@ -102,9 +102,9 @@ async function main() {
     check('PATCH /api/leads/:id aplicou notes e score',
       patched.status === 200 && patched.body.data.notes === 'nota atualizada pela API' && patched.body.data.score.dor === 5);
 
-    const status = await req('POST', '/leads/' + LEAD_ID + '/status', { status: 'Contatado', user: USER_ID });
-    check('POST /api/leads/:id/status gravou historico (Novo -> Contatado)',
-      status.status === 200 && status.body.data.entry.from === 'Novo' && status.body.data.entry.to === 'Contatado');
+    const status = await req('POST', '/leads/' + LEAD_ID + '/status', { status: 'Interessado', user: USER_ID });
+    check('POST /api/leads/:id/status gravou historico (Contato pendente -> Interessado)',
+      status.status === 200 && status.body.data.entry.from === 'Contato pendente' && status.body.data.entry.to === 'Interessado');
 
     const inter = await req('POST', '/leads/' + LEAD_ID + '/interactions', {
       channel: 'WhatsApp', result: 'Pediu preço', note: 'Interacao via API', user: USER_ID,

@@ -459,7 +459,7 @@ async function changePasswordThroughApi(userId, currentPassword, newPassword) {
   return { ok: true, data: response.data };
 }
 
-const STATUS_LIST = ["Novo","Contato pendente","Contatado","Respondeu","Demo enviada","Demo em análise","Interessado","Proposta enviada","Negociação","Fechado","Perdido"];
+const STATUS_LIST = ["Contato pendente","Interessado","Proposta enviada","Negociação","Fechado","Perdido"];
 const TEMPERATURES = ["Frio","Morno","Quente"];
 const PRIORITIES = ["Baixa","Média","Alta"];
 const CHANNELS = ["Ligação","WhatsApp","Instagram","E-mail","Presencial","Outro"];
@@ -470,9 +470,7 @@ const SEGMENTS = ["Alimentação","Saúde","Fitness","Jurídico","Beleza","Imóv
 const PLANS = ["Site institucional","Landing page","E-commerce","Site + manutenção mensal"];
 
 const STATUS_TONE = {
-  "Novo": "slate", "Contato pendente": "amber",
-  "Contatado": "blue", "Respondeu": "blue",
-  "Demo enviada": "violet", "Demo em análise": "violet", "Interessado": "amber",
+  "Contato pendente": "amber", "Interessado": "amber",
   "Proposta enviada": "teal", "Negociação": "teal", "Fechado": "green", "Perdido": "red",
 };
 
@@ -504,7 +502,7 @@ const WHATSAPP_QUICK_REPLIES = [
   },
   {
     label: "Sem Retorno",
-    message: "Oi 😊 passando só para retomar nossa conversa.\n\nVocê chegou a ver com calma a ideia da página para enviar para as clientes pelo WhatsApp?\n\nQueria saber se você achou que faria sentido para o atendimento de vocês.",
+    message: "Oi, [NOME]! 😊\n\nSei como é a correria, então volto aqui só para não deixar sem resposta a pergunta da minha última mensagem: existe alguma atividade na {empresa} que poderia ser mais simples, rápida ou eficiente?\n\nEstou conversando com empresas da região e o que mais aparece é o pedido que chega por mensagem e precisa ser digitado de novo, ou a anotação de nome e telefone.\n\nSe for o seu caso, me responde só com um \"sim\" que eu te mando um exemplo rápido, feito para o seu tipo de negócio.\n\n*Se não for o momento, um \"agora não\" também me ajuda — prefiro saber a ficar te procurando sem necessidade.*",
   },
   {
     label: "Demo enviada",
@@ -524,6 +522,73 @@ const conversationStatusMeta = (status) => {
 };
 const CONVERSATION_TONE = Object.fromEntries(CONVERSATION_STATUSES.map(item => [item.key, item.tone]));
 
+/* =========================================================================
+   VÍNCULO LEAD <-> CONVERSA DE WHATSAPP
+   A tabela whatsapp_conversations não tem lead_id, então o cliente é ligado à
+   conversa pelo telefone (com nome/empresa como plano B). Uma regra só para as
+   duas telas não divergirem: o chat usa para mostrar a etapa do funil, a tela
+   de Leads usa para mostrar e mudar o status do atendimento.
+   ========================================================================= */
+const waDigits = value => String(value || "").replace(/\D/g, "");
+const waText = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+/* Mesmo critério do chat: telefone com 8 a 15 dígitos abre conversa. */
+const waLeadPhone = lead => [lead?.whatsapp, lead?.phone]
+  .map(waDigits)
+  .find(value => value.length >= 8 && value.length <= 15) || "";
+/* Um telefone de conversa só vale se tiver 8+ dígitos; a comparação aceita
+   prefixo internacional de um dos lados (55 31...  x  (31)...). */
+const waPhonesMatch = (a, b) => a.length >= 8 && b.length >= 8 && (a.endsWith(b) || b.endsWith(a));
+
+function findLeadForConversation(item, leads) {
+  const conversationPhone = waDigits(item?.contact?.phone);
+  const byPhone = conversationPhone.length >= 8
+    ? (leads || []).find(lead => [lead.whatsapp, lead.phone].map(waDigits).some(value => waPhonesMatch(conversationPhone, value)))
+    : null;
+  if (byPhone) return byPhone;
+  /* Sem telefone compatível, o vínculo é por texto: primeiro a empresa da
+     conversa, depois o nome do contato (comparado também com o nome da empresa
+     do lead). Só aceita correspondência ÚNICA — nomes genéricos como
+     "Proprietario(a)" existem em vários leads e amarrar ao primeiro mostraria
+     o status errado na tela. */
+  const candidates = [item?.contact?.company, item?.contact?.name].map(waText).filter(Boolean);
+  for (const candidate of candidates) {
+    const hits = (leads || []).filter(lead =>
+      [waText(lead.contactName), waText(lead.company)].filter(Boolean).includes(candidate)
+    );
+    if (hits.length === 1) return hits[0];
+  }
+  return null;
+}
+
+/* Caminho inverso, para a ficha do lead: qual conversa pertence a este lead. */
+function findConversationForLead(lead, conversations) {
+  const phones = [lead?.whatsapp, lead?.phone].map(waDigits).filter(Boolean);
+  const hits = (conversations || []).filter(item =>
+    phones.some(value => waPhonesMatch(waDigits(item?.contact?.phone), value))
+  );
+  /* A lista chega ordenada por atividade mais recente. */
+  return hits[0] || null;
+}
+
+/* Mapa leadId -> { id, status, updatedAt }, para a lista de Leads e o Kanban
+    mostrarem a pílula do atendimento sem cada linha procurar de novo. O formato
+    é o mesmo de um item da lista de conversas, assim a ficha usa as duas fontes
+    sem precisar de conversão. */
+function conversationStatusByLead(conversations, leads) {
+  const map = {};
+  for (const item of conversations || []) {
+    const lead = findLeadForConversation(item, leads);
+    if (lead && !map[lead.id]) {
+      map[lead.id] = {
+        id: item.id,
+        status: item.status || DEFAULT_CONVERSATION_STATUS,
+        updatedAt: item.lastMessage?.timestamp || null,
+      };
+    }
+  }
+  return map;
+}
+
 const TEMP_TONE = { "Frio": "cold", "Morno": "warm", "Quente": "hot" };
 const PRIORITY_ORDER = { "Alta": 0, "Média": 1, "Baixa": 2 };
 const TEMP_RANK = { "Frio": 0, "Morno": 1, "Quente": 2 };
@@ -533,16 +598,20 @@ const CHANNEL_ICON = {
   "E-mail": Mail, "Presencial": Users, "Outro": MoreHorizontal,
 };
 
-/* Pipeline stages group the 11 fine-grained statuses into the 9 columns the
+/* Pipeline stages group the fine-grained statuses into the columns the
    commercial pipeline is discussed in day-to-day. The lead's real `status`
    field always stays at full granularity (shown as a small sub-label on
    each card) — this grouping is purely a display concern shared by the
-   Dashboard funnel and the Pipeline (Kanban) view, so the two stay consistent. */
+   Dashboard funnel and the Pipeline (Kanban) view, so the two stay consistent.
+   "Novo", "Contatado" e "Respondeu" saíram do funil em 12/10/2026: quem estava
+   neles foi para "Contato pendente" (Novo/Contatado) ou "Interessado"
+   (Respondeu). No mesmo dia saíram "Demo enviada" e "Demo em análise", que
+   também viraram "Interessado" — a demo continua sendo acompanhada pela aba
+   Demonstrações (validade, visualizações), só que ela não é mais uma etapa.
+   O atendimento na frente do WhatsApp tem rótulos próprios
+   (CONVERSATION_STATUSES) e não tinha relação com essas etapas. */
 const STAGE_GROUPS = [
-  { key: "novo", label: "Novo", statuses: ["Novo"] },
-  { key: "contato", label: "Contato", statuses: ["Contato pendente", "Contatado"] },
-  { key: "respondeu", label: "Respondeu", statuses: ["Respondeu"] },
-  { key: "demo", label: "Demo", statuses: ["Demo enviada", "Demo em análise"] },
+  { key: "contato", label: "Contato", statuses: ["Contato pendente"] },
   { key: "interessado", label: "Interessado", statuses: ["Interessado"] },
   { key: "proposta", label: "Proposta", statuses: ["Proposta enviada"] },
   { key: "negociacao", label: "Negociação", statuses: ["Negociação"] },
@@ -550,6 +619,27 @@ const STAGE_GROUPS = [
   { key: "perdido", label: "Perdido", statuses: ["Perdido"] },
 ];
 const STAGE_BY_STATUS = Object.fromEntries(STAGE_GROUPS.flatMap(g => g.statuses.map(s => [s, g.key])));
+
+/* Rótulos que já foram etapas do funil e não são mais oferecidos em lugar
+   nenhum (chips, Kanban, ficha, formulário). Continuam aparecendo no histórico
+   e nas listas do relatório de Desempenho de propósito. Se um lead ainda
+   aparecer com um deles — import antigo, banco sem a migração 012/013 — as
+   regras automáticas abaixo o puxam para a etapa certa em vez de deixar a
+   ficha fora do funil. */
+const RETIRED_FUNNEL_STATUSES = ["Novo", "Contatado", "Respondeu", "Demo enviada", "Demo em análise"];
+
+/* Etapas que já passaram do ponto em que uma demo faz sentido: quem está em
+   proposta, negociação, fechado ou perdido não "volta" para interessado só
+   porque reenviamos uma prévia. */
+const LATE_FUNNEL_STATUSES = ["Proposta enviada", "Negociação", "Fechado", "Perdido"];
+/* Enviar uma demo conta como interesse. Devolve a etapa nova ou null quando
+   não é para mexer (lead já interessado ou já mais avançado que isso). Usado
+   pela ficha (demo criada/enviada) — a aba Demonstrações registra a demo e a
+   interação, mas nunca mudou etapa nenhuma, e continua assim. */
+function stageAfterDemoSent(lead) {
+  if (!lead || LATE_FUNNEL_STATUSES.includes(lead.status)) return null;
+  return lead.status === "Interessado" ? null : "Interessado";
+}
 
 /* =========================================================================
    DATE / FORMAT UTILITIES
@@ -639,19 +729,19 @@ function suggestTemperature(current, result) {
    ========================================================================= */
 
 const MOCK_LEADS = [
-  { id: "l1", company: "Padaria Ponto Doce", contactName: "Marta Nunes", phone: "(31) 98811-2233", whatsapp: "(31) 98811-2233", instagram: "@padariapontodoce", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Alimentação", notes: "Quer algo simples para mostrar o cardápio.", owner: "erick", priority: "Média", temperature: "Morno", source: "Indicação", status: "Contatado", createdAt: daysAgo(6), lastContactAt: daysAgo(1, 15, 30), nextAction: { date: daysFromNow(0, 10, 0), note: "Ligar confirmando interesse na demo" }, score: { dor: 3, facilidade: 4, pagamento: 3, recorrencia: 2 } },
-  { id: "l2", company: "Clínica OdontoVida", contactName: "Dr. Ricardo Passos", phone: "(31) 3822-4410", whatsapp: "(31) 99900-1122", instagram: "@odontovidaipatinga", gmaps: "https://maps.google.com/?q=OdontoVida", currentSite: "", city: "Ipatinga", neighborhood: "Cariru", segment: "Saúde", notes: "Recepcionista é o contato principal.", owner: "fabricio", priority: "Alta", temperature: "Quente", source: "Instagram", status: "Demo enviada", createdAt: daysAgo(3), lastContactAt: hoursAgo(4), nextAction: { date: daysFromNow(0, 14, 0), note: "Verificar demo antes de expirar" }, score: { dor: 4, facilidade: 3, pagamento: 4, recorrencia: 4 } },
-  { id: "l3", company: "Estúdio Fitness Corpo&Cia", contactName: "Bruna Lopes", phone: "(31) 98765-1010", whatsapp: "(31) 98765-1010", instagram: "@corpoecia.fit", gmaps: "", currentSite: "corpoecia.wixsite.com", city: "Timóteo", neighborhood: "Del Rey", segment: "Fitness", notes: "Site atual está desatualizado há anos.", owner: "erick", priority: "Média", temperature: "Morno", source: "Prospecção ativa", status: "Demo em análise", createdAt: daysAgo(4), lastContactAt: hoursAgo(20), nextAction: { date: daysFromNow(0, 17, 0), note: "Cobrar retorno sobre a prévia" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 3 } },
+  { id: "l1", company: "Padaria Ponto Doce", contactName: "Marta Nunes", phone: "(31) 98811-2233", whatsapp: "(31) 98811-2233", instagram: "@padariapontodoce", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Alimentação", notes: "Quer algo simples para mostrar o cardápio.", owner: "erick", priority: "Média", temperature: "Morno", source: "Indicação", status: "Contato pendente", createdAt: daysAgo(6), lastContactAt: daysAgo(1, 15, 30), nextAction: { date: daysFromNow(0, 10, 0), note: "Ligar confirmando interesse na demo" }, score: { dor: 3, facilidade: 4, pagamento: 3, recorrencia: 2 } },
+  { id: "l2", company: "Clínica OdontoVida", contactName: "Dr. Ricardo Passos", phone: "(31) 3822-4410", whatsapp: "(31) 99900-1122", instagram: "@odontovidaipatinga", gmaps: "https://maps.google.com/?q=OdontoVida", currentSite: "", city: "Ipatinga", neighborhood: "Cariru", segment: "Saúde", notes: "Recepcionista é o contato principal.", owner: "fabricio", priority: "Alta", temperature: "Quente", source: "Instagram", status: "Interessado", createdAt: daysAgo(3), lastContactAt: hoursAgo(4), nextAction: { date: daysFromNow(0, 14, 0), note: "Verificar demo antes de expirar" }, score: { dor: 4, facilidade: 3, pagamento: 4, recorrencia: 4 } },
+  { id: "l3", company: "Estúdio Fitness Corpo&Cia", contactName: "Bruna Lopes", phone: "(31) 98765-1010", whatsapp: "(31) 98765-1010", instagram: "@corpoecia.fit", gmaps: "", currentSite: "corpoecia.wixsite.com", city: "Timóteo", neighborhood: "Del Rey", segment: "Fitness", notes: "Site atual está desatualizado há anos.", owner: "erick", priority: "Média", temperature: "Morno", source: "Prospecção ativa", status: "Interessado", createdAt: daysAgo(4), lastContactAt: hoursAgo(20), nextAction: { date: daysFromNow(0, 17, 0), note: "Cobrar retorno sobre a prévia" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 3 } },
   { id: "l4", company: "Advocacia Reis & Martins", contactName: "Dra. Camila Reis", phone: "(31) 3221-7788", whatsapp: "(31) 99111-4400", instagram: "", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Centro", segment: "Jurídico", notes: "Precisa de aprovação da sócia.", owner: "fabricio", priority: "Alta", temperature: "Quente", source: "Indicação", status: "Proposta enviada", createdAt: daysAgo(12), lastContactAt: daysAgo(5, 11, 0), nextAction: { date: daysAgo(1, 10, 0), note: "Cobrar resposta da proposta" }, score: { dor: 4, facilidade: 2, pagamento: 5, recorrencia: 4 } },
   { id: "l5", company: "Salão Bela Face", contactName: "Juliana Prado", phone: "(31) 98844-6655", whatsapp: "(31) 98844-6655", instagram: "@belafacesalao", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Chapada", segment: "Beleza", notes: "Quer agendamento online integrado no futuro.", owner: "erick", priority: "Alta", temperature: "Quente", source: "Instagram", status: "Negociação", createdAt: daysAgo(15), lastContactAt: daysAgo(1, 16, 0), nextAction: { date: daysFromNow(1, 10, 0), note: "Retornar com nova condição de pagamento" }, score: { dor: 4, facilidade: 4, pagamento: 3, recorrencia: 4 } },
   { id: "l6", company: "Imobiliária Chave Certa", contactName: "Sérgio Aguiar", phone: "(31) 3835-9090", whatsapp: "(31) 99222-3311", instagram: "@chavecertaimoveis", gmaps: "", currentSite: "chavecertaimoveis.com.br", city: "Ipatinga", neighborhood: "Bethânia", segment: "Imóveis", notes: "", owner: "fabricio", priority: "Baixa", temperature: "Frio", source: "Site", status: "Perdido", createdAt: daysAgo(30), lastContactAt: daysAgo(18, 9, 0), nextAction: null, lossReason: "Escolheu concorrente", score: { dor: 2, facilidade: 2, pagamento: 3, recorrencia: 2 } },
-  { id: "l7", company: "Marcenaria Bom Corte", contactName: "Adilson Ferraz", phone: "(31) 98700-2020", whatsapp: "(31) 98700-2020", instagram: "", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Água Santa", segment: "Móveis", notes: "Cadastrado após indicação do cliente Rodagem Mil.", owner: "erick", priority: "Média", temperature: "Frio", source: "Indicação", status: "Novo", createdAt: daysAgo(1), lastContactAt: null, nextAction: { date: daysFromNow(0, 11, 0), note: "Primeiro contato" }, score: { dor: 2, facilidade: 3, pagamento: 2, recorrencia: 2 } },
+  { id: "l7", company: "Marcenaria Bom Corte", contactName: "Adilson Ferraz", phone: "(31) 98700-2020", whatsapp: "(31) 98700-2020", instagram: "", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Água Santa", segment: "Móveis", notes: "Cadastrado após indicação do cliente Rodagem Mil.", owner: "erick", priority: "Média", temperature: "Frio", source: "Indicação", status: "Contato pendente", createdAt: daysAgo(1), lastContactAt: null, nextAction: { date: daysFromNow(0, 11, 0), note: "Primeiro contato" }, score: { dor: 2, facilidade: 3, pagamento: 2, recorrencia: 2 } },
   { id: "l8", company: "Pet Shop Amigo Fiel", contactName: "Renata Costa", phone: "(31) 98899-7766", whatsapp: "(31) 98899-7766", instagram: "@amigofielpet", gmaps: "", currentSite: "", city: "Timóteo", neighborhood: "Del Rey", segment: "Pet", notes: "", owner: "fabricio", priority: "Baixa", temperature: "Frio", source: "Google", status: "Contato pendente", createdAt: daysAgo(7), lastContactAt: daysAgo(5, 10, 0), nextAction: { date: daysAgo(2, 9, 0), note: "Tentar novamente por WhatsApp" }, score: { dor: 2, facilidade: 2, pagamento: 2, recorrencia: 3 } },
-  { id: "l9", company: "Estúdio Tattoo Traço Fino", contactName: "Kaique Vidal", phone: "(31) 98922-3344", whatsapp: "(31) 98922-3344", instagram: "@tracofino.tattoo", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Cidade Nobre", segment: "Estética", notes: "Respondeu uma vez e sumiu.", owner: "erick", priority: "Média", temperature: "Morno", source: "Instagram", status: "Respondeu", createdAt: daysAgo(9), lastContactAt: daysAgo(4, 18, 0), nextAction: { date: daysAgo(2, 9, 0), note: "Fazer nova tentativa" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 2 } },
+  { id: "l9", company: "Estúdio Tattoo Traço Fino", contactName: "Kaique Vidal", phone: "(31) 98922-3344", whatsapp: "(31) 98922-3344", instagram: "@tracofino.tattoo", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Cidade Nobre", segment: "Estética", notes: "Respondeu uma vez e sumiu.", owner: "erick", priority: "Média", temperature: "Morno", source: "Instagram", status: "Interessado", createdAt: daysAgo(9), lastContactAt: daysAgo(4, 18, 0), nextAction: { date: daysAgo(2, 9, 0), note: "Fazer nova tentativa" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 2 } },
   { id: "l10", company: "Contabilidade Serra Azul", contactName: "Fábio Teixeira", phone: "(31) 3823-5566", whatsapp: "(31) 99333-8899", instagram: "", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Contabilidade", notes: "Pediu valores por WhatsApp.", owner: "fabricio", priority: "Alta", temperature: "Quente", source: "Indicação", status: "Interessado", createdAt: daysAgo(5), lastContactAt: daysAgo(0, 8, 30), nextAction: { date: daysFromNow(0, 15, 0), note: "Enviar valores e condições" }, score: { dor: 4, facilidade: 4, pagamento: 4, recorrencia: 4 } },
   { id: "l11", company: "Autopeças Rodagem Mil", contactName: "Marcelo Assis", phone: "(31) 3822-1199", whatsapp: "(31) 99887-6655", instagram: "@rodagemmil", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Horto", segment: "Automotivo", notes: "", owner: "erick", priority: "Alta", temperature: "Quente", source: "Indicação", status: "Fechado", createdAt: daysAgo(40), lastContactAt: daysAgo(20, 14, 0), nextAction: null, score: { dor: 4, facilidade: 4, pagamento: 5, recorrencia: 4 } },
   { id: "l12", company: "Buffet Doce Encontro", contactName: "Patrícia Melo", phone: "(31) 98711-0033", whatsapp: "(31) 98711-0033", instagram: "@doceencontrobuffet", gmaps: "", currentSite: "", city: "Timóteo", neighborhood: "Del Rey", segment: "Eventos", notes: "", owner: "fabricio", priority: "Média", temperature: "Quente", source: "Instagram", status: "Fechado", createdAt: daysAgo(25), lastContactAt: daysAgo(10, 9, 0), nextAction: null, score: { dor: 3, facilidade: 4, pagamento: 4, recorrencia: 3 } },
-  { id: "l13", company: "Arquitetura Linha Viva", contactName: "Rafael Sant'Anna", phone: "(31) 99123-4567", whatsapp: "(31) 99123-4567", instagram: "@linhaviva.arq", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Arquitetura", notes: "Demo enviada mas sem retorno desde então.", owner: "erick", priority: "Média", temperature: "Morno", source: "Site", status: "Demo enviada", createdAt: daysAgo(4), lastContactAt: daysAgo(2, 9, 0), nextAction: { date: daysAgo(1, 9, 0), note: "Cobrar retorno sobre a prévia expirada" }, score: { dor: 3, facilidade: 2, pagamento: 3, recorrencia: 3 } },
+  { id: "l13", company: "Arquitetura Linha Viva", contactName: "Rafael Sant'Anna", phone: "(31) 99123-4567", whatsapp: "(31) 99123-4567", instagram: "@linhaviva.arq", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Arquitetura", notes: "Demo enviada mas sem retorno desde então.", owner: "erick", priority: "Média", temperature: "Morno", source: "Site", status: "Interessado", createdAt: daysAgo(4), lastContactAt: daysAgo(2, 9, 0), nextAction: { date: daysAgo(1, 9, 0), note: "Cobrar retorno sobre a prévia expirada" }, score: { dor: 3, facilidade: 2, pagamento: 3, recorrencia: 3 } },
   { id: "l14", company: "Academia Potência", contactName: "Diego Fontes", phone: "(31) 98456-7788", whatsapp: "(31) 98456-7788", instagram: "@potenciaacademia", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Veneza", segment: "Fitness", notes: "", owner: "fabricio", priority: "Alta", temperature: "Morno", source: "Prospecção ativa", status: "Proposta enviada", createdAt: daysAgo(20), lastContactAt: daysAgo(9, 10, 0), nextAction: { date: daysAgo(3, 9, 0), note: "Verificar validade da proposta" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 3 } },
 ];
 
@@ -878,6 +968,24 @@ const crmApi = {
       const data = await response.json();
       return Array.isArray(data?.data) ? data.data : [];
     },
+    /* A IA de sugestões só diz se está ativada — chave e conta nunca aparecem aqui. */
+    async suggestStatus() {
+      const baseUrl = getWhatsAppApiBaseUrl();
+      try {
+        const response = await fetch(`${baseUrl}/whatsapp/sugestoes/status`, { method: "GET" });
+        if (!response.ok) return { enabled: false, model: "", quantity: 0 };
+        const data = await response.json();
+        return data?.data || { enabled: false, model: "", quantity: 0 };
+      } catch (error) {
+        return { enabled: false, model: "", quantity: 0 };
+      }
+    },
+    /* Pede sugestões de resposta. Devolve texto para o rascunho; não envia nada. */
+    suggestReplies: payload => crmApi.whatsapp.request("/sugestoes", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(35000),
+    }),
     openLeadConversation: leadId =>
       crmApi.whatsapp.request(`/conversations/lead/${encodeURIComponent(leadId)}`, {
         method: "POST",
@@ -1225,6 +1333,24 @@ function TempPill({ temperature }) {
 
 function StatusPill({ status }) {
   return <Pill tone={STATUS_TONE[status] || "slate"}>{status}</Pill>;
+}
+
+/* Pílula só de leitura do status do atendimento, para as listas (Leads e
+   Kanban). O menu para mudar fica na ficha do lead; aqui a lista acompanha o
+   chat, com o mesmo emoji e a mesma cor do menu do WhatsApp. */
+function ConversationBadge({ conversation }) {
+  if (!conversation?.status) return null;
+  const meta = conversationStatusMeta(conversation.status);
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full text-[11px] font-medium px-2 py-0.5 whitespace-nowrap"
+      style={TONE_STYLE(meta.tone)}
+      title={`Status do atendimento (chat) — ${meta.hint}`}
+    >
+      <span aria-hidden="true">{meta.emoji}</span>
+      {conversation.status}
+    </span>
+  );
 }
 
 function PriorityMark({ priority }) {
@@ -2479,9 +2605,9 @@ function matchesLead(lead, search) {
   return [lead.company, lead.city, lead.segment, lead.contactName].some(v => (v || "").toLowerCase().includes(q));
 }
 
-function FilterChip({ label, active, onClick }) {
+function FilterChip({ label, active, onClick, title }) {
   return (
-    <button onClick={onClick} className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap gc-focus"
+    <button onClick={onClick} title={title} className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap gc-focus"
       style={{ background: active ? "var(--accent)" : "var(--surface)", color: active ? "#fff" : "var(--ink-soft)", border: active ? "none" : "1px solid var(--line-strong)" }}>
       {label}
     </button>
@@ -2504,8 +2630,9 @@ function TooltipText({ value, className = "", style = {}, children, nativeToolti
   );
 }
 
-function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, onOpenHistory, history, onCellMouseEnter, onCellMouseMove, onCellMouseLeave, onCellFocus, onCellBlur, gridTemplateColumns }) {
+function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, onOpenHistory, history, onCellMouseEnter, onCellMouseMove, onCellMouseLeave, onCellFocus, onCellBlur, gridTemplateColumns, waStatus, onChangeWaStatus }) {
   const bucket = actionBucket(lead.nextAction?.date);
+  const [waSaving, setWaSaving] = useState(false);
   const cellTooltipProps = {
     nativeTooltip: false,
     onMouseEnter: onCellMouseEnter,
@@ -2526,6 +2653,28 @@ function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, onOpenHistory, 
       <MessageCircle size={21} />
     </button>
   ) : null;
+
+  /* Um status por linha. O lead que tem conversa de WhatsApp mostra o status do
+     atendimento, com o mesmo menu do chat — gravar é gravar na conversa, a fonte
+     do dado. O funil comercial continua existindo atrás (na ficha ele aparece ao
+     lado, e os filtros de etapa não mudaram) e é ele que aparece nos leads sem
+     conversa, como sempre. */
+  const statusCell = onChangeWaStatus && waStatus?.status ? (
+    <ConversationStatusChanger
+      conversation={waStatus}
+      canOpen={false}
+      saving={waSaving}
+      floating
+      stopRowClick
+      onChange={async (nextStatus) => {
+        setWaSaving(true);
+        try { await onChangeWaStatus(lead, nextStatus); }
+        finally { setWaSaving(false); }
+      }}
+    />
+  ) : (
+    <StatusPill status={lead.status} />
+  );
   return (
     <div
       onClick={() => onEdit && onEdit(lead)}
@@ -2570,7 +2719,7 @@ function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, onOpenHistory, 
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <StatusPill status={lead.status} />
+          {statusCell}
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); if (onOpenHistory) onOpenHistory(lead); }}
@@ -2597,7 +2746,9 @@ function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, onOpenHistory, 
           <TooltipText {...cellTooltipProps} value={lead.company} className="block text-sm font-medium truncate" />
           <TooltipText {...cellTooltipProps} value={`${lead.city} · ${lead.segment}`} className="block text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }} />
         </span>
-        <span className="min-w-0"><StatusPill status={lead.status} /></span>
+        <span className="min-w-0 flex items-start gap-1">
+          {statusCell}
+        </span>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); if (onOpenHistory) onOpenHistory(lead); }}
@@ -2668,7 +2819,7 @@ function ViewToggle({ mode, setMode }) {
   );
 }
 
-function KanbanCard({ lead, proposal, daysInStage, onClick }) {
+function KanbanCard({ lead, proposal, daysInStage, onClick, waStatus }) {
   const bucket = actionBucket(lead.nextAction?.date);
   return (
     <button onClick={onClick} className="w-full text-left rounded-xl p-3.5 gc-focus gc-card gc-card-hover gc-pressable space-y-2" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
@@ -2682,6 +2833,7 @@ function KanbanCard({ lead, proposal, daysInStage, onClick }) {
       <div className="flex items-center gap-2 flex-wrap">
         <PriorityMark priority={lead.priority} />
         <span className="text-xs" style={{ color: "var(--slate)" }}>· {lead.segment}</span>
+        <ConversationBadge conversation={waStatus} />
       </div>
       {proposal && (
         <div className="gc-mono text-sm font-medium" style={{ color: "var(--accent-ink)" }}>{fmtMoney(proposal.implementationValue)}</div>
@@ -2702,7 +2854,7 @@ function KanbanCard({ lead, proposal, daysInStage, onClick }) {
   );
 }
 
-function PipelineBoard({ leads, statusHistory, proposalValueByLead, onOpenLead }) {
+function PipelineBoard({ leads, statusHistory, proposalValueByLead, onOpenLead, waStatusByLead }) {
   const buckets = useMemo(() => STAGE_GROUPS.map(g => ({ ...g, leads: leads.filter(l => g.statuses.includes(l.status)) })), [leads]);
   return (
     <div className="flex gap-3 overflow-x-auto pb-2 gc-scroll -mx-4 px-4 md:mx-0 md:px-0">
@@ -2718,7 +2870,7 @@ function PipelineBoard({ leads, statusHistory, proposalValueByLead, onOpenLead }
               {col.leads.length === 0 ? (
                 <div className="text-xs text-center py-6" style={{ color: "var(--slate)" }}>Vazio</div>
               ) : col.leads.map(l => (
-                <KanbanCard key={l.id} lead={l} proposal={proposalValueByLead[l.id]} daysInStage={daysInCurrentStage(l, statusHistory)} onClick={() => onOpenLead(l.id)} />
+                <KanbanCard key={l.id} lead={l} proposal={proposalValueByLead[l.id]} daysInStage={daysInCurrentStage(l, statusHistory)} onClick={() => onOpenLead(l.id)} waStatus={waStatusByLead?.[l.id] || null} />
               ))}
             </div>
           </div>
@@ -2764,16 +2916,16 @@ function ResizableHeader({ label, sortKey, sortBy, sortDirection, onSort, column
   );
 }
 
-function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead, onDeleteLead, deletingLeadId, onCreateLead, onImportLeads, currentUser, viewMode, setViewMode, dispatch }) {
+function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead, onDeleteLead, deletingLeadId, onCreateLead, onImportLeads, currentUser, viewMode, setViewMode, dispatch, waStatusByLead, onChangeWaStatus }) {
   const [sortBy, setSortBy] = useState("next_action");
   const [sortDirection, setSortDirection] = useState("asc");
   const [cellTooltip, setCellTooltip] = useState(null);
   const [historyLead, setHistoryLead] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(true);
-  const [columnWidths, setColumnWidths] = useState([52, 240, 150, 200, 220, 160, 150]);
+  const [columnWidths, setColumnWidths] = useState([52, 240, 176, 200, 220, 160, 150]);
   const clinicaMessageText = "Olá, bom dia/boa tarde!!\nConsigo falar com a {{nome}} por esse número?";
 
-  const columnWidthsRef = useRef([52, 240, 150, 200, 220, 160, 150]);
+  const columnWidthsRef = useRef([52, 240, 176, 200, 220, 160, 150]);
   const minColumnWidth = 90;
   const maxColumnWidth = 600;
   const gridTemplateColumns = useMemo(() => {
@@ -2917,16 +3069,22 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
     const name = lead.contactName || lead.company;
     const message = personalizeMessage(clinicaMessageText, name);
     window.open(`https://wa.me/${lead.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`, "_blank");
-    /* As etapas "MSG 1/MSG 2" saíram do funil: abrir a saudação no WhatsApp já
-       conta como contato feito. */
-    if (lead.status === "Novo" || lead.status === "Contato pendente") {
-      dispatch({ type: "CHANGE_STATUS", id: lead.id, status: "Contatado", user: currentUser });
+    /* As etapas "Novo" e "Contatado" saíram do funil: abrir a saudação no
+       WhatsApp continua contando como contato feito, e o lead passa direto
+       para "Interessado". Leads que ainda vierem com um rótulo extinto também
+       entram nessa regra, para não ficarem fora do funil. */
+    if (!lead.status || lead.status === "Contato pendente" || RETIRED_FUNNEL_STATUSES.includes(lead.status)) {
+      dispatch({ type: "CHANGE_STATUS", id: lead.id, status: "Interessado", user: currentUser });
     }
   };
 
   const filtered = useMemo(() => {
     let list = db.leads.filter(l => matchesLead(l, search));
     if (filter.status) list = list.filter(l => l.status === filter.status);
+    /* Status do atendimento não é campo do lead: vem da conversa de WhatsApp
+       ligada a ele, o mesmo mapa que desenha a pílula da coluna Status. Por
+       isso este filtro só alcança os leads que têm conversa. */
+    if (filter.waStatus) list = list.filter(l => waStatusByLead?.[l.id]?.status === filter.waStatus);
     if (filter.temperature) list = list.filter(l => l.temperature === filter.temperature);
     if (filter.owner) list = list.filter(l => l.owner === filter.owner);
     if (filter.priority) list = list.filter(l => l.priority === filter.priority);
@@ -2944,7 +3102,7 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
       return sortDirection === "asc" ? comparison : -comparison;
     });
     return list;
-  }, [db.leads, search, filter, sortBy, sortDirection, sel.noMovement, latestHistoryByLead]);
+  }, [db.leads, search, filter, sortBy, sortDirection, sel.noMovement, latestHistoryByLead, waStatusByLead]);
 
   const clearable = Object.values(filter).some(Boolean);
   const activeFilterCount = Object.values(filter).filter(Boolean).length;
@@ -2985,9 +3143,26 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
         <div className="space-y-2">
           <div className="flex items-center gap-2 overflow-x-auto pb-1 gc-scroll">
             <FilterChip label="Todos" active={!clearable} onClick={() => setFilter({})} />
-            <FilterChip label="Em andamento" active={!!filter.open} onClick={() => setFilter(f => ({ ...f, open: !f.open }))} />
+            {/* "Em andamento" deixou de ser chip: continua sendo o filtro filter.open
+                que o card "Leads abertos" do Painel aplica. A fila só mostra as
+                etapas do funil, e "Demo enviada"/"Demo em análise" saíram delas. */}
             {STATUS_LIST.map(s => (
               <FilterChip key={s} label={s} active={filter.status === s} onClick={() => setFilter(f => ({ ...f, status: f.status === s ? null : s }))} />
+            ))}
+          </div>
+          {/* Segunda fila: os oito estados do atendimento, os mesmos da pílula da
+              coluna Status e do menu do chat. Filtrar por aqui é perguntar "quem
+              está parado na minha mão?", e não "em que etapa de venda eu estou". */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 gc-scroll">
+            <span className="text-[11px] uppercase tracking-wide shrink-0" style={{ color: "var(--slate)" }}>Atendimento</span>
+            {CONVERSATION_STATUSES.map(item => (
+              <FilterChip
+                key={item.key}
+                label={`${item.emoji} ${item.key}`}
+                title={item.hint}
+                active={filter.waStatus === item.key}
+                onClick={() => setFilter(f => ({ ...f, waStatus: f.waStatus === item.key ? null : item.key }))}
+              />
             ))}
           </div>
           <div className="flex items-center gap-2 overflow-x-auto pb-1 gc-scroll">
@@ -3030,7 +3205,7 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
         filtered.length === 0 ? (
           <SectionCard><EmptyState icon={Search} title="Nenhum lead encontrado" hint="Ajuste os filtros ou a busca para ver mais resultados." /></SectionCard>
         ) : (
-          <PipelineBoard leads={filtered} statusHistory={db.statusHistory} proposalValueByLead={sel.proposalValueByLead} onOpenLead={onOpenLead} />
+          <PipelineBoard leads={filtered} statusHistory={db.statusHistory} proposalValueByLead={sel.proposalValueByLead} onOpenLead={onOpenLead} waStatusByLead={waStatusByLead} />
         )
       ) : (
         <SectionCard>
@@ -3046,7 +3221,7 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
             </div>
             {filtered.length === 0 ? (
               <EmptyState icon={Search} title="Nenhum lead encontrado" hint="Ajuste os filtros ou a busca para ver mais resultados." />
-            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onEdit={openLeadForEdit} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onWhatsApp={openLeadWhatsApp} onOpenHistory={setHistoryLead} history={latestHistoryByLead[l.id] || null} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} />)}
+            ) : filtered.map(l => <LeadRow key={l.id} lead={l} onEdit={openLeadForEdit} onDelete={onDeleteLead} deleting={deletingLeadId === l.id} onWhatsApp={openLeadWhatsApp} onOpenHistory={setHistoryLead} history={latestHistoryByLead[l.id] || null} onCellMouseEnter={showCellTooltip} onCellMouseMove={showCellTooltip} onCellMouseLeave={hideCellTooltip} onCellFocus={showCellTooltip} onCellBlur={hideCellTooltip} gridTemplateColumns={gridTemplateColumns} waStatus={waStatusByLead?.[l.id] || null} onChangeWaStatus={onChangeWaStatus} />)}
           </div>
         </SectionCard>
       )}
@@ -3072,8 +3247,8 @@ const LEAD_SCORE_FIELDS = [["dor", "Dor"], ["facilidade", "Facilidade de contato
    - dentro da aba "Visão geral" da ficha (LeadDetail), já que o lead existe:
      ali ele é a própria tela, com o bloco Comercial, sem modal por cima.
    Sem `initialLead` criamos um lead novo; com ele, salvamos sobre o lead aberto.
-   O status padrão é a primeira entrada de STATUS_LIST ("Novo") e a próxima ação
-   vem pré-agendada para o dia seguinte às 17h. */
+   O status padrão é a primeira entrada de STATUS_LIST ("Contato pendente") e a
+   próxima ação vem pré-agendada para o dia seguinte às 17h. */
 function LeadForm({ onSave, onCancel, currentUser, initialLead, hint, showCommercial = true }) {
   const isEditing = !!initialLead;
   const [form, setForm] = useState({
@@ -3487,6 +3662,128 @@ function StatusChanger({ lead, onChange }) {
               {s}
             </button>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Status do atendimento dentro da ficha do lead: os MESMOS oito estados e o
+   MESMO menu do chat, gravados na própria conversa (ela é a fonte). O funil
+   comercial do StatusChanger de cima não muda — aqui o que muda é o ciclo de
+   vida da conversa, que vira "Aguardando resposta" ao enviar e "Respondido"
+   quando o cliente responde, nas duas telas ao mesmo tempo.
+
+   `floating` é para a tabela de Leads: a linha mora dentro de um contêiner com
+   overflow-x:auto, e esse contêiner corta qualquer menu absoluto que passe da
+   altura da linha. Com floating o menu sai do fluxo e é fixado na tela, logo
+   abaixo do botão. `stopRowClick` impede que abrir o menu também abra a ficha. */
+function ConversationStatusChanger({ conversation, canOpen, saving, onChange, floating = false, stopRowClick = false }) {
+  const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState(null);
+  const triggerRef = useRef(null);
+  const status = conversation?.status || "";
+  const meta = conversationStatusMeta(status);
+
+  /* Rolar a tabela ou redimensionar a janela deixa o menu pendurado no nada,
+     então ele se fecha sozinho nesses dois casos. */
+  useEffect(() => {
+    if (!open || !floating) return undefined;
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open, floating]);
+
+  const toggle = (event) => {
+    if (stopRowClick && event) event.stopPropagation();
+    const next = !open;
+    if (next && floating && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setMenuPos({
+        left: Math.min(rect.left, window.innerWidth - 224),
+        top: rect.bottom + 6,
+        maxHeight: Math.max(180, window.innerHeight - rect.bottom - 18),
+      });
+    }
+    setOpen(next);
+  };
+  /* Sem conversa e sem telefone não há onde guardar o status: o aviso aparece
+     sem menu para não prometer um clique que não faria nada. */
+  if (!status && !canOpen) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full text-xs font-medium px-2 py-1 whitespace-nowrap"
+        style={TONE_STYLE("slate")}
+        title="Cadastre um telefone ou WhatsApp no lead para o status do atendimento acompanhar o chat."
+      >
+        <MessageCircle size={12} />
+        Sem conversa
+      </span>
+    );
+  }
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={toggle}
+        disabled={saving}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={status
+          ? "Status do atendimento — o mesmo do menu do chat"
+          : "Escolher o status abre a conversa deste lead no WhatsApp e passa a segui-la"}
+        className="gc-focus rounded-full inline-flex items-center gap-1.5 disabled:opacity-60"
+      >
+        <span className="inline-flex items-center gap-1.5 rounded-full text-xs font-medium px-2 py-1 whitespace-nowrap" style={TONE_STYLE(status ? meta.tone : "slate")}>
+          <span aria-hidden="true">{status ? meta.emoji : "⚪"}</span>
+          {status || "Sem atendimento"}
+        </span>
+        <ChevronDown size={13} style={{ color: "var(--slate)" }} />
+      </button>
+      {open && (
+        <div
+          className={`${floating ? "" : "absolute left-0 top-8 z-20"} w-52 rounded-xl py-1.5 gc-fade-in gc-scroll overflow-y-auto`}
+          style={floating
+            ? { position: "fixed", left: menuPos?.left ?? 0, top: menuPos?.top ?? 0, maxHeight: menuPos?.maxHeight ?? 300, zIndex: 60, background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 12px 32px rgba(23,25,28,0.14)" }
+            : { maxHeight: 300, background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 12px 32px rgba(23,25,28,0.14)" }}
+        >
+          <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--slate)" }}>Status do atendimento</div>
+          {CONVERSATION_STATUSES.map(option => {
+            const isActive = option.key === status;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                role="menuitemradio"
+                aria-checked={isActive}
+                disabled={saving}
+                onClick={(event) => { if (stopRowClick && event) event.stopPropagation(); onChange(option.key); setOpen(false); }}
+                className="w-full text-left px-3 py-1.5 gc-row-hover flex items-start gap-2 disabled:opacity-60"
+                style={{ background: isActive ? "var(--accent-soft)" : "transparent" }}
+              >
+                <span className="text-sm leading-5 shrink-0" aria-hidden="true">{option.emoji}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-semibold" style={{ color: "var(--ink)" }}>{option.key}</span>
+                  <span className="block text-[11px] leading-4" style={{ color: "var(--slate)" }}>{option.hint}</span>
+                </span>
+                <span
+                  className="w-2 h-2 rounded-full mt-1.5 shrink-0"
+                  aria-hidden="true"
+                  style={isActive
+                    ? { background: `var(--tone-${option.tone}-fg, var(--slate))` }
+                    : { border: "1px solid var(--line-strong)" }}
+                />
+              </button>
+            );
+          })}
+          <div className="px-3 py-1.5 text-[11px] leading-4" style={{ background: "var(--surface-sunken)", color: "var(--slate)" }}>
+            É o status do chat: muda sozinho quando a mensagem chega ou é enviada.
+          </div>
         </div>
       )}
     </div>
@@ -3944,11 +4241,12 @@ function NextActionBanner({ lead, onOpen }) {
   );
 }
 
-function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initialTab, onEditLead, onDeleteLead }) {
+function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initialTab, onEditLead, onDeleteLead, waConversation, onChangeWaStatus }) {
   const [tab, setTab] = useState(initialTab || "geral");
   useEffect(() => { setTab(initialTab || "geral"); }, [leadId]);
   const [showLoss, setShowLoss] = useState(false);
   const [showConvert, setShowConvert] = useState(false);
+  const [waSaving, setWaSaving] = useState(false);
   const lead = db.leads.find(l => l.id === leadId);
   if (!lead) return null;
 
@@ -3965,6 +4263,15 @@ function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initia
     if (status === "Fechado" && !client) setShowConvert(true);
   };
 
+  /* Status do atendimento: grava na conversa de WhatsApp (o App faz o pedido e
+     devolve a conversa atualizada), nunca no funil comercial de cima. */
+  const changeWaStatus = async (status) => {
+    if (!onChangeWaStatus) return;
+    setWaSaving(true);
+    try { await onChangeWaStatus(lead, status); }
+    finally { setWaSaving(false); }
+  };
+
   const addInteraction = (data) => {
     dispatch({ type: "ADD_INTERACTION", leadId, interaction: { id: `i_${Date.now()}`, leadId, date: new Date().toISOString(), user: currentUser, ...data } });
   };
@@ -3973,7 +4280,8 @@ function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initia
     const now = new Date().toISOString();
     dispatch({ type: "UPDATE_DEMO", id: demo.id, patch: { sentAt: now, expiresAt: hoursFromNow(demo.validityHours || 24) } });
     addInteraction({ channel: "WhatsApp", result: "Demo enviada", note: "Demonstração enviada." });
-    if (lead.status !== "Demo enviada" && lead.status !== "Demo em análise") dispatch({ type: "CHANGE_STATUS", id: leadId, status: "Demo enviada", user: currentUser });
+    const etapa = stageAfterDemoSent(lead);
+    if (etapa) dispatch({ type: "CHANGE_STATUS", id: leadId, status: etapa, user: currentUser });
     notify("Demo enviada.");
   };
 
@@ -4021,6 +4329,15 @@ function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initia
     >
       <div className="flex items-center gap-3 flex-wrap mb-4">
         <StatusChanger lead={lead} onChange={changeStatus} />
+        <span className="flex items-center gap-1.5">
+          <span className="text-[11px] uppercase tracking-wide" style={{ color: "var(--slate)" }}>Atendimento</span>
+          <ConversationStatusChanger
+            conversation={waConversation}
+            canOpen={Boolean(waLeadPhone(lead))}
+            saving={waSaving}
+            onChange={changeWaStatus}
+          />
+        </span>
         <TempPill temperature={lead.temperature} />
         <PriorityMark priority={lead.priority} />
         <span className="text-xs ml-auto" style={{ color: "var(--slate)" }}>Responsável: <strong style={{ color: "var(--ink-soft)" }}>{userName(lead.owner)}</strong></span>
@@ -4099,7 +4416,8 @@ function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initia
             if (sendNow) {
               dispatch({ type: "ADD_DEMO", demo: { id, leadId, url, createdAt: now, sentAt: now, validityHours: hours, expiresAt: hoursFromNow(hours), owner: currentUser, deactivated: false, views: null, lastViewedAt: null } });
               addInteraction({ channel: "WhatsApp", result: "Demo enviada", note: "Demonstração enviada." });
-              if (lead.status !== "Demo enviada" && lead.status !== "Demo em análise") dispatch({ type: "CHANGE_STATUS", id: leadId, status: "Demo enviada", user: currentUser });
+              const etapa = stageAfterDemoSent(lead);
+              if (etapa) dispatch({ type: "CHANGE_STATUS", id: leadId, status: etapa, user: currentUser });
               notify("Demo enviada.");
             } else {
               dispatch({ type: "ADD_DEMO", demo: { id, leadId, url, createdAt: now, sentAt: null, validityHours: hours, expiresAt: null, owner: currentUser, deactivated: false, views: null, lastViewedAt: null } });
@@ -4733,10 +5051,16 @@ function OwnerReport({ perOwner }) {
 /* =========================================================================
    DESEMPENHO COMERCIAL — prévia explicativa + resultado por empresa
    As datas de cada etapa vêm do histórico de status e das interações, não
-   apenas do status atual: um lead que voltou para "Novo" continua aparecendo
-   como contatado, porque o contato ficou registrado. Quando não há registro
-   de histórico, usamos a última data de contato do lead como aproximada e
-   avisamos isso no rodapé — número aproximado nunca é apresentado como exato.
+   apenas do status atual: um lead que voltou para "Contato pendente" continua
+   aparecendo como contatado, porque o contato ficou registrado. Quando não há
+   registro de histórico, usamos a última data de contato do lead como
+   aproximada e avisamos isso no rodapé — número aproximado nunca é
+   apresentado como exato.
+
+   As listas abaixo mantêm "Contatado" e "Respondeu" de propósito: eles foram
+   retirados do funil em 12/10/2026, mas seguem aparecendo no histórico já
+   gravado. Se saíssem daqui, leads contatados antes dessa data deixariam de
+   contar na escada do relatório.
    ========================================================================= */
 
 const PERF_STEPS = [
@@ -5544,6 +5868,7 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
               <option value="estética">Estética</option>
               <option value="clínica">Clínica / saúde</option>
               <option value="restaurante">Restaurante / alimentação</option>
+              <option value="padaria">Padaria</option>
               <option value="delivery">Delivery</option>
               <option value="academia">Academia / fitness</option>
               <option value="pet shop">Pet shop / veterinária</option>
@@ -5772,6 +6097,10 @@ function WhatsAppView({ currentUser }) {
   const [attachment, setAttachment] = useState(null);
   const [attachmentKind, setAttachmentKind] = useState(null);
   const [quickRepliesOpen, setQuickRepliesOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [aiInfo, setAiInfo] = useState(null);
   const [recording, setRecording] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [loading, setLoading] = useState(true);
@@ -5806,6 +6135,8 @@ function WhatsAppView({ currentUser }) {
     setAttachment(null);
     setAttachmentKind(null);
     setQuickRepliesOpen(false);
+    setSuggestions([]);
+    setSuggestionsOpen(false);
     setGeneratedAudioUrl("");
     setGeneratedAudioBlob(null);
   }, [conversation?.id]);
@@ -5832,6 +6163,16 @@ function WhatsAppView({ currentUser }) {
         ));
       })
       .catch(() => { if (alive) setVoiceProfiles([]); });
+    return () => { alive = false; };
+  }, []);
+
+  /* Consulta se a IA de sugestões está configurada, para o botão poder avisar
+     antes de clicar (sem backend aberto ele só fica no escuro mesmo). */
+  useEffect(() => {
+    let alive = true;
+    crmApi.whatsapp.suggestStatus()
+      .then(info => { if (alive) setAiInfo(info); })
+      .catch(() => { if (alive) setAiInfo({ enabled: false, model: "", quantity: 0 }); });
     return () => { alive = false; };
   }, []);
 
@@ -6029,10 +6370,34 @@ function WhatsAppView({ currentUser }) {
     }
   };
 
+  /* A segunda metade do menu muda a ETAPA DO FUNIL do lead, não o status do chat.
+     São eixos diferentes e continuam gravados em lugares diferentes (a conversa e
+     o lead), mas ele atende por aqui, então é aqui que precisa decidir o estágio
+     da venda sem voltar na tela de Leads. O mesmo POST /leads/:id/status da tela
+     de Leads grava o histórico, então a mudança aparece no funil e no Laudo. */
+  const changeLeadStage = async nextStage => {
+    if (!activeLead || savingStatus) return;
+    setStatusMenuOpen(false);
+    if (nextStage === activeLead.status) return;
+    setError("");
+    setSavingStatus(true);
+    try {
+      const response = await crmApi.leads.changeStatus(activeLead.id, nextStage, currentUser);
+      if (!response || !response.success) throw new Error(response?.error?.message || "Não foi possível alterar a etapa deste lead.");
+      await loadLeads();
+    } catch (requestError) {
+      setError(requestError.message || "Não foi possível alterar a etapa deste lead.");
+      setSavingStatus(false);
+      return;
+    }
+    setSavingStatus(false);
+  };
+
   /* Abre o menu com position: fixed calculado pelo retângulo do botão — assim
-     o overflow-hidden da seção do chat não corta os últimos status (Resolvido,
-     Cancelado, Arquivado). Quando falta espaço abaixo, vira para cima; e o
-     maxHeight com rolagem interna garante os 7 itens em telas pequenas. */
+     o overflow-hidden da seção do chat não corta os últimos itens (Resolvido,
+     Cancelado, Arquivado e as etapas do funil). Quando falta espaço abaixo, vira
+     para cima; e o maxHeight com rolagem interna cabe na tela, mesmo agora com
+     os 8 status do chat mais as 6 etapas do funil. */
   const toggleStatusMenu = () => {
     if (statusMenuOpen) {
       setStatusMenuOpen(false);
@@ -6185,6 +6550,59 @@ function WhatsAppView({ currentUser }) {
     } finally {
       setRemovingConversationId(null);
     }
+  };
+
+  /* Pede 3 sugestões à IA. Ela vê só as últimas mensagens e a ficha do lead, e
+     devolve texto para o rascunho — enviar continua sendo decisão do atendente. */
+  const requestSuggestions = async () => {
+    if (!conversation || suggesting || sending || generatingAudio || sendingGeneratedAudio) return;
+    setError("");
+    setSuggesting(true);
+    setSuggestionsOpen(true);
+    try {
+      const data = await crmApi.whatsapp.suggestReplies({
+        senderName: status?.accountName || userName(currentUser),
+        lead: activeLead ? {
+          contactName: activeLead.contactName,
+          company: activeLead.company,
+          city: activeLead.city,
+          status: activeLead.status,
+          segment: activeLead.segment,
+          notes: activeLead.notes,
+        } : null,
+        conversation: {
+          status: conversation.status,
+          contact: {
+            name: conversation.contact?.name,
+            company: conversation.contact?.company,
+          },
+          messages: (conversation.messages || []).slice(-14).map(message => ({
+            direction: message.direction,
+            content: message.content,
+            /* O horário da última mensagem é o que diz para a IA se é caso de
+               silêncio (retomar orientando) ou de resposta imediata. */
+            timestamp: message.timestamp || message.date || null,
+          })),
+        },
+      });
+      setSuggestions(Array.isArray(data?.suggestions) ? data.suggestions : []);
+    } catch (requestError) {
+      setSuggestions([]);
+      /* O aviso vermelho já explica o que fazer; fechar o painel evita a tela
+         dizer duas coisas ao mesmo tempo ("não devolveu sugestões" + o erro). */
+      setSuggestionsOpen(false);
+      setError(requestError.message || "Não foi possível gerar sugestões por IA.");
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  /* Igual às respostas rápidas: preenche o campo e fecha o painel, sem enviar. */
+  const useSuggestion = text => {
+    setDraft(text);
+    setGeneratedAudioUrl("");
+    setGeneratedAudioBlob(null);
+    setSuggestionsOpen(false);
   };
 
   const generateDraftAudio = async () => {
@@ -6371,35 +6789,9 @@ function WhatsAppView({ currentUser }) {
       .some(value => String(value || "").toLocaleLowerCase("pt-BR").includes(term));
   });
   const normalizeSearch = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
-  const digitsOf = value => String(value || "").replace(/\D/g, "");
-  /* A tabela de conversas Baileys não tem lead_id, então o cliente é ligado à
-     conversa pelo telefone (com o nome do contato como plano B). */
-  const findConversationLead = item => {
-    const conversationPhone = digitsOf(item.contact?.phone);
-    const byPhone = conversationPhone.length >= 8
-      ? leads.find(lead => [lead.whatsapp, lead.phone]
-          .map(digitsOf)
-          .some(value => value.length >= 8 && (conversationPhone.endsWith(value) || value.endsWith(conversationPhone))))
-      : null;
-    if (byPhone) return byPhone;
-    /* Sem telefone compatível, o vínculo é por texto: primeiro a empresa da
-       conversa, depois o nome do contato (comparado também com o nome da empresa
-       do lead). Só aceita correspondência ÚnICA — nomes genéricos como
-       "Proprietario(a)" existem em vários leads e amarrar ao primeiro mostraria
-       o status comercial errado no chat. */
-    const candidates = [item.contact?.company, item.contact?.name]
-      .map(normalizeSearch)
-      .filter(Boolean);
-    for (const candidate of candidates) {
-      const hits = leads.filter(lead =>
-        [normalizeSearch(lead.contactName), normalizeSearch(lead.company)]
-          .filter(Boolean)
-          .includes(candidate)
-      );
-      if (hits.length === 1) return hits[0];
-    }
-    return null;
-  };
+  /* O vínculo conversa -> lead é a mesma regra usada na tela de Leads
+     (findLeadForConversation, no topo do arquivo), só com os leads desta tela. */
+  const findConversationLead = item => findLeadForConversation(item, leads);
   const conversationTerm = normalizeSearch(conversationSearch.trim());
   const filteredConversations = conversations.filter(item => {
     if (!conversationTerm) return true;
@@ -6419,8 +6811,8 @@ function WhatsAppView({ currentUser }) {
         onClick={toggleStatusMenu}
         aria-haspopup="menu"
         aria-expanded={statusMenuOpen}
-        aria-label={`Status desta conversa: ${conversation.status || DEFAULT_CONVERSATION_STATUS}. Clique para mudar`}
-        title="Mudar o status desta conversa"
+        aria-label={`Status desta conversa: ${conversation.status || DEFAULT_CONVERSATION_STATUS}${activeLead ? `, etapa do lead: ${activeLead.status}` : ""}. Clique para mudar`}
+        title="Mudar o status da conversa ou a etapa do funil deste lead"
         disabled={savingStatus}
         className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full transition-colors disabled:opacity-60"
         style={{ ...TONE_STYLE(CONVERSATION_TONE[conversation.status] || statusMeta.tone), border: "1px solid currentColor" }}
@@ -6432,7 +6824,7 @@ function WhatsAppView({ currentUser }) {
       {statusMenuOpen && statusMenuPos && (
         <div
           role="menu"
-          aria-label="Status da conversa"
+          aria-label="Status da conversa e etapa do funil"
           className="rounded-xl"
           style={{ position: "fixed", width: "min(300px, 78vw)", overflowX: "hidden", overflowY: "auto", ...statusMenuPos, background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 16px 36px rgba(20,22,26,0.2)", zIndex: 60 }}
         >
@@ -6467,8 +6859,54 @@ function WhatsAppView({ currentUser }) {
               </button>
             );
           })}
-          <div className="px-3 py-2 text-[11px]" style={{ background: "var(--surface-sunken)", color: "var(--slate)" }}>
-            O status muda sozinho conforme as mensagens entram e saem; escolher aqui vale até a próxima mensagem.
+          {/* Segunda metade do mesmo menu: as seis etapas do funil do lead ligado a
+              esta conversa. O status de cima é o do chat (muda sozinho com as
+              mensagens); este aqui é a etapa de venda, e gravar por este caminho é
+              o mesmo POST da tela de Leads — sai no histórico do lead. */}
+          {/* O espaçamento vai no style porque o css/style.css é um Tailwind já
+              compilado: classe que não está lá dentro simplesmente não existe
+              (pt-2.5 e pb-1.5 não foram geradas no build). */}
+          <div
+            className="px-3 flex items-center justify-between gap-2"
+            style={{ paddingTop: "10px", paddingBottom: "6px", borderTop: "1px solid var(--line-strong)", background: "var(--surface-sunken)" }}
+          >
+            <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--slate)" }}>Etapa do funil</span>
+            {activeLead && (
+              <span className="text-[11px] truncate" style={{ color: "var(--slate)", maxWidth: "58%" }} title={activeLead.company}>
+                {activeLead.company}
+              </span>
+            )}
+          </div>
+          {activeLead ? STATUS_LIST.map(stage => {
+            const isActive = stage === activeLead.status;
+            return (
+              <button
+                key={stage}
+                type="button"
+                role="menuitemradio"
+                aria-checked={isActive}
+                onClick={() => changeLeadStage(stage)}
+                disabled={savingStatus}
+                className="w-full text-left px-3 py-2 flex items-center gap-2 transition-colors disabled:opacity-60"
+                style={{ background: isActive ? "var(--accent-soft)" : "transparent", borderBottom: "1px solid var(--line)" }}
+              >
+                <span className="min-w-0 flex-1 text-xs font-semibold truncate" style={{ color: "var(--ink)" }}>{stage}</span>
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  aria-hidden="true"
+                  style={isActive
+                    ? { background: `var(--tone-${STATUS_TONE[stage] || "slate"}-fg, var(--slate))` }
+                    : { border: "1px solid var(--line-strong)" }}
+                />
+              </button>
+            );
+          }) : (
+            <div className="px-3 py-2 text-[11px] leading-4" style={{ color: "var(--slate)" }}>
+              Nenhum lead ligado a esta conversa ainda. Ligue o lead pelo quadro de contatos para poder mudar a etapa daqui.
+            </div>
+          )}
+          <div className="px-3 py-2 text-[11px] leading-4" style={{ background: "var(--surface-sunken)", color: "var(--slate)" }}>
+            Status da conversa muda sozinho conforme as mensagens; a etapa do funil é sua, e vale igual mudar na tela de Leads.
           </div>
         </div>
       )}
@@ -6593,7 +7031,7 @@ function WhatsAppView({ currentUser }) {
             const canOpen = Boolean(phone);
             return <button key={lead.id} type="button" onClick={() => openLeadConversation(lead)} disabled={!canOpen || openingLeadId !== null} className="w-full text-left px-4 py-3 transition-colors disabled:opacity-60" style={{ borderBottom: "1px solid var(--line)" }} title={canOpen ? "Abrir conversa com este lead" : "Cadastre um telefone ou WhatsApp válido no lead"}>
               <div className="flex items-center justify-between gap-2"><span className="font-medium text-sm truncate">{lead.contactName || lead.company || "Lead sem nome"}</span><MessageCircle size={15} className="shrink-0" style={{ color: "var(--accent)" }} /></div>
-              <div className="text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{lead.company || "Empresa não informada"} · {lead.status || "Novo"}</div>
+              <div className="text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{lead.company || "Empresa não informada"} · {lead.status || "Sem etapa"}</div>
               <div className="text-xs mt-1 truncate" style={{ color: canOpen ? "var(--ink-soft)" : "var(--danger)" }}>{canOpen ? phoneValue : "Sem telefone/WhatsApp válido"}</div>
               {openingLeadId === lead.id && <div className="text-[11px] mt-1" style={{ color: "var(--accent)" }}>Abrindo conversa…</div>}
             </button>;
@@ -6651,6 +7089,22 @@ function WhatsAppView({ currentUser }) {
                   Respostas rápidas
                   <ChevronDown size={13} style={{ transform: quickRepliesOpen ? "rotate(180deg)" : "none" }} />
                 </button>
+                <button
+                  type="button"
+                  onClick={requestSuggestions}
+                  aria-busy={suggesting}
+                  aria-controls="whatsapp-ia-sugestoes"
+                  aria-expanded={suggestionsOpen}
+                  disabled={suggesting || sending || generatingAudio || sendingGeneratedAudio}
+                  title={aiInfo && aiInfo.enabled === false
+                    ? "IA ainda não ativada: dê dois cliques em CONFIGURAR_IA_GROQ.bat e cole a chave gratuita da Groq."
+                    : "Ler a conversa e sugerir 3 respostas no seu tom"}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40"
+                  style={{ color: "var(--accent-ink)", background: "var(--accent-soft)", border: "1px solid var(--line)" }}
+                >
+                  <Sparkles size={14} />
+                  {suggesting ? "Lendo a conversa…" : "Sugerir resposta"}
+                </button>
               </div>
               {quickRepliesOpen && (
                 <div id="whatsapp-quick-replies" className="rounded-lg border p-2 space-y-1" style={{ borderColor: "var(--line)", background: "var(--surface-sunken)" }} role="group" aria-label="Modelos de resposta rápida">
@@ -6666,6 +7120,34 @@ function WhatsAppView({ currentUser }) {
                       {reply.label}
                     </button>
                   ))}
+                </div>
+              )}
+              {suggestionsOpen && (
+                <div id="whatsapp-ia-sugestoes" className="rounded-lg border p-2 space-y-1" style={{ borderColor: "var(--line)", background: "var(--surface-sunken)" }} role="group" aria-label="Sugestões de resposta da IA">
+                  <div className="flex items-center justify-between gap-2 px-2 pb-1">
+                    <span className="text-[11px]" style={{ color: "var(--slate)" }}>
+                      {suggesting
+                        ? "A IA está lendo as últimas mensagens…"
+                        : "Clique numa sugestão para jogá-la no campo. Nenhuma delas é enviada sozinha."}
+                    </span>
+                    <button type="button" onClick={() => setSuggestionsOpen(false)} className="rounded-md p-1.5 shrink-0" style={{ color: "var(--slate)" }} aria-label="Fechar sugestões da IA"><X size={14} /></button>
+                  </div>
+                  {suggestions.map((text, index) => (
+                    <button
+                      key={`${index}-${text.slice(0, 16)}`}
+                      type="button"
+                      onClick={() => useSuggestion(text)}
+                      className="w-full rounded-md px-2 py-1.5 text-left text-xs whitespace-pre-wrap transition-colors hover:opacity-80"
+                      style={{ color: "var(--ink)", background: "var(--surface)" }}
+                    >
+                      {text}
+                    </button>
+                  ))}
+                  {!suggesting && !suggestions.length && (
+                    <div className="px-2 py-1.5 text-xs" style={{ color: "var(--slate)" }}>
+                      A IA não devolveu sugestões. Clique em "Sugerir resposta" de novo.
+                    </div>
+                  )}
                 </div>
               )}
               <TextArea value={draft} onChange={event => { setDraft(event.target.value); setGeneratedAudioUrl(""); setGeneratedAudioBlob(null); }} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder={attachment?.type.startsWith("image/") ? "Legenda da imagem (opcional)…" : "Digite uma mensagem…"} rows={2} maxLength={4000} disabled={!connected || sending || generatingAudio || sendingGeneratedAudio} aria-label={attachment?.type.startsWith("image/") ? "Legenda da imagem" : "Mensagem"} />
@@ -6733,6 +7215,11 @@ function App() {
   const [search, setSearch] = useState("");
   const [leadsFilter, setLeadsFilter] = useState({});
   const [leadsViewMode, setLeadsViewMode] = useState("list");
+  /* Status do atendimento (os 8 estados do menu do chat) para a tela de Leads.
+     A fonte é a conversa de WhatsApp, então aqui só se lê a lista resumida —
+     nenhuma coluna nova é criada no lead. */
+  const [waConversations, setWaConversations] = useState([]);
+  const waPolling = useRef(false);
   const [selectedLeadId, setSelectedLeadId] = useState(null);
   const [initialTab, setInitialTab] = useState("geral");
   const [showLeadForm, setShowLeadForm] = useState(false);
@@ -6822,6 +7309,70 @@ function App() {
       document.removeEventListener("visibilitychange", syncSilently);
     };
   }, [currentUser, apiStatus]);
+
+  /* Lista resumida das conversas, para a tela de Leads mostrar o status do
+     atendimento. É o mesmo pedido que o chat já faz a cada 2,5 s; aqui a
+     cadência pode ser mais calma porque a tela só precisa acompanhar o chat.
+     Sem WhatsApp conectado o pedido falha e a tela de Leads segue igual. */
+  const refreshWaStatuses = useCallback(async () => {
+    if (waPolling.current || document.visibilityState !== "visible") return;
+    waPolling.current = true;
+    try {
+      const next = await crmApi.whatsapp.conversations();
+      setWaConversations(Array.isArray(next) ? next : []);
+    } catch (error) {
+      /* Silencioso de propósito: o erro do WhatsApp não pertence à tela de
+         Leads e não deve aparecer como aviso por cima dos leads. */
+    } finally {
+      waPolling.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser || apiStatus !== "connected") return undefined;
+    refreshWaStatuses();
+    const intervalId = window.setInterval(refreshWaStatuses, 8000);
+    const onVisible = () => { if (document.visibilityState === "visible") refreshWaStatuses(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [currentUser, apiStatus, refreshWaStatuses]);
+
+  const waStatusByLead = useMemo(
+    () => conversationStatusByLead(waConversations, db.leads),
+    [waConversations, db.leads]
+  );
+
+  /* Mudar o status na ficha do lead é mudar na conversa: a mesma chamada do menu
+     do chat, então o chat mostra o novo status no próximo clique e a próxima
+     mensagem continua mandando a transição automática sozinha. */
+  const changeLeadConversationStatus = async (lead, status) => {
+    try {
+      /* O lead pode ainda não ter conversa (nunca trocou mensagem): ela é aberta
+         pelo telefone do próprio lead, exatamente como o botão verde da lista. */
+      let current = waStatusByLead[lead.id]
+        ? waConversations.find(item => item.id === waStatusByLead[lead.id].id) || waStatusByLead[lead.id]
+        : findConversationForLead(lead, waConversations);
+      if (!current?.id) current = await crmApi.whatsapp.openLeadConversation(lead.id);
+      if (!current?.id) throw new Error("Este lead não tem um número de WhatsApp ou telefone válido cadastrado.");
+      const updated = current.status === status
+        ? current
+        : await crmApi.whatsapp.updateConversationStatus(current.id, status);
+      const summary = {
+        id: updated.id,
+        contact: updated.contact,
+        status: updated.status,
+        unreadCount: updated.unreadCount || 0,
+        lastMessage: updated.lastMessage || null,
+      };
+      setWaConversations(previous => [summary, ...previous.filter(item => item.id !== summary.id)]);
+      notify(`Atendimento: ${summary.status}`);
+    } catch (error) {
+      notify(error.message || "Não foi possível alterar o status do atendimento.", "error");
+    }
+  };
 
   const handleSeedDemo = async () => {
     notify("Importando dados de exemplo para o Supabase...");
@@ -6980,7 +7531,9 @@ function App() {
     );
   }
 
-  const openLead = (id, tab) => { setSelectedLeadId(id); setInitialTab(tab || "geral"); };
+  /* Abrir a ficha também puxa o status do atendimento na hora: assim o que ele
+     acabou de mudar no chat já aparece, sem esperar o próximo ciclo de 8 s. */
+  const openLead = (id, tab) => { setSelectedLeadId(id); setInitialTab(tab || "geral"); refreshWaStatuses(); };
 
   const handleCreateLead = (form) => {
     leadFormOpenedFromEnrichment.current = false;
@@ -6997,7 +7550,7 @@ function App() {
       ...rest,
       company,
       contactName,
-      status: status || "Novo",
+      status: status || "Contato pendente",
       ...(status === "Perdido" && lossReason ? { lossReason } : {}),
       createdAt: new Date().toISOString(),
       lastContactAt: null,
@@ -7041,7 +7594,7 @@ function App() {
         priority: record.priority || "Média",
         temperature: "Frio",
         source: record.source || SOURCES[0],
-        status: "Novo",
+        status: "Contato pendente",
         createdAt: new Date().toISOString(),
         lastContactAt: null,
         nextAction: { date: daysFromNow(0, 17, 0), note: "Primeiro contato" },
@@ -7100,11 +7653,18 @@ function App() {
 
   const setLeadsFilterAndGo = (patch) => setLeadsFilter(f => ({ ...f, ...patch }));
 
+  /* A conversa da ficha vem do mapa (leadId -> conversa) e, se o lead acabou de
+     ser cadastrado ou_editado e ainda não está no mapa, do telefone dele. */
+  const selectedLead = selectedLeadId ? db.leads.find(lead => lead.id === selectedLeadId) : null;
+  const selectedLeadWaConversation = selectedLead
+    ? waStatusByLead[selectedLead.id] || findConversationForLead(selectedLead, waConversations)
+    : null;
+
   let body;
   if (view === "dashboard") {
     body = <Dashboard db={db} sel={sel} currentUser={currentUser} onOpenLead={openLead} setView={setView} setLeadsFilter={setLeadsFilterAndGo} setLeadsViewMode={setLeadsViewMode} dispatch={dispatch} notify={notify} />;
   } else if (view === "leads") {
-    body = <LeadsView db={db} sel={sel} search={search} filter={leadsFilter} setFilter={setLeadsFilter} onOpenLead={openLead} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} deletingLeadId={deletingLeadId} onCreateLead={() => { leadFormOpenedFromEnrichment.current = false; setShowLeadForm(true); }} onImportLeads={() => setShowLeadImport(true)} currentUser={currentUser} viewMode={leadsViewMode} setViewMode={setLeadsViewMode} dispatch={dispatch} />;
+    body = <LeadsView db={db} sel={sel} search={search} filter={leadsFilter} setFilter={setLeadsFilter} onOpenLead={openLead} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} deletingLeadId={deletingLeadId} onCreateLead={() => { leadFormOpenedFromEnrichment.current = false; setShowLeadForm(true); }} onImportLeads={() => setShowLeadImport(true)} currentUser={currentUser} viewMode={leadsViewMode} setViewMode={setLeadsViewMode} dispatch={dispatch} waStatusByLead={waStatusByLead} onChangeWaStatus={changeLeadConversationStatus} />;
   } else if (view === "agenda") {
     body = <AgendaView db={db} currentUser={currentUser} onOpenLead={openLead} dispatch={dispatch} notify={notify} />;
   } else if (view === "followups") {
@@ -7154,7 +7714,7 @@ function App() {
       </div>
 
       {selectedLeadId && (
-        <LeadDetail leadId={selectedLeadId} db={db} onClose={() => setSelectedLeadId(null)} currentUser={currentUser} dispatch={dispatch} notify={notify} initialTab={initialTab} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} />
+        <LeadDetail leadId={selectedLeadId} db={db} onClose={() => setSelectedLeadId(null)} currentUser={currentUser} dispatch={dispatch} notify={notify} initialTab={initialTab} onEditLead={handleEditLead} onDeleteLead={handleDeleteLead} waConversation={selectedLeadWaConversation} onChangeWaStatus={changeLeadConversationStatus} />
       )}
       {showLeadImport && <LeadImportModal onClose={() => setShowLeadImport(false)} onImport={handleImportLeads} />}
       {/* Único formulário de lead que abre em janela: cadastro novo. A edição

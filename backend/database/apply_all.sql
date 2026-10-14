@@ -68,7 +68,7 @@ create table if not exists public.leads (
   priority        text        not null default 'Média',
   temperature     text        not null default 'Frio',
   source          text,
-  status          text        not null default 'Novo',
+  status          text        not null default 'Contato pendente',
   created_at      timestamptz not null default now(),
   last_contact_at timestamptz,
   loss_reason     text,
@@ -79,9 +79,8 @@ create table if not exists public.leads (
   constraint leads_priority_chk check (priority in ('Baixa','Média','Alta')),
   constraint leads_temperature_chk check (temperature in ('Frio','Morno','Quente')),
   constraint leads_status_chk check (status in (
-    'Novo','Contato pendente','Contatado','Respondeu',
-    'Demo enviada','Demo em análise','Interessado','Proposta enviada',
-    'Negociação','Fechado','Perdido')),
+    'Contato pendente','Interessado','Proposta enviada','Negociação',
+    'Fechado','Perdido')),
   constraint leads_source_chk check (source is null or source in (
     'Indicação','Instagram','Google','Prospecção ativa','Site','Outro')),
   constraint leads_segment_chk check (segment is null or segment in (
@@ -109,6 +108,10 @@ comment on column public.leads.owner is 'users.id do responsável pelo lead.';
 -- lead_status_history - auditoria das mudanças de status.
 --   Colunas iguais às que statusHistoryService.js lê (from_status, to_status,
 --   date, "user").
+--   Os CHECKs abaixo aceitam 'Novo', 'Contatado' e 'Respondeu' DE PROPÓSITO:
+--   essas três etapas saíram do funil em 12/10/2026 (migração 012), mas o
+--   histórico já gravado continua legível. A tabela leads não aceita mais
+--   nenhum dos três.
 -- ----------------------------------------------------------------------------
 create table if not exists public.lead_status_history (
   id          text        primary key,
@@ -390,9 +393,8 @@ declare
   v_entry jsonb;
 begin
   if p_to is null or p_to not in (
-      'Novo','Contato pendente','Contatado','Respondeu',
-      'Demo enviada','Demo em análise','Interessado','Proposta enviada',
-      'Negociação','Fechado','Perdido') then
+      'Contato pendente','Interessado','Proposta enviada','Negociação',
+      'Fechado','Perdido') then
     raise exception 'Status inválido: %', p_to using errcode = '22023';
   end if;
 

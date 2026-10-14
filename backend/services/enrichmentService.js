@@ -251,6 +251,17 @@ const CATEGORY_RULES = [
     ]
   },
   {
+    /* "Padaria" é opção do menu de Captar Leads. Vem antes da regra genérica
+       de alimentação para não trazer bar, pizzaria e sorveteria junto. O OSM
+       marca padaria de dois jeitos: pela categoria (shop=bakery) e só pelo
+       nome ("Padaria X" dentro de amenity=cafe/fast_food). */
+    match: /padaria|panificadora|panific|[pP]a[ãa]o/i,
+    filters: [
+      '["shop"~"^(bakery|pastry|confectionery)$"]',
+      '["amenity"~"^(bakery|cafe|fast_food|restaurant|food_court)$"]["name"~"(padaria|panificadora|panifica|p[ãa]o)",i]'
+    ]
+  },
+  {
     match: /alimenta|restaurante|lanchonete|padaria|pizzaria|caf[eé]|comida|hamburguer|marmit|doceria|confeitaria/i,
     filters: [
       '["amenity"~"^(restaurant|fast_food|cafe|bar|pub|ice_cream)$"]',
