@@ -775,92 +775,19 @@ const MOCK_LEADS = [
   { id: "l14", company: "Academia Potência", contactName: "Diego Fontes", phone: "(31) 98456-7788", whatsapp: "(31) 98456-7788", instagram: "@potenciaacademia", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Veneza", segment: "Fitness", notes: "", owner: "fabricio", priority: "Alta", temperature: "Morno", source: "Prospecção ativa", status: "Proposta enviada", createdAt: daysAgo(20), lastContactAt: daysAgo(9, 10, 0), nextAction: { date: daysAgo(3, 9, 0), note: "Verificar validade da proposta" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 3 } },
 ];
 
-const MOCK_STATUS_HISTORY = [
-  { id: "sh1", leadId: "l1", from: "Novo", to: "Contato pendente", date: daysAgo(6), user: "erick" },
-  { id: "sh2", leadId: "l1", from: "Contato pendente", to: "Contatado", date: daysAgo(1, 15, 30), user: "erick" },
-  { id: "sh3", leadId: "l2", from: "Contatado", to: "Respondeu", date: daysAgo(2, 9, 0), user: "fabricio" },
-  { id: "sh4", leadId: "l2", from: "Respondeu", to: "Demo enviada", date: hoursAgo(4), user: "fabricio" },
-  { id: "sh5", leadId: "l4", from: "Interessado", to: "Proposta enviada", date: daysAgo(5, 11, 0), user: "fabricio" },
-  { id: "sh6", leadId: "l6", from: "Negociação", to: "Perdido", date: daysAgo(18, 9, 0), user: "fabricio" },
-  { id: "sh7", leadId: "l11", from: "Negociação", to: "Fechado", date: daysAgo(20, 14, 0), user: "erick" },
-  { id: "sh8", leadId: "l12", from: "Negociação", to: "Fechado", date: daysAgo(10, 9, 0), user: "fabricio" },
-];
-
-const MOCK_INTERACTIONS = [
-  { id: "i1", leadId: "l1", date: daysAgo(6), user: "erick", channel: "Ligação", result: "Atendeu", note: "Conversou com a proprietária, curiosa sobre preços." },
-  { id: "i2", leadId: "l1", date: daysAgo(1, 15, 30), user: "erick", channel: "WhatsApp", result: "Respondeu", note: "Pediu para enviar uma prévia do site." },
-  { id: "i3", leadId: "l2", date: daysAgo(3), user: "fabricio", channel: "Instagram", result: "Respondeu", note: "Respondeu ao direct sobre o anúncio." },
-  { id: "i4", leadId: "l2", date: daysAgo(2, 9, 0), user: "fabricio", channel: "WhatsApp", result: "Pediu preço", note: "Perguntou valores de site + agenda online." },
-  { id: "i5", leadId: "l2", date: hoursAgo(4), user: "fabricio", channel: "WhatsApp", result: "Demo enviada", note: "Enviada demonstração do site." },
-  { id: "i6", leadId: "l3", date: daysAgo(4), user: "erick", channel: "Ligação", result: "Atendeu", note: "Falou sobre o site atual estar antigo." },
-  { id: "i7", leadId: "l3", date: hoursAgo(20), user: "erick", channel: "WhatsApp", result: "Demonstrou interesse", note: "Gostou do layout, quer pensar no valor." },
-  { id: "i8", leadId: "l4", date: daysAgo(12), user: "fabricio", channel: "Presencial", result: "Atendeu", note: "Reunião no escritório." },
-  { id: "i9", leadId: "l4", date: daysAgo(5, 11, 0), user: "fabricio", channel: "E-mail", result: "Pediu proposta", note: "Enviada proposta formal por e-mail." },
-  { id: "i10", leadId: "l5", date: daysAgo(15), user: "erick", channel: "WhatsApp", result: "Pediu preço", note: "" },
-  { id: "i11", leadId: "l5", date: daysAgo(1, 16, 0), user: "erick", channel: "Ligação", result: "Atendeu", note: "Negociando forma de pagamento." },
-  { id: "i12", leadId: "l6", date: daysAgo(18, 9, 0), user: "fabricio", channel: "WhatsApp", result: "Sem interesse", note: "Disse que já fechou com outra empresa." },
-  { id: "i13", leadId: "l8", date: daysAgo(5, 10, 0), user: "fabricio", channel: "Ligação", result: "Não atendeu", note: "" },
-  { id: "i14", leadId: "l9", date: daysAgo(9), user: "erick", channel: "Instagram", result: "Atendeu", note: "" },
-  { id: "i15", leadId: "l9", date: daysAgo(4, 18, 0), user: "erick", channel: "Instagram", result: "Respondeu", note: "Disse que ia ver com o sócio." },
-  { id: "i16", leadId: "l10", date: daysAgo(5), user: "fabricio", channel: "Ligação", result: "Atendeu", note: "" },
-  { id: "i17", leadId: "l10", date: daysAgo(0, 8, 30), user: "fabricio", channel: "WhatsApp", result: "Pediu preço", note: "Quer proposta com manutenção mensal." },
-  { id: "i18", leadId: "l13", date: daysAgo(4), user: "erick", channel: "E-mail", result: "Respondeu", note: "" },
-  { id: "i19", leadId: "l13", date: daysAgo(2, 9, 0), user: "erick", channel: "E-mail", result: "Demo enviada", note: "Prévia enviada por e-mail." },
-  { id: "i20", leadId: "l14", date: daysAgo(9, 10, 0), user: "fabricio", channel: "WhatsApp", result: "Pediu proposta", note: "" },
-];
-
-const MOCK_FOLLOWUPS = [
-  { id: "f1", leadId: "l1", dueDate: daysFromNow(0, 10, 0), note: "Ligar confirmando interesse na demo", status: "pendente", createdBy: "erick" },
-  { id: "f2", leadId: "l2", dueDate: daysFromNow(0, 14, 0), note: "Verificar demo antes de expirar", status: "pendente", createdBy: "fabricio" },
-  { id: "f3", leadId: "l3", dueDate: daysFromNow(0, 17, 0), note: "Cobrar retorno sobre a prévia", status: "pendente", createdBy: "erick" },
-  { id: "f4", leadId: "l4", dueDate: daysAgo(1, 10, 0), note: "Cobrar resposta da proposta", status: "pendente", createdBy: "fabricio" },
-  { id: "f5", leadId: "l8", dueDate: daysAgo(2, 9, 0), note: "Tentar novamente por WhatsApp", status: "pendente", createdBy: "fabricio" },
-  { id: "f6", leadId: "l9", dueDate: daysAgo(2, 9, 0), note: "Fazer nova tentativa", status: "pendente", createdBy: "erick" },
-  { id: "f7", leadId: "l10", dueDate: daysFromNow(0, 15, 0), note: "Enviar valores e condições", status: "pendente", createdBy: "fabricio" },
-  { id: "f8", leadId: "l13", dueDate: daysAgo(1, 9, 0), note: "Cobrar retorno sobre a prévia expirada", status: "pendente", createdBy: "erick" },
-  { id: "f9", leadId: "l14", dueDate: daysAgo(3, 9, 0), note: "Verificar validade da proposta", status: "pendente", createdBy: "fabricio" },
-  { id: "f10", leadId: "l5", dueDate: daysFromNow(1, 10, 0), note: "Retornar com nova condição de pagamento", status: "pendente", createdBy: "erick" },
-  { id: "f11", leadId: "l7", dueDate: daysFromNow(0, 11, 0), note: "Primeiro contato", status: "pendente", createdBy: "erick" },
-  { id: "f12", leadId: "l1", dueDate: daysAgo(7, 9, 0), note: "Primeiro contato", status: "concluido", createdBy: "erick" },
-];
-
-const MOCK_DEMOS = [
-  { id: "d1", leadId: "l2", url: "https://demo.estudio.com/odontovida", createdAt: hoursAgo(17), sentAt: hoursAgo(17), validityHours: 24, expiresAt: hoursFromNow(7), owner: "fabricio", deactivated: false, views: 3, lastViewedAt: hoursAgo(2) },
-  { id: "d2", leadId: "l3", url: "https://demo.estudio.com/corpoecia", createdAt: hoursAgo(23.5), sentAt: hoursAgo(23.5), validityHours: 24, expiresAt: hoursFromNow(0.5), owner: "erick", deactivated: false, views: null, lastViewedAt: null },
-  { id: "d3", leadId: "l13", url: "https://demo.estudio.com/linhaviva", createdAt: hoursAgo(50), sentAt: hoursAgo(50), validityHours: 24, expiresAt: hoursAgo(26), owner: "erick", deactivated: false, views: 1, lastViewedAt: hoursAgo(48) },
-  { id: "d4", leadId: "l9", url: "https://demo.estudio.com/tracofino", createdAt: daysAgo(9), sentAt: daysAgo(9), validityHours: 24, expiresAt: hoursAgo(190), owner: "erick", deactivated: true, views: null, lastViewedAt: null },
-  { id: "d5", leadId: "l10", url: "https://demo.estudio.com/serra-azul", createdAt: hoursAgo(1), sentAt: null, validityHours: 24, expiresAt: null, owner: "fabricio", deactivated: false, views: null, lastViewedAt: null },
-];
-
-const MOCK_PROPOSALS = [
-  { id: "p1", leadId: "l4", plan: "Site institucional", implementationValue: 2200, monthlyValue: 90, proposalDate: daysAgo(5, 11, 0), validUntil: daysFromNow(2), notes: "Inclui até 6 páginas.", status: "Enviada" },
-  { id: "p2", leadId: "l5", plan: "Site + manutenção mensal", implementationValue: 1800, monthlyValue: 120, proposalDate: daysAgo(6), validUntil: daysFromNow(4), notes: "Negociando parcelamento da implantação.", status: "Em negociação" },
-  { id: "p3", leadId: "l14", plan: "Landing page", implementationValue: 1200, monthlyValue: 0, proposalDate: daysAgo(9, 10, 0), validUntil: daysAgo(2), notes: "", status: "Enviada" },
-  { id: "p4", leadId: "l11", plan: "Site institucional", implementationValue: 1900, monthlyValue: 80, proposalDate: daysAgo(21), validUntil: daysAgo(14), notes: "", status: "Aprovada" },
-  { id: "p5", leadId: "l12", plan: "Landing page", implementationValue: 1100, monthlyValue: 0, proposalDate: daysAgo(11), validUntil: daysAgo(4), notes: "", status: "Aprovada" },
-  { id: "p6", leadId: "l6", plan: "Site institucional", implementationValue: 1700, monthlyValue: 90, proposalDate: daysAgo(20), validUntil: daysAgo(13), notes: "Cliente fechou com concorrente.", status: "Recusada" },
-];
-
-const MOCK_CLIENTS = [
-  { id: "c1", leadId: "l11", company: "Autopeças Rodagem Mil", contactName: "Marcelo Assis", plan: "Site institucional", contractedValue: 1900, monthlyValue: 80, closingDate: daysAgo(20, 14, 0), publishDate: daysAgo(12), domain: "rodagemmil.com.br", owner: "erick", notes: "Cliente indicou a Marcenaria Bom Corte.", status: "Ativo" },
-  { id: "c2", leadId: "l12", company: "Buffet Doce Encontro", contactName: "Patrícia Melo", plan: "Landing page", contractedValue: 1100, monthlyValue: 0, closingDate: daysAgo(10, 9, 0), publishDate: daysAgo(6), domain: "doceencontrobuffet.com.br", owner: "fabricio", notes: "", status: "Ativo" },
-];
-
-const MOCK_CLIENT_UPDATES = [
-  { id: "cu1", clientId: "c1", date: daysAgo(3), type: "Alteração", note: "Trocou 2 fotos da galeria de peças." },
-];
-
-/* Initial in-memory database. Usado como fallback quando o backend estiver offline. */
+/* Banco de tela Vazio. Nada aqui é dado de exemplo: a tela só enche depois que o
+   backend responde em /api/health e /api/leads. Com o backend desligado nenhuma
+   empresa aparece na tela — o App mostra o erro real dele no lugar. */
 const initialDb = {
-  leads: MOCK_LEADS,
-  statusHistory: MOCK_STATUS_HISTORY,
-  interactions: MOCK_INTERACTIONS,
-  followups: MOCK_FOLLOWUPS,
+  leads: [],
+  statusHistory: [],
+  interactions: [],
+  followups: [],
   agendaEvents: [],
-  demos: MOCK_DEMOS,
-  proposals: MOCK_PROPOSALS,
-  clients: MOCK_CLIENTS,
-  clientUpdates: MOCK_CLIENT_UPDATES,
+  demos: [],
+  proposals: [],
+  clients: [],
+  clientUpdates: [],
 };
 
 /* =========================================================================
@@ -920,13 +847,25 @@ const crmApi = {
     }
   },
   async health() {
+    /* A resposta deste pedido É o sinal de vida do backend. Devolve o motivo real
+       (conexão recusada, HTTP 500, timeout) para a tela mostrar o que aconteceu em
+       vez de um "modo local" genérico. */
+    const url = `${CRM_API_BASE}/health`;
     try {
-      const res = await fetch(`${CRM_API_BASE}/health`);
-      if (!res.ok) return { ok: false };
+      const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(6000) });
+      if (!res.ok) {
+        return { ok: false, status: res.status, url, error: `O backend respondeu HTTP ${res.status} em ${url}.` };
+      }
       const data = await res.json();
-      return { ok: true, ...data };
+      return { ok: true, ...data, status: res.status, url };
     } catch (e) {
-      return { ok: false, error: e.message };
+      const nome = String(e?.name || "");
+      const msg = String(e?.message || "");
+      const timeout = /timeout|abort/i.test(nome + msg);
+      const motivo = timeout
+        ? `O backend demorou mais de 6 s para responder em ${url}. Ele está travado ou o banco não terminou a consulta.`
+        : `Nenhum backend respondeu em ${url} — a conexão foi recusada, ou seja, o servidor está desligado (${msg || "sem conexão"}).`;
+      return { ok: false, status: 0, url, error: motivo, recusa: !timeout };
     }
   },
 
@@ -946,7 +885,14 @@ const crmApi = {
         if (baseUrl.includes("localhost:3001") && window.location.hostname !== "localhost") {
           throw new Error("Não foi possível acessar o WhatsApp neste computador. Confirme que run-crm.bat está aberto; no Chrome/Edge, permita o acesso à rede local para este site (ícone ao lado do endereço → Configurações do site → Acesso à rede local → Permitir) e recarregue a página.");
         }
-        throw error;
+        /* Conexão recusada / timeout: é o backend fechado, e a frase tem que dizer
+           isso em português em vez do "Failed to fetch" do navegador. */
+        const nome = String(error?.name || "");
+        const msg = String(error?.message || "");
+        if (/timeout|abort/i.test(nome + msg)) {
+          throw new Error(`O WhatsApp demorou para responder em ${baseUrl}. O backend está travado ou o celular não respondeu.`);
+        }
+        throw new Error(`Nenhum backend respondeu em ${baseUrl} — a conexão foi recusada, ou seja, o run-crm.bat está fechado (${msg || "sem conexão"}).`);
       }
       const data = await response.json();
       if (!response.ok || !data.success) {
@@ -1075,14 +1021,22 @@ const crmApi = {
   },
 
   async loadAll() {
-    const fetchJson = (path) =>
-      fetch(`${CRM_API_BASE}${path}`)
-        .then((r) => (r.ok ? r.json() : { data: [] }))
-        .catch(() => ({ data: [] }));
+    /* Cada pedido marca quantos falharam. Se os LEADS (a espinha da tela) não
+       vierem, isto é erro e não "lista vazia": sem essa diferença o CRM mostrar
+       um dia inteiro sem nenhum lead e ninguém saberia que o backend adoeceu. */
+    let falhas = 0;
+    let leadsFalharam = false;
+    const fetchJson = (path, essencial = false) =>
+      fetch(`${CRM_API_BASE}${path}`, { cache: "no-store" })
+        .then((r) => {
+          if (!r.ok) { falhas++; if (essencial) leadsFalharam = true; return { data: [] }; }
+          return r.json().catch(() => { falhas++; if (essencial) leadsFalharam = true; return { data: [] }; });
+        })
+        .catch(() => { falhas++; if (essencial) leadsFalharam = true; return { data: [] }; });
 
     const [leads, statusHistory, interactions, followups, agendaEvents, demos, proposals, clients, clientUpdates] =
       await Promise.all([
-        fetchJson("/leads"),
+        fetchJson("/leads", true),
         fetchJson("/status-history"),
         fetchJson("/interactions"),
         fetchJson("/followups"),
@@ -1092,6 +1046,10 @@ const crmApi = {
         fetchJson("/clients"),
         fetchJson("/client-updates"),
       ]);
+
+    if (leadsFalharam) {
+      throw new Error(`O servidor respondeu ${9 - falhas} de 9 pedidos, e os leads não vieram (HTTP ou banco indisponível).`);
+    }
 
     return {
       leads: leads.data || [],
@@ -1949,7 +1907,7 @@ const NAV_ITEMS = [
   { id: "reports", label: "Relatórios", icon: TrendingUp },
 ];
 
-function LoginScreen({ onLogin }) {
+function LoginScreen({ onLogin, apiProblem, onTentarAgora, tentando }) {
   const [selectedUser, setSelectedUser] = useState(null);
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -2073,6 +2031,21 @@ function LoginScreen({ onLogin }) {
     <div className="gc-root min-h-screen flex items-center justify-center px-4">
       <Tokens />
       <div className="w-full max-w-sm">
+        {apiProblem && (
+          <div className="rounded-xl px-4 py-3 text-sm"
+            style={{ background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.35)", color: "var(--danger)", marginBottom: "24px" }}>
+            <strong className="block">O backend não está respondendo</strong>
+            <span className="block mt-1" style={{ color: "var(--ink-soft)" }}>{apiProblem.motivo}</span>
+            <span className="block mt-1 text-xs" style={{ color: "var(--slate)" }}>
+              Nada aparece na tela enquanto ele não voltar. Nova tentativa a cada 5 s.
+            </span>
+            <button type="button" onClick={onTentarAgora} disabled={tentando}
+              className="mt-2 text-xs gc-focus rounded"
+              style={{ color: "var(--danger)", background: "transparent", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "2px" }}>
+              {tentando ? "Testando..." : "Tentar agora"}
+            </button>
+          </div>
+        )}
         <div className="mb-8 text-center">
           <div className="w-11 h-11 rounded-xl mx-auto mb-4 flex items-center justify-center gc-display font-semibold text-white" style={{ background: "var(--accent)" }}>GC</div>
           <h1 className="gc-display text-xl font-semibold">Gestão Comercial</h1>
@@ -6481,6 +6454,10 @@ function WhatsAppView({ currentUser }) {
   const [sending, setSending] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
+  /* Marca que o texto atual do erro veio de uma rodada de carregamento (backend
+     fechado, timeout) e não de uma ação do usuário: a próxima rodada boa limpa só
+     esse tipo, para nenhuma mensagem velha de "sem conexão" ficar pendurada. */
+  const erroDeConexaoRef = useRef(false);
   const messagesEndRef = useRef(null);
   const selectedConversationIdRef = useRef(null);
   const conversationSelectionVersionRef = useRef(0);
@@ -6658,13 +6635,19 @@ function WhatsAppView({ currentUser }) {
   };
 
   const refresh = async (keepLoading = false) => {
-    if (!keepLoading) setError("");
     const selectionVersion = conversationSelectionVersionRef.current;
     try {
       const nextStatus = await crmApi.whatsapp.status();
       setStatus(nextStatus);
       const nextConversations = await crmApi.whatsapp.conversations();
       setConversations(nextConversations);
+      /* A rodada de 2,5 s é também a vigilância do backend: se ela passou, o erro
+         de conexão anterior perde o sentido e sai da tela. Erro de ação do usuário
+         (envio, exclusão) fica, porque não foi a rodada que causou. */
+      if (erroDeConexaoRef.current) {
+        setError("");
+        erroDeConexaoRef.current = false;
+      }
       if (selectionVersion !== conversationSelectionVersionRef.current || conversationSelectionPendingRef.current) return;
       const activeId = selectedConversationIdRef.current || nextConversations[0]?.id;
       if (activeId && nextConversations.some(item => item.id === activeId)) {
@@ -6676,6 +6659,7 @@ function WhatsAppView({ currentUser }) {
         selectedConversationIdRef.current = null;
       }
     } catch (requestError) {
+      erroDeConexaoRef.current = true;
       setError(requestError.message || "Não foi possível carregar o WhatsApp.");
     } finally {
       if (!keepLoading) setLoading(false);
@@ -6690,6 +6674,7 @@ function WhatsAppView({ currentUser }) {
       const health = await crmApi.health();
       if (!mounted) return;
       if (!health.ok || health.database !== "configurado") {
+        erroDeConexaoRef.current = true;
         setError(
           health.ok
             ? "Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY em backend/.env para usar o WhatsApp."
@@ -7701,6 +7686,75 @@ function WhatsAppView({ currentUser }) {
   );
 }
 
+/* A tela do backend fora do ar. Não é aviso que fecha nem "modo local": ela
+   troca o conteúdo inteiro, porque com o servidor desligado não existe dado
+   nenhum para mostrar. Some sozinha no instante em que o /health volta a
+   responder (a tentativa é a cada 5 s, e também quando ele traz a aba de volta). */
+function BackendProblemScreen({ problema, onTentarAgora, tentando }) {
+  const semSupabase = problema.tipo === "sem-supabase";
+  const hora = problema.em ? problema.em.toLocaleTimeString("pt-BR") : "--:--:--";
+  return (
+    <div className="gc-root min-h-screen flex items-center justify-center px-4">
+      <Tokens />
+      <div className="w-full" style={{ maxWidth: "620px" }} role="alert" aria-live="assertive">
+        <div className="rounded-2xl" style={{ background: "var(--surface)", border: `1px solid var(--line)`, boxShadow: "0 12px 32px rgba(23,25,28,0.12)", padding: "28px" }}>
+          <div className="flex items-start" style={{ gap: "12px" }}>
+            <span className="shrink-0 rounded-full" style={{ width: "34px", height: "34px", background: semSupabase ? "var(--warn-bg)" : "var(--danger-bg)", display: "flex", alignItems: "center", justifyContent: "center", color: semSupabase ? "var(--warn)" : "var(--danger)", fontWeight: 700 }}>
+              !
+            </span>
+            <div className="min-w-0">
+              <h1 className="gc-display" style={{ fontSize: "20px", fontWeight: 600, color: "var(--ink)" }}>
+                {semSupabase ? "O backend está de pé, mas o banco não está configurado" : "O backend não está rodando"}
+              </h1>
+              <p style={{ marginTop: "10px", fontSize: "15px", lineHeight: 1.5, color: "var(--ink-soft)", wordBreak: "break-word" }}>
+                {problema.motivo}
+              </p>
+            </div>
+          </div>
+
+          <div style={{ marginTop: "20px", padding: "14px 16px", borderRadius: "12px", background: "var(--surface-sunken)", border: "1px solid var(--line)" }}>
+            <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--slate)", letterSpacing: "0.02em" }}>O QUE FAZER</p>
+            <ol className="space-y-1" style={{ marginTop: "8px", fontSize: "14px", lineHeight: 1.55, color: "var(--ink-soft)", paddingLeft: "18px", listStyleType: "decimal" }}>
+              <li>Procure a janela preta <strong>“Backend CRM - API”</strong>. Se ela estiver fechada, é isso: o servidor foi desligado.</li>
+              <li>Abre o <strong>run-crm.bat</strong> de novo e deixe a janela aberta.</li>
+              <li>Não precisa recarregar esta página. Assim que o backend responder, os seus dados aparecem sozinhos.</li>
+            </ol>
+          </div>
+
+          <div className="flex items-center justify-between flex-wrap" style={{ gap: "12px", marginTop: "20px" }}>
+            <span style={{ fontSize: "13px", color: "var(--slate)" }}>
+              {tentando ? "Testando de novo agora..." : `Nova tentativa automática a cada 5 s · último teste às ${hora}${problema.tentativas > 1 ? ` (${problema.tentativas} tentativas)` : ""}`}
+            </span>
+            <div className="flex items-center" style={{ gap: "8px" }}>
+              <Button onClick={onTentarAgora} disabled={tentando}>Tentar agora</Button>
+              <button type="button" onClick={() => window.location.reload()} className="gc-focus gc-pressable rounded-lg" style={{ fontSize: "13px", color: "var(--slate)", background: "transparent", border: "none", padding: "8px 10px", textDecoration: "underline", textUnderlineOffset: "2px" }}>
+                Recarregar a página
+              </button>
+            </div>
+          </div>
+
+          <p style={{ marginTop: "16px", fontSize: "12px", color: "var(--slate)", wordBreak: "break-all" }}>
+            Endereço que o app está tentando usar: {problema.url}
+            <button
+              type="button"
+              className="gc-focus"
+              style={{ marginLeft: "8px", fontSize: "12px", color: "var(--accent-ink)", background: "transparent", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "2px" }}
+              onClick={() => {
+                const url = window.prompt("Endereço do backend (deixe em branco para usar o padrão desta máquina):", crmApi.getBaseUrl());
+                if (url === null) return;
+                crmApi.setBaseUrl(url);
+                onTentarAgora();
+              }}
+            >
+              mudar endereço
+            </button>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* =========================================================================
    ROOT APP
    ========================================================================= */
@@ -7709,6 +7763,11 @@ function App() {
   const [currentUser, setCurrentUser] = useState(() => readSessionUserId());
   const [db, rawDispatch] = useReducer(dbReducer, initialDb);
   const [apiStatus, setApiStatus] = useState("checking");
+  /* O problema real com o backend (desligado, HTTP 500, timeout, Supabase sem
+     chave) guarda aqui: motivo, endereço e a hora da última tentativa. Enquanto
+     este estado existir, nenhuma tela de dados é mostrada. */
+  const [apiProblem, setApiProblem] = useState(null);
+  const tentativasRef = useRef(0);
   const [bootLoading, setBootLoading] = useState(true);
   const [view, setView] = useState("dashboard");
   const [search, setSearch] = useState("");
@@ -7752,40 +7811,61 @@ function App() {
     setCurrentUser(null);
   };
 
-  useEffect(() => {
-    if (!currentUser) return undefined;
-
-    let mounted = true;
-    async function loadData() {
-      setBootLoading(true);
-      const health = await crmApi.health();
-      if (!mounted) return;
-      if (!health.ok) {
-        setApiStatus("offline");
-        setBootLoading(false);
-        return;
-      }
-      if (health.database !== "configurado") {
-        setApiStatus("unconfigured");
-        setBootLoading(false);
-        return;
-      }
-      setApiStatus("connected");
-      try {
-        const remoteDb = await crmApi.loadAll();
-        if (!mounted) return;
-        if (remoteDb) rawDispatch({ type: "SET_DB", db: remoteDb });
-      } catch (err) {
-        console.error("Falha ao carregar dados do Supabase:", err);
-        if (!mounted) return;
-        setApiStatus("offline");
-      } finally {
-        if (mounted) setBootLoading(false);
-      }
+  /* Uma rodada com o backend: pergunta o /health, só pede os dados se ele
+     respondeu, e guarda o MOTIVO quando não respondeu (conexão recusada, HTTP
+     500, timeout, Supabase sem chave). A mesma função serve para a abertura da
+     tela, para a sincronização de 5 s e para a nova tentativa automática do
+     aviso — é por ela que o aviso sai da sozinho quando o backend volta. */
+  const tentaBackend = useCallback(async ({ silencioso = false } = {}) => {
+    if (!silencioso) setBootLoading(true);
+    const health = await crmApi.health();
+    const falha = (tipo, motivo) => {
+      tentativasRef.current += 1;
+      setApiStatus(tipo === "sem-supabase" ? "unconfigured" : "offline");
+      setApiProblem({ tipo, motivo, url: health.url, em: new Date(), tentativas: tentativasRef.current });
+      /* Banco limpo: sem o backend de pé não existe dado nenhum para mostrar, e
+         é exatamente isso que a tela de erro diz. */
+      rawDispatch({ type: "SET_DB", db: { ...initialDb } });
+      if (!silencioso) setBootLoading(false);
+      return false;
+    };
+    if (!health.ok) return falha("offline", health.error || `Nenhum backend respondeu em ${health.url}.`);
+    if (health.database !== "configurado") {
+      return falha("sem-supabase", "O backend está de pé, mas o banco dele não está configurado. Abra o arquivo backend\\.env e confira SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY; depois feche e abra o run-crm.bat de novo.");
     }
-    loadData();
-    return () => { mounted = false; };
-  }, [currentUser]);
+    try {
+      const remoteDb = await crmApi.loadAll();
+      rawDispatch({ type: "SET_DB", db: remoteDb || { ...initialDb } });
+      setApiStatus("connected");
+      setApiProblem(null);
+      tentativasRef.current = 0;
+      return true;
+    } catch (error) {
+      console.error("Falha ao carregar dados do Supabase:", error);
+      return falha("offline", `O backend respondeu ao /health, mas não devolveu os leads (${error?.message || "falha inesperada"}).`);
+    } finally {
+      if (!silencioso) setBootLoading(false);
+    }
+  }, []);
+
+  /* Botão "Tentar agora" do aviso: faz uma rodada silenciosa e mostra o spinner
+     do botão enquanto o /health não responde. */
+  const [tentandoAgora, setTentandoAgora] = useState(false);
+  const retryNow = useCallback(() => {
+    setTentandoAgora(true);
+    Promise.resolve(tentaBackend({ silencioso: true })).finally(() => setTentandoAgora(false));
+  }, [tentaBackend]);
+
+  useEffect(() => {
+    if (currentUser) {
+      tentaBackend();
+      return undefined;
+    }
+    /* Antes do login também conferimos: se o backend está desligado, a tela de
+       entrada já mostra o aviso real em vez de deixar ele descobrir depois. */
+    tentaBackend({ silencioso: true });
+    return undefined;
+  }, [currentUser, tentaBackend]);
 
   useEffect(() => {
     if (!currentUser || apiStatus !== "connected") return undefined;
@@ -7794,12 +7874,9 @@ function App() {
     const syncSilently = async () => {
       if (syncing || document.visibilityState !== "visible") return;
       syncing = true;
-      try {
-        const remoteDb = await crmApi.loadAll();
-        if (remoteDb) rawDispatch({ type: "SET_DB", db: remoteDb });
-      } finally {
-        syncing = false;
-      }
+      /* A sincronização também é a vigilância: se o backend cair com a tela
+         aberta, tentaBackend devolve false e o aviso volta para o lugar. */
+      try { await tentaBackend({ silencioso: true }); } finally { syncing = false; }
     };
     const intervalId = window.setInterval(syncSilently, 5000);
     document.addEventListener("visibilitychange", syncSilently);
@@ -7807,7 +7884,27 @@ function App() {
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", syncSilently);
     };
-  }, [currentUser, apiStatus]);
+  }, [currentUser, apiStatus, tentaBackend]);
+
+  /* O aviso fica na tela até o backend responder de novo: a cada 5 s, e também no
+     instante em que ele volta para esta aba, uma tentativa é feita. Quando dá
+     certo, o próprio tentaBackend limpa o estado e as telas aparecem cheias. */
+  useEffect(() => {
+    if (!apiProblem) return undefined;
+    let tentando = false;
+    const retenta = async () => {
+      if (tentando) return;
+      tentando = true;
+      try { await tentaBackend({ silencioso: true }); } finally { tentando = false; }
+    };
+    const intervalId = window.setInterval(retenta, 5000);
+    const onVisible = () => { if (document.visibilityState === "visible") retenta(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [apiProblem, tentaBackend]);
 
   /* Lista resumida das conversas, para a tela de Leads mostrar o status do
      atendimento. É o mesmo pedido que o chat já faz a cada 2,5 s; aqui a
@@ -8016,7 +8113,7 @@ function App() {
 
   const sel = useSelectors(db);
 
-  if (!currentUser) return <LoginScreen onLogin={setCurrentUser} />;
+  if (!currentUser) return <LoginScreen onLogin={setCurrentUser} apiProblem={apiProblem} onTentarAgora={retryNow} tentando={tentandoAgora} />;
 
   if (bootLoading) {
     return (
@@ -8028,6 +8125,12 @@ function App() {
         </div>
       </div>
     );
+  }
+
+  /* Backend não respondeu (ou respondeu sem banco): nenhuma tela de dados aparece.
+     O aviso ocupa o lugar inteiro e só sai quando o /health voltar a responder. */
+  if (apiProblem) {
+    return <BackendProblemScreen problema={apiProblem} onTentarAgora={retryNow} tentando={tentandoAgora} />;
   }
 
   /* Abrir a ficha também puxa o status do atendimento na hora: assim o que ele

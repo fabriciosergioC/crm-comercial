@@ -27,9 +27,16 @@ arquivo HTML (React + Babel + Tailwind, todos embutidos).
 
 ## Como usar
 
-Basta abrir `frontend/index.html` no navegador.
-Não há build, servidor, dependências ou banco de dados — todos os dados são
-de demonstração, em memória.
+Basta abrir `frontend/index.html` no navegador. Não há build: o JSX é compilado
+em tempo de execução. Todos os dados da tela vêm do backend e do Supabase.
+
+Nunca há dado de exemplo na tela: com o `run-crm.bat` fechado, aparece o erro
+real da conexão ("O backend não está rodando", com o endereço que foi tentado)
+no lugar das telas do sistema, a tentativa se repete a cada 5 s e as telas
+voltam sozinhas quando o backend responde — sem precisar recarregar. (O único
+conteúdo de exemplo que resta é o botão "Importar dados demo", que só aparece
+com o backend ligado, com a lista de leads vazia, e depende de um clique
+explícito.)
 
 Alternativamente, dê um duplo clique em `run-crm.bat`: ele instala as
 dependências, inicia a API em uma janela separada (`http://localhost:3001/api`)
@@ -42,8 +49,8 @@ Para selecionar Google Places na tela de enriquecimento, configure
 `GOOGLE_PLACES_API_KEY` em `backend/.env`. Os recursos que persistem dados
 comerciais e o WhatsApp exigem `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`
 no mesmo arquivo. Copie esses valores das configurações do seu projeto
-Supabase e reinicie `run-crm.bat`; sem eles, o CRM continua em modo local,
-mas não persiste dados nem conecta o WhatsApp.
+Supabase e reinicie `run-crm.bat`; sem eles, o CRM avisa na tela que o backend
+está de pé mas o banco não está configurado, e nenhuma tela de dados abre.
 
 ## Notas técnicas
 
@@ -52,9 +59,10 @@ mas não persiste dados nem conecta o WhatsApp.
   em tempo de execução por `js/boot.js` (Babel Standalone, carregado via
   `js/script.js`). Extraí-lo exigiria fetch assíncrono (não funciona via
   `file://`), alterando a lógica de inicialização.
-- A aplicação pode ser usada sem o backend para visualizar e editar dados de
-  demonstração em memória; a busca de empresas e os recursos de API exigem que
-  o `run-crm.bat` tenha iniciado o backend.
+- A aplicação não tem mais modo local com dados de demonstração: sem o backend
+  respondendo no `/api/health`, nenhuma tela de dados é montada e o estado
+  interno começa vazio. O aviso fica na tela até a próxima resposta (tentativa a
+  cada 5 s e também quando a aba volta a ficar visível).
 - Nenhuma lógica foi alterada na separação: `css/style.css`,
   `js/script.js` e `js/boot.js` são cópias byte a byte dos blocos originais
   (verificado por hash SHA-256), na mesma ordem de carregamento.
