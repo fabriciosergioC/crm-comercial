@@ -89,10 +89,14 @@ const ChevronsRight = (p) => <Icon {...p}><polyline points="13 17 18 12 13 7" />
 const Edit = (p) => <Icon {...p}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></Icon>;
 const Trash2 = (p) => <Icon {...p}><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="m19 6-1 14H6L5 6" /><path d="M10 11v5M14 11v5" /></Icon>;
 const Sparkles = (p) => <Icon {...p}><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3z" /><line x1="18" y1="16" x2="18" y2="20" /><line x1="16" y1="18" x2="20" y2="18" /></Icon>;
+const Copy = (p) => <Icon {...p}><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></Icon>;
 const Loader2 = (p) => <Icon {...p}><path d="M12 3a9 9 0 1 0 9 9" /></Icon>;
 const Palette = (p) => <Icon {...p}><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H16a5 5 0 0 0 5-5c0-3.9-4-7-9-7z" /><circle cx="7.5" cy="11.5" r="1" fill="currentColor" stroke="none" /><circle cx="10.5" cy="7.5" r="1" fill="currentColor" stroke="none" /><circle cx="15" cy="8" r="1" fill="currentColor" stroke="none" /></Icon>;
 const Volume2 = (p) => <Icon {...p}><path d="M11 5 6 9H3v6h3l5 4V5z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M18 6a8 8 0 0 1 0 12" /></Icon>;
 const VolumeX = (p) => <Icon {...p}><path d="M11 5 6 9H3v6h3l5 4V5z" /><line x1="16" y1="9" x2="22" y2="15" /><line x1="22" y1="9" x2="16" y2="15" /></Icon>;
+const Play = (p) => <Icon {...p}><path d="M7 4.5 19 12 7 19.5z" fill="currentColor" stroke="none" /></Icon>;
+const Pause = (p) => <Icon {...p}><rect x="7" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none" /><rect x="13.5" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none" /></Icon>;
+const History = (p) => <Icon {...p}><polyline points="3 4 3 10 9 10" /><path d="M3.05 13A9 9 0 1 0 6 5.3L3 10" /><polyline points="12 7 12 12 16 14" /></Icon>;
 
 /* Som de notificação sintetizado via Web Audio (sem arquivo externo).
    O AudioContext só é criado no primeiro play — navegadores exigem gesto do
@@ -460,6 +464,9 @@ async function changePasswordThroughApi(userId, currentPassword, newPassword) {
 }
 
 const STATUS_LIST = ["Contato pendente","Interessado","Proposta enviada","Negociação","Fechado","Perdido"];
+/* Rótulo curto só para o botão do menu, quando UM estágio está marcado: o filtro
+   continua gravando o nome inteiro, igual ao banco e ao funil. */
+const ETAPA_CURTA = { "Contato pendente": "Contato", "Proposta enviada": "Proposta" };
 const TEMPERATURES = ["Frio","Morno","Quente"];
 const PRIORITIES = ["Baixa","Média","Alta"];
 const CHANNELS = ["Ligação","WhatsApp","Instagram","E-mail","Presencial","Outro"];
@@ -537,7 +544,30 @@ const waLeadPhone = lead => [lead?.whatsapp, lead?.phone]
   .find(value => value.length >= 8 && value.length <= 15) || "";
 /* Um telefone de conversa só vale se tiver 8+ dígitos; a comparação aceita
    prefixo internacional de um dos lados (55 31...  x  (31)...). */
-const waPhonesMatch = (a, b) => a.length >= 8 && b.length >= 8 && (a.endsWith(b) || b.endsWith(a));
+/* Os dois formatos do MESMO celular brasileiro: com e sem o nono dígito. O
+   cadastro costuma vir do Google Places sem o 9 e o WhatsApp do cliente é com o
+   9. Sem isto, a ficha do cliente apareceria no menu sem a etapa do funil
+   (porque o número não batia) mesmo sendo o mesmo cara. Vale só para celular
+   (assinante 8/9 na frente); fixo não tem irmão. */
+const waLocal = value => {
+  const digits = String(value || "").replace(/\D/g, "");
+  return (digits.length === 12 || digits.length === 13) && digits.startsWith("55") ? digits.slice(2) : digits;
+};
+const waIirmaDoNove = value => {
+  const br = waLocal(value);
+  const comNove = br.match(/^(\d{2})9([89]\d{7})$/);
+  if (comNove) return `${comNove[1]}${comNove[2]}`;
+  const semNove = br.match(/^(\d{2})([89]\d{7})$/);
+  if (semNove) return `${semNove[1]}9${semNove[2]}`;
+  return "";
+};
+const waPhonesMatch = (a, b) => {
+  if (a.length < 8 || b.length < 8) return false;
+  if (a.endsWith(b) || b.endsWith(a)) return true;
+  const localA = waLocal(a);
+  const localB = waLocal(b);
+  return Boolean(localA) && (waIirmaDoNove(localA) === localB || waIirmaDoNove(localB) === localA);
+};
 
 function findLeadForConversation(item, leads) {
   const conversationPhone = waDigits(item?.contact?.phone);
@@ -933,6 +963,18 @@ const crmApi = {
     disconnect: () => crmApi.whatsapp.request("/disconnect", { method: "POST" }),
     conversations: () => crmApi.whatsapp.request("/conversations"),
     conversation: id => crmApi.whatsapp.request(`/conversations/${encodeURIComponent(id)}`),
+    /* Endereço assinado do áudio que o cliente mandou. Só é pedido no clique em
+       Tocar, porque a conversa é recarregada a cada sincronização. */
+    audioUrl: (id, messageId) => crmApi.whatsapp.request(
+      `/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}/audio`
+    ),
+    /* Pede ao celular as mensagens ANTERIORES desta conversa. A resposta volta
+       vazia de propósito: o celular manda o lote segundos depois, e é aí que as
+       mensagens aparecem. */
+    fetchHistory: (id, quantity) => crmApi.whatsapp.request(
+      `/conversations/${encodeURIComponent(id)}/history`,
+      { method: "POST", body: JSON.stringify({ quantity }) }
+    ),
     sendText: (id, content, sentBy) =>
       crmApi.whatsapp.request(`/conversations/${encodeURIComponent(id)}/messages`, {
         method: "POST",
@@ -1593,6 +1635,16 @@ function waLink(whatsapp) { return whatsapp ? `https://wa.me/${whatsapp.replace(
 function telLink(phone) { return phone ? `tel:${phone.replace(/\D/g, "")}` : null; }
 function igLink(instagram) { return instagram ? `https://instagram.com/${instagram.replace("@", "")}` : null; }
 function siteLink(site) { return site ? `https://${site.replace(/^https?:\/\//, "")}` : null; }
+
+/* Copia texto para a área de transferência e mostra um toast de confirmação. */
+async function copyToClipboard(text, label, notify) {
+  try {
+    await navigator.clipboard.writeText(text);
+    if (notify) notify(`${label || "Texto"} copiado!`, "success");
+  } catch (_) {
+    if (notify) notify("Não foi possível copiar.", "error");
+  }
+}
 
 function currentGreeting() {
   const hour = new Date().getHours();
@@ -2916,6 +2968,136 @@ function ResizableHeader({ label, sortKey, sortBy, sortDirection, onSort, column
   );
 }
 
+/* =========================================================================
+   FILTRO EM MENU (usado pelas etapas do funil e pelo status do atendimento)
+   Antes eram 14 chips soltos em duas filas acima da tabela — tomavam duas
+   linhas de tela e em monitor menor ainda quebravam. Agora são dois botões na
+   mesma linha, cada um abre uma lista e aceita mais de uma marcação de uma vez
+   ("mostra quem está em Negociação OU Proposta enviada").
+
+   O filtro guarda vetor quando tem mais de um, e os códigos antigos (e o card
+   "Leads abertos" do Painel) ainda podem passar um valor sozinho — por isso
+   valueList() aceita os dois formatos e nada mais precisa mudar.
+   ========================================================================= */
+const valueList = value => (value == null || value === false ? [] : Array.isArray(value) ? value.filter(Boolean) : [value]);
+
+function toggleInList(previous, option) {
+  const current = valueList(previous);
+  const next = current.includes(option) ? current.filter(item => item !== option) : [...current, option];
+  return next.length > 1 ? next : next[0] || null;
+}
+
+/* O menu é position:fixed de propósito: o painel de filtros (.gc-collapse > *)
+   tem overflow:hidden e cortaria qualquer menu absoluto que passar da altura da
+   fila — o mesmo motivo do `floating` no status do atendimento da tabela. */
+function FilterMenu({ label, title, options, selected, onToggle, onClear }) {
+  const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState(null);
+  const triggerRef = useRef(null);
+  const chosen = valueList(selected);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = () => setOpen(false);
+    /* Clique fora fecha (o menu é filho do botão, então contains() também vale
+       para as opções) e Esc fecha — ele usa muito o teclado no CRM. Rolar ou
+       redimensionar solta o menu do botão, então ele se fecha junto. */
+    const fora = event => {
+      if (triggerRef.current && !triggerRef.current.contains(event.target)) setOpen(false);
+    };
+    const tecla = event => { if (event.key === "Escape") setOpen(false); };
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("pointerdown", fora, true);
+    window.addEventListener("keydown", tecla);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("pointerdown", fora, true);
+      window.removeEventListener("keydown", tecla);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setMenuPos({
+        left: Math.max(12, Math.min(rect.left, window.innerWidth - 244)),
+        top: rect.bottom + 6,
+        maxHeight: Math.max(180, window.innerHeight - rect.bottom - 18),
+      });
+    }
+    setOpen(value => !value);
+  };
+
+  const shown = chosen.length
+    ? chosen.length === 1
+      ? (options.find(item => item.key === chosen[0])?.short || chosen[0])
+      : `${label} (${chosen.length})`
+    : label;
+
+  return (
+    <div className="relative shrink-0" ref={triggerRef}>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={title}
+        className="inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap gc-focus"
+        style={chosen.length
+          ? { background: "var(--accent-soft)", color: "var(--accent-ink)", border: "1px solid var(--line-strong)" }
+          : { background: "var(--surface)", color: "var(--ink-soft)", border: "1px solid var(--line-strong)" }}
+      >
+        {shown}
+        <ChevronDown size={13} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s ease" }} />
+      </button>
+      {open && menuPos && (
+        <div
+          role="menu"
+          aria-label={label}
+          className="rounded-xl gc-fade-in gc-scroll overflow-y-auto"
+          style={{ position: "fixed", left: menuPos.left, top: menuPos.top, width: 232, maxHeight: menuPos.maxHeight, zIndex: 60, background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 12px 32px rgba(23,25,28,0.14)" }}
+        >
+          {options.map(option => {
+            const isActive = chosen.includes(option.key);
+            return (
+              <button
+                key={option.key}
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={isActive}
+                title={option.hint || option.key}
+                onClick={() => onToggle(option.key)}
+                className="w-full text-left px-3 py-1.5 gc-row-hover flex items-center gap-2"
+                style={{ background: isActive ? "var(--accent-soft)" : "transparent" }}
+              >
+                {option.emoji ? <span className="text-sm shrink-0" aria-hidden="true" style={{ lineHeight: "16px" }}>{option.emoji}</span> : null}
+                <span className="min-w-0 flex-1 truncate text-xs" style={{ color: "var(--ink)" }}>{option.key}</span>
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  aria-hidden="true"
+                  style={isActive ? { background: "var(--accent)" } : { border: "1px solid var(--line-strong)" }}
+                />
+              </button>
+            );
+          })}
+          {chosen.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { onClear(); setOpen(false); }}
+              className="w-full text-left px-3 py-1.5 gc-row-hover text-[11px]"
+              style={{ color: "var(--slate)", borderTop: "1px solid var(--line)" }}
+            >
+              Limpar {label.toLowerCase()}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead, onDeleteLead, deletingLeadId, onCreateLead, onImportLeads, currentUser, viewMode, setViewMode, dispatch, waStatusByLead, onChangeWaStatus }) {
   const [sortBy, setSortBy] = useState("next_action");
   const [sortDirection, setSortDirection] = useState("asc");
@@ -3080,11 +3262,13 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
 
   const filtered = useMemo(() => {
     let list = db.leads.filter(l => matchesLead(l, search));
-    if (filter.status) list = list.filter(l => l.status === filter.status);
+    /* Um ou vários status marcados no menu: valueList aceita o valor sozinho
+       (como o Painel sempre passou) e o vetor do filtro múltiplo. */
+    if (valueList(filter.status).length) list = list.filter(l => valueList(filter.status).includes(l.status));
     /* Status do atendimento não é campo do lead: vem da conversa de WhatsApp
        ligada a ele, o mesmo mapa que desenha a pílula da coluna Status. Por
        isso este filtro só alcança os leads que têm conversa. */
-    if (filter.waStatus) list = list.filter(l => waStatusByLead?.[l.id]?.status === filter.waStatus);
+    if (valueList(filter.waStatus).length) list = list.filter(l => valueList(filter.waStatus).includes(waStatusByLead?.[l.id]?.status));
     if (filter.temperature) list = list.filter(l => l.temperature === filter.temperature);
     if (filter.owner) list = list.filter(l => l.owner === filter.owner);
     if (filter.priority) list = list.filter(l => l.priority === filter.priority);
@@ -3104,11 +3288,15 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
     return list;
   }, [db.leads, search, filter, sortBy, sortDirection, sel.noMovement, latestHistoryByLead, waStatusByLead]);
 
-  const clearable = Object.values(filter).some(Boolean);
-  const activeFilterCount = Object.values(filter).filter(Boolean).length;
+  /* Conta filtros ligados somando as marcações de cada grupo — um vetor de 3
+     status no menu vale 3, e nada aqui conta um vetor vazio como "ligado". */
+  const activeFilterCount = Object.values(filter).reduce((total, value) => total + valueList(value).length, 0);
+  const clearable = activeFilterCount > 0;
 
   return (
-    <div className="space-y-4">
+    /* Gap 12 no lugar de space-y-4 (16): a tela de Leads é a que ele mais usa e
+       cada linha aqui é linha de lead na lista. */
+    <div className="flex flex-col" style={{ gap: "12px" }}>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="gc-display text-xl font-semibold">Leads</h1>
@@ -3140,64 +3328,76 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
       </div>
 
       <div id="leads-filter-panel" className={`gc-collapse${filtersOpen ? "" : " collapsed"}`}>
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 gc-scroll">
-            <FilterChip label="Todos" active={!clearable} onClick={() => setFilter({})} />
-            {/* "Em andamento" deixou de ser chip: continua sendo o filtro filter.open
-                que o card "Leads abertos" do Painel aplica. A fila só mostra as
-                etapas do funil, e "Demo enviada"/"Demo em análise" saíram delas. */}
-            {STATUS_LIST.map(s => (
-              <FilterChip key={s} label={s} active={filter.status === s} onClick={() => setFilter(f => ({ ...f, status: f.status === s ? null : s }))} />
-            ))}
-          </div>
-          {/* Segunda fila: os oito estados do atendimento, os mesmos da pílula da
-              coluna Status e do menu do chat. Filtrar por aqui é perguntar "quem
-              está parado na minha mão?", e não "em que etapa de venda eu estou". */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 gc-scroll">
-            <span className="text-[11px] uppercase tracking-wide shrink-0" style={{ color: "var(--slate)" }}>Atendimento</span>
-            {CONVERSATION_STATUSES.map(item => (
-              <FilterChip
-                key={item.key}
-                label={`${item.emoji} ${item.key}`}
-                title={item.hint}
-                active={filter.waStatus === item.key}
-                onClick={() => setFilter(f => ({ ...f, waStatus: f.waStatus === item.key ? null : item.key }))}
-              />
-            ))}
-          </div>
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 gc-scroll">
-            {TEMPERATURES.map(t => (
-              <FilterChip key={t} label={t} active={filter.temperature === t} onClick={() => setFilter(f => ({ ...f, temperature: f.temperature === t ? null : t }))} />
-            ))}
-            <span className="w-px h-5 shrink-0" style={{ background: "var(--line-strong)" }} />
-            {USERS.map(u => (
-              <FilterChip key={u.id} label={u.name} active={filter.owner === u.id} onClick={() => setFilter(f => ({ ...f, owner: f.owner === u.id ? null : u.id }))} />
-            ))}
-            <span className="w-px h-5 shrink-0" style={{ background: "var(--line-strong)" }} />
-            <FilterChip label="Sem movimentação" active={!!filter.noMovement} onClick={() => setFilter(f => ({ ...f, noMovement: !f.noMovement }))} />
-            <div className="ml-auto flex items-center gap-1.5 shrink-0 pl-2">
-              <span className="text-xs" style={{ color: "var(--slate)" }}>Ordenar:</span>
-              <Select
-                value={sortBy}
-                onChange={(e) => { setSortBy(e.target.value); setSortDirection("asc"); }}
-                style={{ width: "auto", padding: "6px 10px", fontSize: 12 }}
-                aria-label="Selecionar coluna para ordenação"
-              >
-                <option value="company">Empresa</option>
-                <option value="status">Status</option>
-                <option value="history">Histórico</option>
-                <option value="next_action">Próxima ação</option>
-                <option value="last_contact">Último contato</option>
-              </Select>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setSortDirection(direction => direction === "asc" ? "desc" : "asc")}
+        {/* Uma fila só no lugar das três de antes. As etapas do funil e os oito
+            estados do atendimento viraram dois botões com menu (marque um ou
+            vários), porque 14 chips empilhados em duas filas tiravam duas linhas
+            de tela da lista de leads — e em monitor menor ainda quebravam.
+            "Em andamento" deixou de ser chip: continua sendo o filtro filter.open
+            que o card "Leads abertos" do Painel aplica. */}
+        <div className="flex items-center gap-2 pb-1 overflow-x-auto gc-scroll">
+          <FilterMenu
+            label="Etapa"
+            title="Etapa do funil — marque uma ou várias"
+            options={STATUS_LIST.map(s => ({ key: s, short: ETAPA_CURTA[s] || s }))}
+            selected={filter.status}
+            onToggle={option => setFilter(f => ({ ...f, status: toggleInList(f.status, option) }))}
+            onClear={() => setFilter(f => ({ ...f, status: null }))}
+          />
+          {/* Filtrar por atendimento é perguntar "quem está parado na minha mão?",
+              e não "em que etapa de venda eu estou" — os mesmos oito estados da
+              pílula da coluna Status e do menu do chat. */}
+          <FilterMenu
+            label="Atendimento"
+            title="Status do atendimento — marque um ou vários"
+            options={CONVERSATION_STATUSES.map(item => ({ key: item.key, emoji: item.emoji, hint: item.hint }))}
+            selected={filter.waStatus}
+            onToggle={option => setFilter(f => ({ ...f, waStatus: toggleInList(f.waStatus, option) }))}
+            onClear={() => setFilter(f => ({ ...f, waStatus: null }))}
+          />
+          <span className="w-px h-5 shrink-0" style={{ background: "var(--line-strong)" }} />
+          {TEMPERATURES.map(t => (
+            <FilterChip key={t} label={t} active={filter.temperature === t} onClick={() => setFilter(f => ({ ...f, temperature: f.temperature === t ? null : t }))} />
+          ))}
+          <span className="w-px h-5 shrink-0" style={{ background: "var(--line-strong)" }} />
+          {USERS.map(u => (
+            <FilterChip key={u.id} label={u.name} active={filter.owner === u.id} onClick={() => setFilter(f => ({ ...f, owner: f.owner === u.id ? null : u.id }))} />
+          ))}
+          <span className="w-px h-5 shrink-0" style={{ background: "var(--line-strong)" }} />
+          <FilterChip label="Sem movimentação" active={!!filter.noMovement} onClick={() => setFilter(f => ({ ...f, noMovement: !f.noMovement }))} />
+          {clearable && (
+            <button
+              type="button"
+              onClick={() => setFilter({})}
+              className="shrink-0 text-[11px] gc-focus"
+              /* underline não existe no Tailwind congelado: vai de estilo mesmo. */
+              style={{ color: "var(--slate)", textDecoration: "underline", textUnderlineOffset: "2px" }}
+              title="Tirar todos os filtros"
+            >
+              Limpar ({activeFilterCount})
+            </button>
+          )}
+          <div className="ml-auto flex items-center gap-1.5 shrink-0 pl-2">
+            <span className="text-xs" style={{ color: "var(--slate)" }}>Ordenar:</span>
+            <Select
+              value={sortBy}
+              onChange={(e) => { setSortBy(e.target.value); setSortDirection("asc"); }}
+              style={{ width: "auto", padding: "6px 10px", fontSize: 12 }}
+              aria-label="Selecionar coluna para ordenação"
+            >
+              <option value="company">Empresa</option>
+              <option value="status">Status</option>
+              <option value="history">Histórico</option>
+              <option value="next_action">Próxima ação</option>
+              <option value="last_contact">Último contato</option>
+            </Select>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setSortDirection(direction => direction === "asc" ? "desc" : "asc")}
               >
                 {sortDirection === "asc" ? "Crescente" : "Decrescente"}
               </Button>
             </div>
-          </div>
         </div>
       </div>
 
@@ -5981,7 +6181,21 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
                         }}
                       >
                         <td>
-                          <div className="font-medium">{item.nome}</div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium">{item.nome}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyToClipboard(item.nome, "Nome da empresa", notify);
+                              }}
+                              className="inline-flex items-center justify-center p-1 rounded hover:bg-black/5"
+                              title="Copiar nome da empresa"
+                              style={{ color: "var(--slate)" }}
+                            >
+                              <Copy size={13} />
+                            </button>
+                          </div>
                           {item.endereco && <div className="text-xs" style={{ color: "var(--slate)" }}>{item.endereco}</div>}
                         </td>
                         <td className="text-xs" style={{ color: "var(--ink-soft)" }}>{item.categoria || "—"}</td>
@@ -6011,7 +6225,23 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
                                 </span>
                               )
                             )}
-                            {item.telefone && <span className="inline-flex items-center gap-1"><Phone size={12} /> {item.telefone}</span>}
+                            {item.telefone && (
+                              <span className="inline-flex items-center gap-1">
+                                <Phone size={12} /> {item.telefone}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    copyToClipboard(item.telefone, "Telefone", notify);
+                                  }}
+                                  className="inline-flex items-center justify-center p-0.5 rounded hover:bg-black/5 ml-0.5"
+                                  title="Copiar telefone"
+                                  style={{ color: "var(--slate)" }}
+                                >
+                                  <Copy size={11} />
+                                </button>
+                              </span>
+                            )}
                             {item.instagram && (
                               <a className="inline-flex items-center gap-1" style={{ color: "var(--accent-ink)" }} href={igLink(item.instagram)} target="_blank" rel="noreferrer">
                                 <Instagram size={12} /> {item.instagram}
@@ -6043,19 +6273,24 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
                               icon={importing && !isGooglePlaces ? Loader2 : Plus}
                               disabled={importing || enriching.has(k)}
                               onClick={() => {
-                                if (isGooglePlaces) onCreateLead();
-                                else doImport([item]);
+                                const record = toRecord(item);
+                                const params = new URLSearchParams({
+                                  company: record.company || "",
+                                  contactName: record.contactName || "",
+                                  phone: record.phone || "",
+                                  whatsapp: record.whatsapp || "",
+                                  instagram: record.instagram || "",
+                                  currentSite: record.currentSite || "",
+                                  city: record.city || "",
+                                  gmaps: record.gmaps || "",
+                                  notes: record.notes || ""
+                                });
+                                window.open(`index.html?action=new-lead&${params.toString()}`, "_blank");
                               }}
                               className={importing ? "gc-spin" : ""}
-                              title={isGooglePlaces
-                                ? "Abrir formulário vazio; os dados do Google Places não serão copiados."
-                                : "Adicionar esta empresa ao menu Leads"}
+                              title="Cadastrar lead em uma nova guia do navegador"
                             >
-                              {importing && !isGooglePlaces
-                                ? "Salvando…"
-                                : isGooglePlaces
-                                  ? "Criar lead em branco"
-                                  : "Adicionar ao Leads"}
+                              Cadastrar lead
                             </Button>
                           </div>
                         </td>
@@ -6070,6 +6305,145 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
       ) : (
         <div style={card}><EmptyState icon={Sparkles} title="Faça uma busca para começar" hint="Informe cidade e termo, depois clique em Buscar empresas." /></div>
       )}
+    </div>
+  );
+}
+
+/* Áudio que o CLIENTE mandou no WhatsApp.
+   O backend guarda a nota de voz no Supabase e devolve o texto transcrito na
+   própria mensagem, marcado com o mesmo "🎧 " que o backend usa
+   (backend/services/whatsapp/incomingAudioService.js). Aqui isso vira um player de
+   um clique com a fala dele escrita embaixo, porque o CRM já mostrava só
+   "[Áudio]" e ninguém ouvia nada pela tela.
+   A URL do arquivo é pedida no primeiro toque (e fica guardada): a conversa é
+   recarregada a cada sincronização, e cada assinatura no Supabase é um pedido. */
+const AUDIO_PREFIX = "🎧 ";
+
+function formatAudioTime(value) {
+  const total = Math.max(0, Math.round(Number(value) || 0));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function voiceNoteOf(content) {
+  const texto = String(content || "");
+  if (!texto.startsWith(AUDIO_PREFIX)) return null;
+  const corpo = texto.slice(AUDIO_PREFIX.length).trim();
+  /* "[Áudio do cliente — transcrição indisponível]" não é fala: é o aviso de que
+     a Groq não conseguiu transcrever, então o player aparece sem o "ele disse". */
+  return { spoken: corpo.startsWith("[") ? "" : corpo };
+}
+
+/* Quantas mensagens antigas pedir ao celular em cada clique. O WhatsApp entrega
+   em lote, e um pedido maior só atrasa a resposta do telefone. */
+const MENSAGENS_ANTIGAS_POR_PEDIDO = 100;
+/* Rótulo que o backend grava em quem saiu do APP do WhatsApp, e não do CRM. É o
+   que diferencia "eu mandei por aqui" de "ele mandou pelo celular". */
+const ENVIADA_PELO_CELULAR = "WhatsApp do celular";
+
+function VoiceNote({ conversationId, message }) {
+  /* hasAudio vem do backend (marcação conferida na leitura da conversa); o
+     marcador no texto é o caminho de sempre. Um dos dois basta para o player
+   aparecer. */
+  const nota = voiceNoteOf(message.content) || { spoken: "" };
+  const audioRef = useRef(null);
+  const pedidoRef = useRef(null);
+  const [url, setUrl] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [tocando, setTocando] = useState(false);
+  const [progresso, setProgresso] = useState(0);
+  const [duracao, setDuracao] = useState(0);
+  const [posicao, setPosicao] = useState(0);
+  const [erro, setErro] = useState("");
+
+  /* Sair da conversa no meio do áudio não pode deixar ele tocando escondido. */
+  useEffect(() => () => {
+    const el = audioRef.current;
+    if (el) { el.pause(); el.src = ""; }
+  }, []);
+
+  const buscarUrl = async () => {
+    if (url) return url;
+    if (!pedidoRef.current) {
+      setCarregando(true);
+      setErro("");
+      pedidoRef.current = crmApi.whatsapp.audioUrl(conversationId, message.id)
+        .then(data => String(data?.url || ""))
+        .catch(error => {
+          pedidoRef.current = null;
+          setErro(error?.message || "Não foi possível abrir o áudio deste cliente.");
+          return "";
+        })
+        .finally(() => setCarregando(false));
+    }
+    const endereco = await pedidoRef.current;
+    if (endereco) setUrl(endereco);
+    return endereco;
+  };
+
+  const alternar = async () => {
+    const existente = audioRef.current;
+    if (existente && !existente.paused) { existente.pause(); return; }
+    const endereco = await buscarUrl();
+    if (!endereco) return;
+    let el = existente;
+    if (!el || el.src !== endereco) {
+      if (el) el.pause();
+      el = new Audio(endereco);
+      el.preload = "metadata";
+      audioRef.current = el;
+      el.addEventListener("playing", () => setTocando(true));
+      el.addEventListener("pause", () => setTocando(false));
+      el.addEventListener("ended", () => { setTocando(false); setProgresso(0); setPosicao(0); });
+      el.addEventListener("loadedmetadata", () => setDuracao(Number.isFinite(el.duration) ? el.duration : 0));
+      el.addEventListener("timeupdate", () => {
+        const tempo = el.duration && Number.isFinite(el.duration) ? el.duration : 0;
+        setPosicao(el.currentTime || 0);
+        setProgresso(tempo ? Math.min(1, (el.currentTime || 0) / tempo) : 0);
+      });
+      el.addEventListener("error", () => { setTocando(false); setErro("Este áudio não abriu no navegador. Toque de novo em alguns segundos."); });
+    }
+    if (el.paused) {
+      try { await el.play(); setErro(""); }
+      catch (_) { setErro("O navegador travou a reprodução. Toque outra vez — o gesto libera o som."); }
+    } else {
+      el.pause();
+    }
+  };
+
+  /* Áudio servido em streaming não traz duração fixa (o Chrome devolve Infinity);
+     sem duração conhecida, o que aparece é o tempo que já correu. */
+  const tempoExibido = formatAudioTime(duracao || posicao);
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="flex items-center rounded-lg px-2 py-1" style={{ gap: 8, background: "var(--surface)", border: "1px solid var(--line)" }}>
+        <button
+          type="button"
+          onClick={alternar}
+          disabled={carregando}
+          aria-label={tocando ? "Pausar o áudio do cliente" : "Tocar o áudio do cliente"}
+          title={tocando ? "Pausar o áudio" : "Tocar o áudio que ele mandou"}
+          className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors"
+          style={{ background: "var(--accent)", color: "#FFFFFF", opacity: carregando ? 0.6 : 1 }}
+        >
+          {carregando
+            ? <Loader2 size={13} style={{ animation: "gc-spin 0.8s linear infinite" }} />
+            : tocando ? <Pause size={13} /> : <Play size={13} />}
+        </button>
+        <div className="flex-1 overflow-hidden rounded-full" style={{ height: 4, background: "var(--line)" }}>
+          <div className="h-full rounded-full" style={{ width: `${Math.round((duracao ? progresso : Math.min(1, posicao / 60)) * 100)}%`, background: "var(--accent)", minWidth: posicao > 0 ? 4 : 0 }} />
+        </div>
+        <span style={{ fontSize: 10, color: "var(--slate)" }}>{tempoExibido}</span>
+      </div>
+      {nota.spoken ? (
+        <p className="text-[11px] leading-4" style={{ marginTop: 4, color: "var(--ink-soft)" }}>
+          <span className="font-semibold">Ele disse: </span>{nota.spoken}
+        </p>
+      ) : (
+        <p className="text-[11px] leading-4" style={{ marginTop: 4, color: "var(--warn)" }}>
+          Áudio disponível para tocar, mas a transcrição não chegou — a IA não consegue ler o que ele falou.
+        </p>
+      )}
+      {erro && <p className="text-[11px] leading-4" style={{ marginTop: 4, color: "var(--danger)" }}>{erro}</p>}
     </div>
   );
 }
@@ -6119,6 +6493,22 @@ function WhatsAppView({ currentUser }) {
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [statusMenuPos, setStatusMenuPos] = useState(null);
   const [savingStatus, setSavingStatus] = useState(false);
+  /* Estado do "puxar mensagens antigas": o pedido volta na hora, mas as
+     mensagens chegam depois, então a conversa é reaberta algumas vezes. */
+  const [historico, setHistorico] = useState({ buscando: false, aviso: "", erro: "" });
+  const historicoTimerRef = useRef(null);
+  /* O estado historico.buscando não segura clique duplo: entre dois cliques no
+     mesmo tick o React ainda não re-renderizou, então ele continua lendo false.
+     Essa ref é sincrona e é ela que barra o segundo pedido. */
+  const historicoEmAndamentoRef = useRef(false);
+  /* A IA de resposta rápida é chamada UMA vez por mensagem nova: o ref síncrono
+     barra o clique duplo no mesmo tick (estado do React ainda está velho) e a
+     chave guarda para qual última mensagem o pedido já foi feito. */
+  const sugestaoEmAndamentoRef = useRef(false);
+  const sugeridaParaRef = useRef("");
+  /* As sugestões já geradas ficam na memória da tela, indexadas pela última
+     mensagem: reabrir a mesma conversa sai na hora, sem chamar a Groq de novo. */
+  const sugestoesPorChaveRef = useRef(new Map());
   const statusMenuRef = useRef(null);
   const imageInputRef = useRef(null);
   const audioInputRef = useRef(null);
@@ -6139,6 +6529,12 @@ function WhatsAppView({ currentUser }) {
     setSuggestionsOpen(false);
     setGeneratedAudioUrl("");
     setGeneratedAudioBlob(null);
+    /* Trocou de conversa: o pedido de histórico anterior não vale mais, e o aviso
+       também não. */
+    window.clearInterval(historicoTimerRef.current);
+    historicoTimerRef.current = null;
+    historicoEmAndamentoRef.current = false;
+    setHistorico({ buscando: false, aviso: "", erro: "" });
   }, [conversation?.id]);
 
   useEffect(() => () => {
@@ -6195,6 +6591,60 @@ function WhatsAppView({ currentUser }) {
     ) return;
     setConversation(selected);
   };
+
+  /* "Puxar mensagens antigas": o celular responde em outro momento, então aqui
+     só dispara o pedido e reabre a conversa até a contagem de mensagens mudar.
+     Se nada chegar em ~40 s, o aviso explica o que conferir. */
+  const puxarMensagensAntigas = async () => {
+    if (!conversation || historicoEmAndamentoRef.current || historico.buscando) return;
+    historicoEmAndamentoRef.current = true;
+    const id = conversation.id;
+    const antes = conversation.messages?.length || 0;
+    window.clearInterval(historicoTimerRef.current);
+    setHistorico({ buscando: true, aviso: "Pedindo as mensagens antigas ao celular…", erro: "" });
+    try {
+      await crmApi.whatsapp.fetchHistory(id, MENSAGENS_ANTIGAS_POR_PEDIDO);
+    } catch (requestError) {
+      historicoEmAndamentoRef.current = false;
+      setHistorico({ buscando: false, aviso: "", erro: requestError.message || "O WhatsApp não aceitou o pedido." });
+      return;
+    }
+    let rodadas = 0;
+    historicoTimerRef.current = window.setInterval(async () => {
+      rodadas += 1;
+      let agora = antes;
+      try {
+        const atual = await crmApi.whatsapp.conversation(id);
+        agora = atual?.messages?.length || 0;
+        if (selectedConversationIdRef.current === id) setConversation(atual);
+      } catch (_) { /* a próxima rodada tenta de novo */ }
+      if (agora > antes) {
+        window.clearInterval(historicoTimerRef.current);
+        historicoTimerRef.current = null;
+        historicoEmAndamentoRef.current = false;
+        const chegaram = agora - antes;
+        setHistorico({
+          buscando: false,
+          aviso: `Chegaram ${chegaram} ${chegaram === 1 ? "mensagem" : "mensagens"} antiga${chegaram === 1 ? "" : "s"}.` +
+            (chegaram >= MENSAGENS_ANTIGAS_POR_PEDIDO ? " Clique de novo para voltar mais atrás." : ""),
+          erro: "",
+        });
+        return;
+      }
+      if (rodadas >= 10) {
+        window.clearInterval(historicoTimerRef.current);
+        historicoTimerRef.current = null;
+        historicoEmAndamentoRef.current = false;
+        setHistorico({
+          buscando: false,
+          aviso: "",
+          erro: "O celular não mandou nada novo. Ele precisa estar com internet e com o WhatsApp aberto. Se a conversa já está toda aqui, não vem nada mesmo.",
+        });
+      }
+    }, 4000);
+  };
+
+  useEffect(() => () => window.clearInterval(historicoTimerRef.current), []);
 
   const loadLeads = async () => {
     setLoadingLeads(true);
@@ -6552,15 +7002,29 @@ function WhatsAppView({ currentUser }) {
     }
   };
 
-  /* Pede 3 sugestões à IA. Ela vê só as últimas mensagens e a ficha do lead, e
-     devolve texto para o rascunho — enviar continua sendo decisão do atendente. */
+  /* A chave da última mensagem é o que diz se a IA precisa ler de novo: mudou a
+     conversa, chegou mensagem nova, ou mudou o quem-falou-por-último. O clique
+     manual sempre pode repetir. */
+  const chaveUltimaMensagem = useMemo(() => {
+    const lista = conversation?.messages || [];
+    const ultima = lista[lista.length - 1];
+    if (!ultima) return "";
+    return [conversation?.id, lista.length, ultima.timestamp || ultima.date || "", String(ultima.content || "").slice(0, 60)].join("|");
+  }, [conversation?.id, conversation?.messages]);
+
+  /* Pede as respostas rápidas à IA. Ela vê só a última mensagem e o pouco de
+     contexto que cabe no pedido, e devolve texto para o rascunho — enviar
+     continua sendo decisão do atendente, e nada aqui envia sozinho. */
   const requestSuggestions = async () => {
-    if (!conversation || suggesting || sending || generatingAudio || sendingGeneratedAudio) return;
+    if (!conversation || sugestaoEmAndamentoRef.current || suggesting || sending || generatingAudio || sendingGeneratedAudio) return;
+    sugestaoEmAndamentoRef.current = true;
+    sugeridaParaRef.current = chaveUltimaMensagem;
     setError("");
     setSuggesting(true);
     setSuggestionsOpen(true);
     try {
       const data = await crmApi.whatsapp.suggestReplies({
+        conversationId: conversation.id,
         senderName: status?.accountName || userName(currentUser),
         lead: activeLead ? {
           contactName: activeLead.contactName,
@@ -6585,7 +7049,15 @@ function WhatsAppView({ currentUser }) {
           })),
         },
       });
-      setSuggestions(Array.isArray(data?.suggestions) ? data.suggestions : []);
+      const sugestoesRecebidas = Array.isArray(data?.suggestions) ? data.suggestions : [];
+      setSuggestions(sugestoesRecebidas);
+      if (sugestoesRecebidas.length) {
+        if (sugestoesPorChaveRef.current.size > 40) {
+          /* Map guarda a ordem de inclusão: o primeiro é o mais velho. */
+          sugestoesPorChaveRef.current.delete(sugestoesPorChaveRef.current.keys().next().value);
+        }
+        sugestoesPorChaveRef.current.set(chaveUltimaMensagem, sugestoesRecebidas);
+      }
     } catch (requestError) {
       setSuggestions([]);
       /* O aviso vermelho já explica o que fazer; fechar o painel evita a tela
@@ -6593,9 +7065,31 @@ function WhatsAppView({ currentUser }) {
       setSuggestionsOpen(false);
       setError(requestError.message || "Não foi possível gerar sugestões por IA.");
     } finally {
+      sugestaoEmAndamentoRef.current = false;
       setSuggesting(false);
     }
   };
+
+  /* "Sempre analisar a última mensagem": ao abrir a conversa — e quando chega
+     mensagem nova nela — a IA já lê e mostra as respostas curtas, sem ele ter de
+     clicar. O botão continua lá para pedir outras. */
+  useEffect(() => {
+    /* O "connected" de baixo ainda não existe aqui (React lê o corpo todo na
+       ordem), então olhamos o status cru direto — é a mesma informação. */
+    if (!chaveUltimaMensagem || status?.status !== "CONNECTED") return;
+    if (aiInfo && aiInfo.enabled === false) return;
+    if (sugeridaParaRef.current === chaveUltimaMensagem) return;
+    const guardadas = sugestoesPorChaveRef.current.get(chaveUltimaMensagem);
+    if (guardadas && guardadas.length) {
+      /* Reabriu a mesma conversa com a mesma última mensagem: mostra na hora,
+         sem gastar outro pedido da cota. */
+      sugeridaParaRef.current = chaveUltimaMensagem;
+      setSuggestions(guardadas);
+      setSuggestionsOpen(true);
+      return;
+    }
+    requestSuggestions();
+  }, [chaveUltimaMensagem, status?.status, aiInfo?.enabled]);
 
   /* Igual às respostas rápidas: preenche o campo e fecha o painel, sem enviar. */
   const useSuggestion = text => {
@@ -7040,8 +7534,13 @@ function WhatsAppView({ currentUser }) {
 
         <section className="overflow-hidden flex flex-col" style={{ ...card, height: "min(920px, max(500px, calc(100dvh - 260px)))" }} aria-label="Mensagens do WhatsApp">
           {conversation ? <>
-            <header className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: "1px solid var(--line)" }}><div className="min-w-0"><div className="font-medium text-sm truncate">{conversation.contact.name}</div><div className="text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{conversation.contact.company} · {conversation.contact.phone}</div></div><div className="flex items-center gap-2 shrink-0">{activeLead && <Pill tone={STATUS_TONE[activeLead.status] || "slate"}>{activeLead.status}</Pill>}{statusMenuControl}</div></header>
-            <div className="flex-1 min-h-0 p-4 space-y-3 overflow-y-auto">{conversation.messages.map(message => <div key={message.id} className={`flex ${message.direction === "outgoing" ? "justify-end" : "justify-start"}`}><div className="max-w-[85%] rounded-xl px-3 py-2" style={{ background: message.direction === "outgoing" ? "var(--accent-soft)" : "var(--surface-sunken)", color: "var(--ink)" }}><div className="text-sm whitespace-pre-wrap break-words">{message.content}</div><div className="text-[10px] text-right mt-1" style={{ color: "var(--slate)" }}>{formatTime(message.timestamp)} · {messageStatusLabel(message.status)}</div></div></div>)}<div ref={messagesEndRef} /></div>
+            <header className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: "1px solid var(--line)" }}><div className="min-w-0"><div className="font-medium text-sm truncate">{conversation.contact.name}</div><div className="text-xs mt-0.5 truncate" style={{ color: "var(--slate)" }}>{conversation.contact.company} · {conversation.contact.phone}</div></div><div className="flex items-center gap-2 shrink-0">{activeLead && <Pill tone={STATUS_TONE[activeLead.status] || "slate"}>{activeLead.status}</Pill>}{connected && <button type="button" onClick={puxarMensagensAntigas} disabled={historico.buscando} title="Pedir ao celular as mensagens anteriores desta conversa" aria-label="Puxar mensagens antigas" className="rounded-md transition-colors" style={{ color: "var(--slate)", background: "var(--surface-sunken)", padding: 6, opacity: historico.buscando ? 0.4 : 1, cursor: historico.buscando ? "not-allowed" : "pointer" }}><History size={15} /></button>}{statusMenuControl}</div></header>
+            {(historico.aviso || historico.erro || historico.buscando) && (
+              <div className="px-4 py-2 text-xs" style={{ borderBottom: "1px solid var(--line)", background: "var(--surface-sunken)", color: historico.erro ? "var(--danger)" : "var(--ink-soft)" }}>
+                {historico.buscando ? "Buscando as mensagens antigas…" : (historico.erro || historico.aviso)}
+              </div>
+            )}
+            <div className="flex-1 min-h-0 p-4 space-y-3 overflow-y-auto">{conversation.messages.map(message => <div key={message.id} className={`flex ${message.direction === "outgoing" ? "justify-end" : "justify-start"}`}><div className="max-w-[85%] rounded-xl px-3 py-2" style={{ background: message.direction === "outgoing" ? "var(--accent-soft)" : "var(--surface-sunken)", color: "var(--ink)" }}>{message.hasAudio ? <VoiceNote conversationId={conversation.id} message={message} /> : <div className="text-sm whitespace-pre-wrap break-words">{message.content}</div>}<div className="text-[10px] text-right mt-1" style={{ color: "var(--slate)" }}>{formatTime(message.timestamp)} · {messageStatusLabel(message.status)}{message.direction === "outgoing" && message.sentBy === ENVIADA_PELO_CELULAR ? " · pelo celular" : ""}</div></div></div>)}<div ref={messagesEndRef} /></div>
             <form onSubmit={send} className="p-3 space-y-2" style={{ borderTop: "1px solid var(--line)" }}>
               <input
                 ref={imageInputRef}
@@ -7098,12 +7597,12 @@ function WhatsAppView({ currentUser }) {
                   disabled={suggesting || sending || generatingAudio || sendingGeneratedAudio}
                   title={aiInfo && aiInfo.enabled === false
                     ? "IA ainda não ativada: dê dois cliques em CONFIGURAR_IA_GROQ.bat e cole a chave gratuita da Groq."
-                    : "Ler a conversa e sugerir 3 respostas no seu tom"}
+                    : "Ler a última mensagem e sugerir respostas curtas no seu tom"}
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40"
                   style={{ color: "var(--accent-ink)", background: "var(--accent-soft)", border: "1px solid var(--line)" }}
                 >
                   <Sparkles size={14} />
-                  {suggesting ? "Lendo a conversa…" : "Sugerir resposta"}
+                  {suggesting ? "Lendo a conversa…" : "Outras respostas"}
                 </button>
               </div>
               {quickRepliesOpen && (
@@ -7127,7 +7626,7 @@ function WhatsAppView({ currentUser }) {
                   <div className="flex items-center justify-between gap-2 px-2 pb-1">
                     <span className="text-[11px]" style={{ color: "var(--slate)" }}>
                       {suggesting
-                        ? "A IA está lendo as últimas mensagens…"
+                        ? "A IA está lendo a última mensagem…"
                         : "Clique numa sugestão para jogá-la no campo. Nenhuma delas é enviada sozinha."}
                     </span>
                     <button type="button" onClick={() => setSuggestionsOpen(false)} className="rounded-md p-1.5 shrink-0" style={{ color: "var(--slate)" }} aria-label="Fechar sugestões da IA"><X size={14} /></button>
@@ -7145,7 +7644,7 @@ function WhatsAppView({ currentUser }) {
                   ))}
                   {!suggesting && !suggestions.length && (
                     <div className="px-2 py-1.5 text-xs" style={{ color: "var(--slate)" }}>
-                      A IA não devolveu sugestões. Clique em "Sugerir resposta" de novo.
+                      A IA não devolveu sugestões. Clique em "Outras respostas" de novo.
                     </div>
                   )}
                 </div>
