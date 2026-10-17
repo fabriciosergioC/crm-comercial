@@ -2,7 +2,9 @@
 
 const { randomUUID } = require("node:crypto");
 const WhatsAppProvider = require("./WhatsAppProvider");
+const { ApiError } = require("../../middleware/errorHandler");
 const { isValid, nextOnIncoming, nextOnOpen, nextOnOutgoing, normalize } = require("./conversationStatus");
+const { irmaDoNove } = require("./phoneUtils");
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -113,10 +115,50 @@ class MockWhatsAppProvider extends WhatsAppProvider {
     }));
   }
 
+  /* Os dois métodos que o WhatsAppService usa para não abrir uma segunda
+     conversa quando o cadastro tem o número sem o 9º dígito. No mock é a mesma
+     regra, só que em memória. */
+  async conversaPorTelefone(phone) {
+    const digits = String(phone || "").replace(/\D/g, "");
+    return this.conversations.find(item => item.contact.phone.replace(/\D/g, "") === digits) || null;
+  }
+
+  async conversaTemMensagens(id) {
+    return Boolean(this.conversations.find(item => item.id === id)?.messages?.length);
+  }
+
+  async conversaIrmaComMensagens(phone) {
+    const irma = await this.conversaIrma(phone);
+    if (!irma) return null;
+    return (await this.conversaTemMensagens(irma.id)) ? irma : null;
+  }
+
+  /* Irmã de 9º dígito, com ou sem mensagens — igual ao provider do Baileys: é o
+     que impede a resposta do cliente de virar segunda conversa no menu. */
+  async conversaIrma(phone) {
+    const irma = irmaDoNove(phone);
+    if (!irma) return null;
+    return this.conversations.find(item => item.contact.phone.replace(/\D/g, "") === irma) || null;
+  }
+
   async openLeadConversation(lead) {
     const phone = String(lead.phone || "").replace(/\D/g, "");
-    const existing = this.conversations.find(item => item.contact.phone.replace(/\D/g, "") === phone);
+    const exata = this.conversations.find(item => item.contact.phone.replace(/\D/g, "") === phone);
+    let existing = exata || await this.conversaIrma(phone);
+    /* Ficha exata VAZIA + irmã com histórico: a irmã vence, senão o mesmo
+       cliente fica com as mensagens divididas em duas fichas. */
+    if (exata && !(await this.conversaTemMensagens(exata.id))) {
+      const irmaComMensagens = await this.conversaIrmaComMensagens(phone);
+      if (irmaComMensagens) existing = irmaComMensagens;
+    }
     if (existing) {
+      /* Espelho do provider do Baileys: quando a mensagem/atendimento cai numa
+         ficha irmã SEM nenhuma mensagem, a ficha passa a levar o número que está
+         em uso, e não o número morto do cadastro. Com histórico na irmã, nada é
+         trocado — a que tem mensagens manda. */
+      if (!exata && !(await this.conversaTemMensagens(existing.id))) {
+        existing.contact.phone = phone;
+      }
       existing.contact.name = lead.contactName || existing.contact.name;
       existing.contact.company = lead.company || existing.contact.company;
       existing.unreadCount = 0;
@@ -170,6 +212,17 @@ class MockWhatsAppProvider extends WhatsAppProvider {
     if (!conversation) return null;
     conversation.unreadCount = 0;
     return clone(conversation);
+  }
+
+  /* No modo de teste não entra áudio real do WhatsApp: as mensagens simuladas
+     são texto, então não há arquivo para tocar. */
+  async getAudioUrl() {
+    throw new ApiError(404, "No modo de teste não há áudio de cliente para tocar.");
+  }
+
+  /* Idem: sem celular pareado não existe histórico do WhatsApp para pedir. */
+  async fetchConversationHistory() {
+    throw new ApiError(404, "No modo de teste não há mensagens antigas do WhatsApp para puxar.");
   }
 
   async sendText(id, content, sentBy) {

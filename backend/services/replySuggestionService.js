@@ -4,7 +4,10 @@
    A chave fica no backend/.env — nunca no frontend, porque o navegador é público
    e qualquer um que abrir o site veria a chave no código-fonte. */
 
+const crypto = require("node:crypto");
+
 const { ApiError } = require("../middleware/errorHandler");
+const { AUDIO_MARKER, isAudioContent } = require("./whatsapp/incomingAudioService");
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 /* O llama-3.3-70b-versatile saiu do ar na Groq em 16/08/2026, junto com o
@@ -14,14 +17,24 @@ const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const DEFAULT_MODEL = "openai/gpt-oss-120b";
 const FALLBACK_MODEL = "openai/gpt-oss-20b";
 
-/* Nada de mandar a conversa inteira: as últimas mensagens bastam e mantêm o uso
-   dentro da cota gratuita (200 mil tokens por dia). */
-const MAX_MESSAGES = 14;
-const MAX_MESSAGE_CHARS = 700;
+/* Nada de mandar a conversa inteira: quanto menos texto, mais rápido a Groq
+   devolve e menos cota (tokens por minuto) cada clique gasta. O que importa está
+   no fim: a última mensagem do cliente. */
+const MAX_MESSAGES = 8;
+const MAX_MESSAGE_CHARS = 400;
 const MAX_SUGGESTIONS = 4;
-/* O Erick escreve em blocos curtos separados por linha em branco; uma mensagem
-   completa dele passa de 500 caracteres, então o teto precisa sobrar. */
-const MAX_SUGGESTION_CHARS = 800;
+/* Modo resposta rápida: a sugestão tem que caber num bloco só, para ele ler e
+   mandar sem editar. 500 caracteres virava parágrafo de análise — lento de ler e
+   lento de gerar. */
+const MAX_SUGGESTION_CHARS = 260;
+const MAX_CONTEXT_CHARS = 3200;
+/* Os gpt-oss "pensam" antes de escrever e esse pensamento é caro em tokens. Para
+   resposta curta, esforço baixo de raciocínio: mesma leitura da mensagem, bem
+   menos tempo. */
+const REASONING_EFFORT = "low";
+const MAX_OUTPUT_TOKENS = 600;
+/* Mensagem que não tem texto (foto, áudio sem transcrição) não serve de âncora. */
+const SEM_TEXTE_PATTERN = /^\[(Imagem|Vídeo|Áudio|Documento|Mensagem não textual)\]$/;
 
 function readInt(name, fallback, min, max) {
   const raw = process.env[name];
@@ -32,6 +45,10 @@ function readInt(name, fallback, min, max) {
 
 function suggestionCount() {
   return readInt("IA_SUGESTOES_QUANTIDADE", 3, 1, MAX_SUGGESTIONS);
+}
+
+function maxNewTokens() {
+  return readInt("IA_SUGESTOES_MAX_TOKENS", MAX_OUTPUT_TOKENS, 120, 2000);
 }
 
 function modelId() {
@@ -70,24 +87,51 @@ function lastMessageSignal(messages) {
   return `Última mensagem: enviada por ${quem}, ${esperado}.`;
 }
 
+/* A âncora é a última mensagem que tem TEXTE de verdade. Uma foto ou um áudio
+   sem transcrição no fim da conversa não pode virar "responda isso", porque o
+   modelo inventaria conteúdo a partir de um colchete. */
+function mensagemAncora(lista) {
+  for (let i = lista.length - 1; i >= 0; i--) {
+    const mensagem = lista[i];
+    const texto = clean(mensagem?.content, MAX_MESSAGE_CHARS);
+    if (texto && !SEM_TEXTE_PATTERN.test(texto)) return { texto, mensagem, index: i };
+  }
+  return null;
+}
+
 function buildContext({ lead, conversation, senderName }) {
-  const lista = Array.isArray(conversation?.messages) ? conversation.messages : [];
-  const messages = lista
-    .filter(message => clean(message?.content, MAX_MESSAGE_CHARS))
-    .slice(-MAX_MESSAGES)
-    .map(message => `${message.direction === "outgoing" ? "Erick" : "Cliente"}: ${clean(message.content, MAX_MESSAGE_CHARS)}`)
+  const listaOriginal = Array.isArray(conversation?.messages) ? conversation.messages : [];
+  const lista = listaOriginal.filter(message => clean(message?.content, MAX_MESSAGE_CHARS));
+  const ancora = mensagemAncora(lista);
+  const visiveis = lista.slice(-MAX_MESSAGES);
+
+  const messages = visiveis
+    /* O áudio que o cliente manda chega como texto transcrito com o marcador
+       "🎧 " na frente. Para o modelo, o que importa é saber que aquilo foi FALA
+       (dita, não digitada): o tom costuma ser mais solto e cheio de detalhes. */
+    .map(message => {
+      const conteudo = clean(message.content, MAX_MESSAGE_CHARS);
+      const quem = message.direction === "outgoing" ? "Erick" : "Cliente";
+      if (isAudioContent(conteudo)) {
+        return `${quem} (mandou áudio, transcrito): ${conteudo.slice(AUDIO_MARKER.length)}`;
+      }
+      if (SEM_TEXTE_PATTERN.test(conteudo)) return `${quem}: ${conteudo} (sem texto)`;
+      return `${quem}: ${conteudo}`;
+    })
     .join("\n");
 
   const etapas = [];
   if (clean(lead?.status, 40)) etapas.push(`etapa comercial "${clean(lead.status, 40)}"`);
   if (clean(conversation?.status, 40)) etapas.push(`status da conversa "${clean(conversation.status, 40)}"`);
 
+  const jaFalou = lista.some(message => message.direction === "outgoing");
   const linhas = [
     `Nome do contato: ${clean(lead?.contactName || conversation?.contact?.name, 80) || "desconhecido"}`,
     `Empresa: ${clean(lead?.company || conversation?.contact?.company, 80) || "desconhecida"}`,
     `Ramo do negócio: ${clean(lead?.segment, 40) || "não informado"}`,
     `Cidade: ${clean(lead?.city, 40) || "não informada"}`,
     `Momento do atendimento: ${etapas.join(" e ") || "não informado"}`,
+    `O Erick já escreveu nesta conversa? ${jaFalou ? "sim" : "não — é a primeira vez que ele responde"}`,
     lastMessageSignal(lista),
     /* A anotação é o que o Erick escreveu sobre aquele lead — é o melhor sinal
        do que ele já descobriu, e por isso vai junto (só texto, sem dados de
@@ -96,7 +140,34 @@ function buildContext({ lead, conversation, senderName }) {
     `Últimas mensagens:\n${messages || "(sem mensagens registradas)"}`,
   ].filter(Boolean);
   if (senderName) linhas.push(`Quem escreve: ${clean(senderName, 60)}`);
-  return linhas.join("\n").slice(0, 6000);
+
+  /* O pedido de verdade vem por último, porque é o que segura o modelo na
+     mensagem certa: sem esta linha ele escrevia sobre a barbearia inteira em vez
+     de responder o "boa tarde, assim que possível eu aviso ele". */
+  if (ancora) {
+    const quem = ancora.mensagem.direction === "outgoing" ? "do Erick (última dita na conversa)" : "do CLIENTE (última dita na conversa)";
+    linhas.push(`>>> MENSAGEM QUE VOCÊ RESONDE — ${quem}: "${ancora.texto.slice(0, 320)}"`);
+    /* Se depois dessa fala só chegou foto, vídeo ou áudio sem transcrição, o
+       modelo precisa saber: é aquilo que o cliente está esperando ver respondido,
+       e ele não pode fingir que não recebeu. */
+    const depois = lista.slice(ancora.index + 1);
+    if (depois.length) {
+      const oQueChegou = depois.map(m => `${m.direction === "outgoing" ? "o Erick" : "o cliente"} mandou ${clean(m.content, 30)}`).join(", ");
+      linhas.push(`>>> Depois dessa fala, ${oQueChegou} — mensagem sem texto: não invente o conteúdo, responda o que dá para saber e, se precisar, pergunte o que está na imagem.`);
+    }
+    const ancoraEraDoCliente = ancora.mensagem.direction !== "outgoing";
+    if (ancoraEraDoCliente) {
+      linhas.push(">>> É uma resposta a ELA: a primeira frase já reage ao que ele disse, com as palavras dele. Nada de retomar o assunto geral da empresa, nada de cumprimento de abertura, nada de oferta.");
+    } else {
+      linhas.push(">>> O Erick falou por último e o cliente ainda não respondeu: a sugestão é um passo curto da vez dele (combinado, prazo ou uma pergunta só), sem cobrar retorno e sem repetir o que ele já disse.");
+    }
+    /* O erro mais comum de resposta pronta no WhatsApp é dar "Oi!" no meio de um
+       papo que já vai na quinta mensagem. */
+    linhas.push(jaFalou
+      ? ">>> A conversa já andou: nenhuma sugestão começa com 'Oi', 'Olá', 'Bom dia' ou nome do cliente."
+      : ">>> O Erick ainda não disse nada nesta conversa: pode abrir com 'Oi, [primeiro nome]!'.");
+  }
+  return linhas.join("\n").slice(0, MAX_CONTEXT_CHARS);
 }
 
 /* A linha do meio muda conforme a oferta escrita no .env: sem IA_OFERTA, o
@@ -124,22 +195,19 @@ function systemPrompt() {
   linhas.push(
     "",
     "PRIMEIRO ANALISE A CONVERSA (isto fica na sua cabeça; só a mensagem final sai):",
-    "1. O que o cliente escreveu, e o que ele deixou de escrever.",
-    "2. Qual é a dor por trás disso na rotina da empresa dele (pedido que se perde, anotação em papel,",
-    "   demora para responder quem pediu orçamento, agenda embaralhada, entrega sem confirmação).",
-    "3. Como ele está em relação ao atendimento: ocupado, em dúvida, com medo de investir, comparando com",
-    "   outra opção, ou só esperando alguém explicar melhor. A leitura certa muda o tom da mensagem.",
-    "4. O que ele ainda não entendeu, e que orientação serviria mesmo que ele nunca comprasse nada.",
-    "5. Só então escolha o ângulo: você vai falar do problema dele, não do serviço.",
+    "1. Leia a linha '>>> MENSAGEM QUE VOCÊ RESONDE': é exatamente aquilo que você responde agora.",
+    "2. O que ele escreveu (ou ditou) ali, e o que ele deixou de escrever.",
+    "3. Como ele está: ocupado, em dúvida, com medo de investir, comparando com outra opção, ou só esperando",
+    "   alguém explicar melhor. A leitura certa muda o tom da resposta.",
+    "4. Só então escreva: a análise não vai no texto, ela só muda o que você responde.",
     "",
     "OBJETIVO DA MENSAGEM (em toda sugestão, nesta ordem):",
-    "1. Mostrar que você entendeu a situação dele — retomar o que ele falou, com as palavras dele.",
-    "2. Dar uma leitura do problema: o que costuma acontecer num negócio como o dele, o que costuma escapar.",
-    "3. Deixar uma orientação que já sirva de graça, sem esperar nada em troca.",
-    "4. Terminar com uma pergunta aberta que convide a conversa, nunca com cobrança de resposta.",
+    "1. Reagir ao que ele acabou de dizer, com as palavras dele — é isso que faz a resposta parecer imediata.",
+    "2. Somar uma leitura curta do que costuma acontecer num negócio como o dele.",
+    "3. Fechar com um próximo passo simples, ou uma pergunta só.",
     "",
     "COMO ABORDAR (o estilo é de consultor que analisa, não de vendedor que pressiona):",
-    "- Comece sempre pelo problema ou pela rotina da empresa; o serviço aparece depois, como consequência.",
+    "- Responda primeiro; o serviço aparece depois, e só se couber naquela resposta.",
     "- Opine com humildade: 'pelo que você contou', 'no que costuma acontecer aí', 'uma coisa que costuma escapar'.",
     "- Oriente de verdade: um caminho, um detalhe para olhar, um erro comum do ramo daquela cidade. Isso vale",
     "  mesmo se ele fechar com outra empresa.",
@@ -161,32 +229,38 @@ function systemPrompt() {
     "- Fechado: pós-venda. Pedir com calma o que falta para começar (nome do serviço, fotos, número de WhatsApp).",
     "- Perdido / Resolvido / Arquivado / Cancelado: encerrar bem, deixar uma dica útil e a porta aberta.",
     "",
-    "REGRAS DA MENSAGEM DE SUGESTÃO:",
-    "- Blocos curtos separados por linha em branco; de 1 a 4 blocos; no máximo ~500 caracteres.",
-    "- O primeiro bloco é de acolhimento, com o primeiro nome quando o contexto trouxer um ('Oi, Juliana! 😊',",
-    "  'Olá, bom dia, Sérgio!'); sem nome, abra sem vocativo. Uma frase só, e siga para o conteúdo.",
-    "- Depois dos blocos, a pergunta aberta no fim do corpo da mensagem, EXATAMENTE UMA por sugestão; se vier",
-    "  uma segunda pergunta na cabeça, corte a segunda. Preferir pergunta que não se responda com sim ou não:",
-    "  'como vocês fazem isso hoje?', 'o que mais atrapalha aí?'.",
+    "QUANDO ELE FALA POR ÁUDIO (linha 'Cliente (mandou áudio, transcrito)'):",
+    "- O CRM transcreve a nota de voz dele e mostra o texto para você. Trate o conteúdo como se ele tivesse",
+    "  escrito: na fala a frase sai solta, pela metade, e é ali que aparece a objeção verdadeira (medo de",
+    "  investir, comparação com outra empresa, receio de atrapalhar a equipe). Ouça o tom, não só a palavra.",
+    "- Você pode retomar o que ele contou no áudio ('no seu áudio você comentou que...'); ele mandou o áudio,",
+    "  então sabe que você ouviu. Nunca diga que é IA, que transcreve ou que a resposta foi automática.",
+    "- Se a linha não trouxer texto (transcrição indisponível), NÃO invente o que ele falou: fale do que está",
+    "  claro na conversa e faça uma pergunta que já serve para ele repetir o ponto principal.",
+    "- Responda primeiro ao que ele disse no áudio; oferta só depois de mostrar que entendeu.",
+    "",
+    "REGRAS DA MENSAGEM DE SUGESTÃO (resposta rápida de WhatsApp, não texto de e-mail):",
+    "- UM bloco só, sem linha em branco no meio: no máximo 2 frases e ~180 caracteres. Passou disso, corte —",
+    "  resposta longa ele não envia, e ainda demora mais para chegar.",
+    "- Sem saudação de abertura quando a conversa já está andando: vá direto ao que ele disse. Cumprimento de",
+    "  primeira vez ('Oi, Juliana! 😊') só quando o campo 'Última mensagem' mostra que o Erick ainda não falou.",
+    "- No máximo uma pergunta, no fim, e apenas se ela fizer a conversa andar. Sem pergunta está ótimo.",
     "- Pode destacar uma frase com asteriscos no fim (padrão do WhatsApp). Nada de markdown, título ou assinatura.",
     "- No máximo um emoji na mensagem inteira. Fala como pessoa: 'você', 'a sua empresa'.",
+    "- As sugestões mudam só o ângulo, nunca o tamanho: uma responde direto, uma responde e orienta, uma responde e pergunta.",
     "",
     "QUANDO O CLIENTE SUMIU (campo 'Última mensagem' diz 'o cliente ainda não respondeu'):",
     "- Jamais cobre resposta e jamais mencione o silêncio: nada de 'vi que você não respondeu', 'quando puder me",
     "  dê um retorno', 'só passando para lembrar'.",
-    "- Volte com conteúdo que vale por si: uma observação sobre a rotina dele, um problema comum do ramo, um",
-    "  detalhe que ele pode conferir hoje em poucos minutos e que já ajuda.",
-    "- Quanto mais dias sem falar, mais a mensagem precisa ser entrega de valor e menos pedido de retorno.",
-    "- Se quiser reconhecer a correria, faça isso em meia frase e siga para o conteúdo.",
-    "- Se a bola está com o Erick ('a bola está com o Erick'), não invente assunto novo: responda o que ele",
-    "  perguntou e só depois amplie.",
+    "- Volte com uma coisa só, curta, que vale por si: um detalhe da rotina dele, um erro comum do ramo, algo que",
+    "  ele pode conferir hoje em cinco minutos. Quanto mais dias sem falar, menos pedido de retorno.",
+    "- Se a bola está com o Erick ('a bola está com o Erick'), não invente assunto novo: amplie em uma frase o que",
+    "  ele disse por último, ou combine o próximo passo com dia.",
     "",
-    "COMO O ERICK ESCREVE (imitar o estilo dele, não o texto de um anúncio):",
-    "- Exemplo real do ritmo dele (copie o jeito, nunca o conteúdo): \"Oi, [nome]! 😊\n\nVocê comentou que os",
-    "  pedidos chegam por mensagem e às vezes alguém anota e acaba não chamando de volta.\n\nNo que costuma",
-    "  acontecer em padaria e restaurante, é justamente nessa hora que o pedido se perde: a pessoa anota no",
-    "  papel, atende outro balcão e depois não lembra quem pediu.\n\nAntes de qualquer coisa, vale olhar quantos",
-    "  pedidos saem por dia e quantos deles nunca voltaram.\n\nComo vocês organizam isso hoje?\"",
+    "COMO O ERICK ESCREVE (imitar o tamanho e o ritmo, nunca o conteúdo):",
+    "- Assim, de verdade, são as mensagens dele: \"Fecho sim, te mando amanhã antes do meio-dia 👍\", \"Entendi! A",
+    "  questão aí é quem anota o pedido no balcão, ne?\", \"Tranquilo. Quando quiser, eu passo aí e mostro em 10",
+    "  minutos como ficaria na sua rotina. Serve terça ou quarta?\"",
     "",
     "NUNCA, EM HIPÓTESE ALGUMA:",
     "- Invente preço, prazo, desconto, parcelamento, nome de cliente, número de vendas ou resultado.",
@@ -201,9 +275,9 @@ function systemPrompt() {
     "- Fale do produto antes de falar do problema do cliente.",
     "- Escreva telefone, e-mail ou endereço no texto: o CRM já cuida desses dados.",
     "",
-    "As sugestões precisam ser diferentes entre si, cada uma com um ângulo de análise:",
-    "uma que diagnostica o problema e orienta; uma que observa algo típico do ramo daquele cliente;",
-    "e uma curta que só quer entender melhor como ele resolve isso hoje.",
+    "As três sugestões respondem A MESMA mensagem do cliente, mudando só o ângulo:",
+    "uma só confirma/resolve o que ele perguntou; uma responde e aponta o que costuma escapar no ramo dele;",
+    "uma responde e faz a única pergunta que faz a conversa andar. Todas curtas.",
     "",
     'Responda SOMENTE com JSON válido no formato {"sugestoes":["texto","texto","texto"]}.',
   );
@@ -325,8 +399,22 @@ function providerFailure(httpStatus, detail, model) {
 
 /* Um pedido à Groq com um modelo específico. Devolve { missingModel: true }
    quando o motivo da recusa é o próprio modelo, para quem chamar tentar o próximo. */
-async function askGroq(apiKey, model, context) {
+async function askGroq(apiKey, model, context, opcoes = {}) {
   let response;
+  const corpo = {
+    model,
+    temperature: 0.7,
+    max_tokens: maxNewTokens(),
+    messages: [
+      { role: "system", content: systemPrompt() },
+      { role: "user", content: context },
+    ],
+  };
+  /* Resposta curta não precisa de cadeia de pensamento longa: o esforço baixo corta
+     os tokens de raciocínio (que também entram no max_tokens) e devolve a sugestão
+     em bem menos tempo. A Groq aceita `reasoning_effort` nos gpt-oss; se um dia
+     recusar, a chamada abaixo refaz o pedido sem essa linha. */
+  if (!opcoes.semReasoningEffort) corpo.reasoning_effort = REASONING_EFFORT;
   try {
     response = await fetch(GROQ_URL, {
       method: "POST",
@@ -334,17 +422,7 @@ async function askGroq(apiKey, model, context) {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model,
-        temperature: 0.7,
-        /* Os gpt-oss gastam parte do orçamento pensando antes de escrever, e cada
-           sugestão do Erick tem vários blocos: 700 tokens dava mensagem cortada. */
-        max_tokens: 1800,
-        messages: [
-          { role: "system", content: systemPrompt() },
-          { role: "user", content: context },
-        ],
-      }),
+      body: JSON.stringify(corpo),
       signal: AbortSignal.timeout(30000),
     });
   } catch (error) {
@@ -357,6 +435,11 @@ async function askGroq(apiKey, model, context) {
   if (!response.ok) {
     const detail = await readProviderDetail(response);
     if (isMissingModel(response.status, detail)) return { missingModel: true };
+    /* 400 com reclamação de parâmetro = a Groq mudou o que aceita. Tenta de novo
+       sem o raciocínio baixo, que é o único luxo deste pedido. */
+    if (response.status === 400 && /reasoning|effort/i.test(`${detail.code} ${detail.message}`)) {
+      return askGroq(apiKey, model, context, { semReasoningEffort: true });
+    }
     throw new ApiError(...providerFailure(response.status, detail, model));
   }
 
@@ -370,7 +453,59 @@ async function askGroq(apiKey, model, context) {
   return { content };
 }
 
-async function generateReplySuggestions(payload) {
+/* A cota grátis da Groq é apertada (~30 pedidos por minuto) e a conversa costuma
+   ser aberta mais de uma vez seguida. Então a mesma última mensagem gera uma
+   chamada só: a resposta fica em memória enquanto a conversa não mudar. Muda
+   qualquer coisa (chegou mensagem nova, mudou etapa, mudou quem escreve) e a
+   próxima chamada cai fora do cache. */
+const CACHE_MAXIMO = 60;
+const sugestoesEmCache = new Map();
+const pedidosEmAndamento = new Map();
+
+function cacheMinutos() {
+  return readInt("IA_SUGESTOES_CACHE_MINUTOS", 30, 0, 720);
+}
+
+function chaveDoCache(payload) {
+  const conv = (payload && payload.conversation) || {};
+  const lista = Array.isArray(conv.messages) ? conv.messages : [];
+  const ultima = lista[lista.length - 1] || {};
+  const partes = [
+    (payload && payload.conversationId) || conv.id || "",
+    lista.length,
+    ultima.timestamp || ultima.date || "",
+    clean(ultima.content, 200),
+    conv.status || "",
+    (payload && payload.lead && payload.lead.status) || "",
+    (payload && payload.senderName) || "",
+    suggestionCount(),
+  ].join("|");
+  return crypto.createHash("sha1").update(partes).digest("hex");
+}
+
+function lerCache(chave) {
+  const minutos = cacheMinutos();
+  if (!minutos) return null;
+  const guardado = sugestoesEmCache.get(chave);
+  if (!guardado) return null;
+  if (Date.now() - guardado.at > minutos * 60000) {
+    sugestoesEmCache.delete(chave);
+    return null;
+  }
+  return guardado.result;
+}
+
+function gravarCache(chave, result) {
+  if (!cacheMinutos()) return;
+  if (sugestoesEmCache.size >= CACHE_MAXIMO) {
+    /* Map guarda a ordem de inclusão: o primeiro é o mais velho. */
+    const maisVelho = sugestoesEmCache.keys().next().value;
+    if (maisVelho !== undefined) sugestoesEmCache.delete(maisVelho);
+  }
+  sugestoesEmCache.set(chave, { at: Date.now(), result });
+}
+
+async function gerar(payload) {
   const apiKey = String(process.env.GROQ_API_KEY || "").trim();
   if (!apiKey) {
     throw new ApiError(503, "Ative a IA: abra console.groq.com, crie a chave gratuita (API Keys) e cole o valor de GROQ_API_KEY no arquivo backend\\.env. Depois feche e rode o run-crm.bat de novo.");
@@ -386,14 +521,33 @@ async function generateReplySuggestions(payload) {
   for (const model of models) {
     const answer = await askGroq(apiKey, model, context);
     if (answer.missingModel) continue;
-    const suggestions = extractSuggestions(answer.content, limit);
-    if (!suggestions.length) {
+    const sugestoes = extractSuggestions(answer.content, limit);
+    if (!sugestoes.length) {
       throw new ApiError(502, "A IA não devolveu sugestões utilizáveis. Clique de novo em Sugerir resposta.");
     }
-    return { model, suggestions };
+    return { model, suggestions: sugestoes };
   }
 
   throw new ApiError(503, `Nenhum modelo disponível na sua conta Groq conseguiu responder (${models.join(", ")}). Troque a linha GROQ_MODEL no arquivo backend\\.env por um modelo vigente do catálogo (console.groq.com → Models) e rode o run-crm.bat de novo.`);
+}
+
+async function generateReplySuggestions(payload) {
+  const chave = chaveDoCache(payload || {});
+  const guardado = lerCache(chave);
+  if (guardado) return { ...guardado, cacheado: true };
+
+  /* Dois pedidos iguais ao mesmo tempo (clique duplo, ou a tela chamando sozinha
+     enquanto ele clica) viram UMA chamada à Groq: a segunda entra na mesma
+     promessa em vez de gastar a cota. */
+  const emAndamento = pedidosEmAndamento.get(chave);
+  if (emAndamento) return emAndamento.then(result => ({ ...result, cacheado: true }));
+
+  const promessa = gerar(payload).then(result => {
+    gravarCache(chave, result);
+    return result;
+  }).finally(() => pedidosEmAndamento.delete(chave));
+  pedidosEmAndamento.set(chave, promessa);
+  return promessa;
 }
 
 /* O que a interface pode mostrar sem expor chave nem cota da conta. */
@@ -402,7 +556,8 @@ function aiInfo() {
     enabled: Boolean(String(process.env.GROQ_API_KEY || "").trim()),
     model: modelId(),
     quantity: suggestionCount(),
+    cacheMinutes: cacheMinutos(),
   };
 }
 
-module.exports = { generateReplySuggestions, aiInfo };
+module.exports = { generateReplySuggestions, aiInfo, _internos: { buildContext, systemPrompt, extractSuggestions, mensagemAncora } };

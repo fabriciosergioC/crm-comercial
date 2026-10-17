@@ -4,25 +4,6 @@ const express = require("express");
 const router = express.Router();
 const whatsappService = require("../services/whatsapp/WhatsAppService");
 const { generateSpeech, listVoiceProfiles } = require("../services/ttsService");
-const { generateReplySuggestions, aiInfo } = require("../services/replySuggestionService");
-
-
-/* Diz se a IA de sugestões está configurada (sem expor a chave nem a conta). */
-router.get("/sugestoes/status", async (req, res, next) => {
-  try {
-    res.set("Cache-Control", "no-store");
-    res.json({ success: true, data: aiInfo() });
-  } catch (error) { next(error); }
-});
-
-/* Pede 3 sugestões de resposta para a conversa aberta.
-   O backend só devolve texto: o envio continua sendo decisão de quem está na tela. */
-router.post("/sugestoes", async (req, res, next) => {
-  try {
-    res.set("Cache-Control", "no-store");
-    res.json({ success: true, data: await generateReplySuggestions(req.body) });
-  } catch (error) { next(error); }
-});
 
 
 /* Lista os perfis de voz ("Rápida" / "Natural") para o seletor do chat. */
@@ -100,6 +81,25 @@ router.post("/conversations/:id/messages", async (req, res, next) => {
   try {
     const message = await whatsappService.sendText(req.params.id, req.body?.content, typeof req.body?.sentBy === "string" ? req.body.sentBy.slice(0, 80) : "Usuário");
     res.status(201).json({ success: true, data: message });
+  } catch (error) { next(error); }
+});
+
+/* Áudio que o CLIENTE mandou: devolve a URL assinada do arquivo guardado no
+   Supabase. Só é pedido no primeiro clique em "Tocar", porque a conversa é
+   recarregada o tempo todo e cada assinatura é um pedido ao Storage. */
+router.get("/conversations/:id/messages/:messageId/audio", async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await whatsappService.getAudioUrl(req.params.id, req.params.messageId) });
+  } catch (error) { next(error); }
+});
+
+/* "Puxa as mensagens antigas desta conversa": devolve na hora só a confirmação
+   do pedido. As mensagens chegam segundos depois, pelo evento de histórico do
+   Baileys, e aparecem na próxima recarga da conversa. */
+router.post("/conversations/:id/history", async (req, res, next) => {
+  try {
+    const quantidade = Number(req.body?.quantity || req.query?.quantity || 50);
+    res.json({ success: true, data: await whatsappService.fetchConversationHistory(req.params.id, quantidade) });
   } catch (error) { next(error); }
 });
 

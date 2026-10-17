@@ -41,6 +41,14 @@ class WhatsAppProvider {
     throw new Error("sendMedia() must be implemented by the WhatsApp provider.");
   }
 
+  getAudioUrl() {
+    throw new Error("getAudioUrl() must be implemented by the WhatsApp provider.");
+  }
+
+  fetchConversationHistory() {
+    throw new Error("fetchConversationHistory() must be implemented by the WhatsApp provider.");
+  }
+
   sendNotification() {
     throw new Error("sendNotification() must be implemented by the WhatsApp provider.");
   }

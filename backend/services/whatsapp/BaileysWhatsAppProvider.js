@@ -13,11 +13,14 @@ const {
   fetchLatestBaileysVersion,
   jidNormalizedUser,
   downloadMediaMessage,
+  generateMessageID,
 } = require("@whiskeysockets/baileys");
 const WhatsAppProvider = require("./WhatsAppProvider");
-const { phoneDigits, normalizeWhatsAppPhone, messageStatusFromBaileys, messageStatusAfterSend } = require("./phoneUtils");
+const { phoneDigits, normalizeWhatsAppPhone, irmaDoNove, messageStatusFromBaileys, messageStatusAfterSend } = require("./phoneUtils");
 const conversationStatus = require("./conversationStatus");
+const chatJidStore = require("./chatJidStore");
 const { convertToOggOpus } = require("./audioConverter");
+const incomingAudio = require("./incomingAudioService");
 const { supabase, isConfigured: supabaseConfigured } = require("../../config/supabase");
 const { ApiError } = require("../../middleware/errorHandler");
 
@@ -42,6 +45,27 @@ function messageText(message) {
 function timestampFromMessage(msg) {
   const seconds = Number(msg?.messageTimestamp || 0);
   return seconds ? new Date(seconds * 1000).toISOString() : new Date().toISOString();
+}
+/* Rótulo de quem mandou quando a mensagem saiu do APP do WhatsApp, e não do CRM.
+   O front usa essa string exata para escrever "pelo celular" na bolha. */
+const ENVIADA_PELO_CELULAR = "WhatsApp do celular";
+/* Uma mensagem chega viva (notificação de agora), atrasada (o celular entregando
+   o que estava offline) ou dentro de um lote de histórico. Só a viva pode mexer
+   no status do atendimento e contar como não lida: senão seis meses de papo
+   antigo viram "🟠 Respondido" na tela do Erick. */
+const MENSAGEM_VIVA_MS = 5 * 60 * 1000;
+function mensagemViva(timestamp) {
+  const quando = Date.parse(timestamp);
+  return Number.isFinite(quando) && Date.now() - quando <= MENSAGEM_VIVA_MS;
+}
+/* Um await que não pode travar o resto do atendimento: o servidor do WhatsApp
+   some com mídia antiga, e a mensagem precisa entrar mesmo assim. */
+function withTimeout(promise, ms, mensagem) {
+  let timer;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(mensagem)), ms); timer.unref?.(); }),
+  ]).finally(() => clearTimeout(timer));
 }
 function assertSupabase() {
   if (!supabaseConfigured || !supabase) throw new ApiError(503, "Configure o Supabase para armazenar as conversas do WhatsApp.");
@@ -76,6 +100,7 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     this.phoneNumber = null;
     this.accountName = null;
     this.lastSyncAt = null;
+    this.lastHistoryImportAt = null;
     this.errors = [];
     this.connectPromise = null;
     this.startRequestedPhone = null;
@@ -104,6 +129,9 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
       phoneNumber: this.phoneNumber,
       accountName: this.accountName,
       lastSyncAt: this.lastSyncAt,
+      /* Última vez que o celular mandou um lote de mensagens antigas. Serve de
+         prova visível de que o pedido funcionou. */
+      lastHistoryImportAt: this.lastHistoryImportAt,
       pendingMessages: 0,
       errors: this.errors.slice(-5),
       qrImage: this.qrImage,
@@ -151,6 +179,11 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     sock.ev.on("creds.update", saveCreds);
 
     sock.ev.on("messages.upsert", event => { this.handleIncoming(event).catch(error => this.errors.push(error.message || String(error))); });
+    /* O lote de mensagens antigas que o celular devolve (resposta ao pedido
+       sob demanda, ou empurrão inicial de quem acabou de parear). */
+    sock.ev.on("messaging-history.set", payload => {
+      this.importarHistorico(payload).catch(error => this.errors.push(`Não consegui importar o histórico do WhatsApp: ${error.message || error}`));
+    });
     sock.ev.on("messages.update", updates => {
       this.handleMessageUpdates(updates).catch(error => this.errors.push(error.message || String(error)));
     });
@@ -342,6 +375,50 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     return this.getConversation(row.id);
   }
 
+  async conversaPorTelefone(phone) {
+    assertSupabase();
+    const clean = normalizeWhatsAppPhone(phone);
+    if (!clean) return null;
+    const { data, error } = await supabase.from("whatsapp_conversations").select("*").eq("phone", clean).maybeSingle();
+    if (error) throw databaseError(error, "Falha ao procurar a conversa pelo telefone.");
+    return data || null;
+  }
+
+  /* A conversa tem pelo menos uma mensagem? É o que separa o cadastro certo de
+     uma ficha fantasma: a que sobrou de um eco antigo fica vazia para sempre. */
+  async conversaTemMensagens(id) {
+    assertSupabase();
+    if (!id) return false;
+    const { data, error } = await supabase.from("whatsapp_messages").select("id").eq("conversation_id", id).limit(1);
+    if (error) throw databaseError(error, "Falha ao contar as mensagens da conversa.");
+    return (data || []).length > 0;
+  }
+
+  /* O mesmo celular pode estar cadastrado sem o 9º dígito (o Google costuma
+     mostrar assim) enquanto o WhatsApp do cliente é o número com o 9 — ou vice
+     versa. Se já existe uma conversa AQUELA com mensagens no número irmão, é
+     ela que representa o cliente: abrir conversa para o número do cadastro era
+     o que deixava o mesmo nome duas vezes no menu do WhatsApp. */
+  async conversaIrmaComMensagens(phone) {
+    const irma = await this.conversaIrma(phone);
+    if (!irma) return null;
+    return (await this.conversaTemMensagens(irma.id)) ? irma : null;
+  }
+
+  /* A ficha do número irmão, com ou sem mensagens. É a peça que fecha o bug que
+     ele ainda vê na tela: o cliente responde pelo WhatsApp dele (com o 9) e o
+     CRM, procurando apenas o número EXATO do cadastro, criava outra conversa —
+     duas fichas do mesmo cliente no menu. Antes de INSERIR qualquer conversa,
+     ensureConversation consulta primeiro esta função. */
+  async conversaIrma(phone) {
+    assertSupabase();
+    const irma = irmaDoNove(normalizeWhatsAppPhone(phone) || phone);
+    if (!irma) return null;
+    const { data, error } = await supabase.from("whatsapp_conversations").select("*").eq("phone", irma).limit(1);
+    if (error) throw databaseError(error, "Falha ao procurar a conversa do número irmão.");
+    return (data || [])[0] || null;
+  }
+
   /* Atendente abriu a conversa: "Novo" e "Respondido" passam a
      "Atendimento iniciado". Resolvido/Cancelado/Arquivado e "Aguardando
      resposta" são preservados — a abertura sozinha não reabre um caso encerrado. */
@@ -391,16 +468,42 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     if (msgError) throw databaseError(msgError, "Falha ao consultar mensagens do WhatsApp.");
     const { error: updateError } = await supabase.from("whatsapp_conversations").update({ unread_count: 0 }).eq("id", id);
     if (updateError) throw databaseError(updateError, "Falha ao atualizar a conversa do WhatsApp.");
-    return { ...this.mapConversation(row), messages: (messages || []).map(m => ({ id: m.id, direction: m.direction, content: m.content, timestamp: m.timestamp, status: m.status, sentBy: m.sent_by || null })) };
+    return { ...this.mapConversation(row), messages: (messages || []).map(m => ({ id: m.id, direction: m.direction, content: m.content, timestamp: m.timestamp, status: m.status, sentBy: m.sent_by || null, hasAudio: incomingAudio.isAudioContent(m.content) })) };
+  }
+
+  /* O link do áudio é assinado agora, no clique, e não junto com a conversa: a
+     conversa volta a ser lida a cada sincronização e cada assinatura é um pedido
+     ao Supabase. */
+  async getAudioUrl(conversationId, messageId) {
+    assertSupabase();
+    const { data: message, error } = await supabase
+      .from("whatsapp_messages")
+      .select("id, content")
+      .eq("id", messageId)
+      .eq("conversation_id", conversationId)
+      .maybeSingle();
+    if (error) throw databaseError(error, "Falha ao consultar a mensagem de áudio.");
+    if (!message) throw new ApiError(404, "Esta mensagem não existe nesta conversa.");
+    if (!incomingAudio.isAudioContent(message.content)) {
+      throw new ApiError(404, "Esta mensagem não tem um áudio guardado. As vozes recebidas antes de o CRM aprender a ouvir não ficaram salvas — peça para o cliente mandar de novo.");
+    }
+    const url = await incomingAudio.signedUrlForObject(incomingAudio.objectPath(conversationId, messageId));
+    if (!url) throw new ApiError(502, `O Supabase não devolveu o link do áudio. Confira se o bucket ${incomingAudio.bucketName()} existe no projeto.`);
+    return { url };
   }
 
   async deleteConversation(id) {
     assertSupabase();
-    const { data: row, error: findError } = await supabase.from("whatsapp_conversations").select("id").eq("id", id).maybeSingle();
+    const { data: row, error: findError } = await supabase.from("whatsapp_conversations").select("id, phone").eq("id", id).maybeSingle();
     if (findError) throw databaseError(findError, "Falha ao consultar a conversa do WhatsApp.");
     if (!row) return false;
     const { error } = await supabase.from("whatsapp_conversations").delete().eq("id", id);
     if (error) throw databaseError(error, "Não foi possível excluir a conversa do WhatsApp.");
+    /* A conversa sumiu do banco; os áudios dela somem do Storage junto, e o JID
+       que servia de âncora para pedir mensagens antigas perde o sentido. */
+    chatJidStore.esquecerJid(row.phone);
+    await incomingAudio.removeAudioFromConversation(id)
+      .catch(error => console.warn("[audio] Não consegui limpar os áudios da conversa excluída:", error?.message || error));
     this.lastSyncAt = new Date().toISOString();
     return true;
   }
@@ -411,6 +514,45 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     const existing = await supabase.from("whatsapp_conversations").select("*").eq("phone", clean).maybeSingle();
     if (existing.error) throw databaseError(existing.error, "Falha ao consultar a conversa recebida.");
     let data = existing.data;
+    /* A ficha EXATA pode existir e estar VAZIA: é ela que o número do cadastro
+       criou, e ninguém nunca falou por aquele número. Se o irmão tem mensagens, é
+       o irmão que representa o cliente — e a conversa do mesmo celular continuaria
+       dividida em duas fichas, metade das mensagens de um lado, metade do outro. */
+    if (data && !(await this.conversaTemMensagens(data.id))) {
+      const irmaComMensagens = await this.conversaIrmaComMensagens(clean);
+      if (irmaComMensagens) {
+        console.log(`[whatsapp] A ficha ${clean} está vazia e o número irmão ${irmaComMensagens.phone} tem histórico: a mensagem vai para a que já tem conversa.`);
+        data = irmaComMensagens;
+      }
+    }
+    if (!data) {
+      /* O número que chegou — resposta do cliente, eco do celular, lote de
+         histórico — pode ser o irmão com/sem o 9º dígito da conversa que já
+         está no CRM. Reaproveitar aquela é a regra: foi criar a linha nova a
+         partir daqui que o mesmo cliente ficou em dois chats separados. */
+      data = await this.conversaIrma(clean);
+      if (data) {
+        console.log(`[whatsapp] ${clean} é o mesmo celular de ${data.phone}: a mensagem entra na conversa que já existe, sem abrir segunda ficha.`);
+        /* A irmã está VAZIA (zero mensagens): é ficha fantasma, nascida do número
+           do cadastro, e ninguém nunca falou por aquele número. Quem tem tráfego
+           de verdade é o número que acabou de chegar, então a ficha passa a levar
+           este número — sobra uma ficha só, já com o número pelo qual o cliente
+           realmente fala. Com mensagens na irmã nada é renomeado: a que tem
+           histórico manda, e trocar o número a cada mensagem faria ele pular de
+           um lado para o outro entre as duas formas do mesmo celular. */
+        if (!(await this.conversaTemMensagens(data.id))) {
+          const renomeada = await this.reancorarNumero(data.id, clean)
+            .catch(error => {
+              console.warn("[whatsapp] A mensagem entrou na conversa vazia da irmã, mas não consegui renomear o número dela:", error?.message || error);
+              return false;
+            });
+          if (renomeada) {
+            console.log(`[whatsapp] Ficha vazia ${data.phone} passou a ser ${clean}: o número do cadastro morreu, o atendimento continua na mesma conversa.`);
+            data = { ...data, phone: clean };
+          }
+        }
+      }
+    }
     if (!data) {
       const created = await supabase.from("whatsapp_conversations").insert({ phone: clean, contact_name: contactName || clean, company, status: conversationStatus.DEFAULT_STATUS, unread_count: 0, updated_at: new Date().toISOString() }).select().single();
       if (created.error?.code === "23505") {
@@ -442,6 +584,57 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     return data;
   }
 
+  /* para o envio: qual JID usar. O número do cadastro pode estar na outra forma
+     do mesmo celular (com/sem o 9º dígito), e o WhatsApp responde "não
+     encontrado" para a forma errada — enquanto o cliente manda mensagem pelo
+     número dele normalmente. Então testamos o número da ficha, o irmão de 9º
+     dígito e o JID visto na última mensagem deste contato, e enviamos pelo que
+     o WhatsApp confirmar. */
+  async resolverDestino(phone) {
+    const candidatos = [phone];
+    const irma = irmaDoNove(phone);
+    if (irma) candidatos.push(irma);
+    const guardado = chatJidStore.jidDe(phone);
+    /* Só presta como sugestão de número o JID que é telefone (@s.whatsapp.net);
+       LID (xxx@lid) não é número e não vai para o onWhatsApp. */
+    if (guardado && guardado.endsWith("@s.whatsapp.net")) {
+      const visto = jidToPhone(guardado);
+      if (visto && !candidatos.includes(visto)) candidatos.push(visto);
+    }
+    const jids = candidatos.map(c => jidNormalizedUser(`${c}@s.whatsapp.net`));
+    let matches;
+    try {
+      matches = await this.sock.onWhatsApp(jids.join(","));
+    } catch (error) {
+      throw new ApiError(502, `Não foi possível validar o número no WhatsApp. Tente novamente.${error?.message ? ` (${error.message})` : ""}`);
+    }
+    for (let i = 0; i < jids.length; i++) {
+      const achou = (matches || []).find(match => match?.exists && jidToPhone(match.jid || "") === candidatos[i]);
+      if (achou) {
+        return {
+          jid: jidNormalizedUser(achou.jid || jids[i]),
+          phone: candidatos[i],
+          daFicha: phone,
+          trocou: candidatos[i] !== phone,
+        };
+      }
+    }
+    return null;
+  }
+
+  /* A ficha passa a mostrar o número pelo qual o WhatsApp realmente atende. Só
+     faz isso quando não existe outra conversa naquele número: enquanto houver
+     ficha duplicada, mexer no telefone criaria conflito no lugar do merge. */
+  async reancorarNumero(id, novoPhone) {
+    assertSupabase();
+    const { data: jaTem, error: lookupError } = await supabase.from("whatsapp_conversations").select("id").eq("phone", novoPhone).limit(1);
+    if (lookupError) throw databaseError(lookupError, "Falha ao conferir o número da conversa.");
+    if ((jaTem || []).length) return false;
+    const { error } = await supabase.from("whatsapp_conversations").update({ phone: novoPhone }).eq("id", id);
+    if (error) throw databaseError(error, "A mensagem saiu, mas não consegui ajustar o número da conversa.");
+    return true;
+  }
+
   async sendText(id, content, sentBy) {
     assertSupabase();
     if (!this.sock || this.status !== "CONNECTED") throw new ApiError(409, "Conecte o WhatsApp via Baileys antes de enviar mensagens.");
@@ -450,35 +643,50 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     if (!conversation) return null;
     const phone = normalizeWhatsAppPhone(conversation.phone);
     if (!phone) throw new ApiError(400, "O contato não tem um número de telefone válido para o WhatsApp.");
-    const phoneJid = jidNormalizedUser(`${phone}@s.whatsapp.net`);
-    let recipient;
-    try {
-      const matches = await this.sock.onWhatsApp(phoneJid);
-      recipient = matches?.find(match => match.exists && match.jid);
-    } catch (error) {
-      throw new ApiError(502, `Não foi possível validar o número no WhatsApp. Tente novamente.${error?.message ? ` (${error.message})` : ""}`);
-    }
-    if (!recipient) {
+    const destino = await this.resolverDestino(phone);
+    if (!destino) {
       throw new ApiError(400, "Este número não foi encontrado no WhatsApp. Confira o DDI, DDD e número cadastrado no lead.");
     }
+    if (destino.trocou) {
+      console.log(`[whatsapp] A ficha estava em ${phone}, mas a conta do cliente atende por ${destino.phone}; o envio sai por ele.`);
+      await this.reancorarNumero(id, destino.phone)
+        .catch(error => console.warn("[whatsapp] Enviei a mensagem, mas não consegui ajustar o número da conversa:", error?.message || error));
+    }
+    /* O ID é gerado ANTES de enviar e entregue ao Baileys. A cópia desta mensagem
+       volta pelo messages.upsert (fromMe) quase junto com o retorno, e às vezes
+       com outro JID — o WhatsApp devolve o número sem o 9º dígito, ou um LID no
+       lugar do telefone. Se a linha já estiver gravada nesta conversa quando o eco
+       chegar, o eco reaproveita a conversa certa em vez de abrir uma segunda para
+       o mesmo cliente. */
+    const messageId = generateMessageID();
+    const timestamp = new Date().toISOString();
+    const rascunho = await supabase.from("whatsapp_messages").insert({ id: messageId, conversation_id: id, direction: "outgoing", content, timestamp, status: "pending", sent_by: sentBy || null, provider_message_id: messageId });
+    if (rascunho.error) throw databaseError(rascunho.error, "Não foi possível anotar a mensagem antes do envio.");
     let sent;
     try {
-      sent = await this.sock.sendMessage(jidNormalizedUser(recipient.jid), { text: content });
+      sent = await this.sock.sendMessage(destino.jid, { text: content }, { messageId });
     } catch (error) {
+      await supabase.from("whatsapp_messages").delete().eq("id", messageId);
       const reason = error?.message ? ` (${error.message})` : "";
       throw new ApiError(502, `O WhatsApp não aceitou o envio da mensagem${reason}.`);
     }
-    const messageId = sent?.key?.id || randomUUID();
-    const timestamp = new Date().toISOString();
+    chatJidStore.registrarJid(phone, destino.jid);
+    if (destino.trocou) chatJidStore.registrarJid(destino.phone, destino.jid);
+    /* Se o WhatsApp tiver usado outro ID, a linha passa a usar o ID dele — é com
+       esse ID que o celular vai bater na porta de novo. */
+    const idReal = sent?.key?.id || messageId;
     const initialStatus = messageStatusAfterSend(
-      this.recentMessageStatuses.get(messageId) || sent?.status
+      this.recentMessageStatuses.get(idReal) || sent?.status
     );
-    const { data: saved, error } = await supabase.from("whatsapp_messages").insert({ id: messageId, conversation_id: id, direction: "outgoing", content, timestamp, status: initialStatus, sent_by: sentBy || null, provider_message_id: messageId }).select().single();
+    /* Upsert, e não insert: vale tanto para atualizar o rascunho acima quanto para
+       sobreviver a um eco que tenha chegado no meio do envio. */
+    const { data: saved, error } = await supabase.from("whatsapp_messages").upsert({ id: idReal, conversation_id: id, direction: "outgoing", content, timestamp, status: initialStatus, sent_by: sentBy || null, provider_message_id: idReal }, { onConflict: "id" }).select().single();
     if (error) throw databaseError(error, "A mensagem foi enviada ao WhatsApp, mas não foi possível salvar o histórico.");
-    const receiptStatus = this.recentMessageStatuses.get(messageId);
-    this.recentMessageStatuses.delete(messageId);
+    if (idReal !== messageId) await supabase.from("whatsapp_messages").delete().eq("id", messageId);
+    const receiptStatus = this.recentMessageStatuses.get(idReal);
+    this.recentMessageStatuses.delete(idReal);
     if (receiptStatus && receiptStatus !== initialStatus) {
-      const receiptUpdate = await supabase.from("whatsapp_messages").update({ status: receiptStatus }).eq("provider_message_id", messageId);
+      const receiptUpdate = await supabase.from("whatsapp_messages").update({ status: receiptStatus }).eq("provider_message_id", idReal);
       if (receiptUpdate.error) throw databaseError(receiptUpdate.error, "Não foi possível salvar a confirmação de entrega da mensagem.");
     }
     const updated = await supabase.from("whatsapp_conversations").update({ status: conversationStatus.nextOnOutgoing(conversation.status), updated_at: timestamp }).eq("id", id);
@@ -495,15 +703,15 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     if (!conversation) return null;
     const phone = normalizeWhatsAppPhone(conversation.phone);
     if (!phone) throw new ApiError(400, "O contato não tem um número de telefone válido para o WhatsApp.");
-    const phoneJid = jidNormalizedUser(`${phone}@s.whatsapp.net`);
-    let recipient;
-    try {
-      const matches = await this.sock.onWhatsApp(phoneJid);
-      recipient = matches?.find(match => match.exists && match.jid);
-    } catch (error) {
-      throw new ApiError(502, `Não foi possível validar o número no WhatsApp. Tente novamente.${error?.message ? ` (${error.message})` : ""}`);
+    /* Mesmo caminho do envio de texto: pelo número da ficha, pelo irmão de 9º
+       dígito ou pelo JID visto na última mensagem — vale o que o WhatsApp
+       confirmar, e a conversa é sempre a mesma. */
+    const destino = await this.resolverDestino(phone);
+    if (!destino) throw new ApiError(400, "Este número não foi encontrado no WhatsApp. Confira o DDI, DDD e número cadastrado no lead.");
+    if (destino.trocou) {
+      await this.reancorarNumero(id, destino.phone)
+        .catch(error => console.warn("[whatsapp] Enviei o arquivo, mas não consegui ajustar o número da conversa:", error?.message || error));
     }
-    if (!recipient) throw new ApiError(400, "Este número não foi encontrado no WhatsApp. Confira o DDI, DDD e número cadastrado no lead.");
 
     let payload;
     const content = caption || (kind === "image" ? "[Imagem enviada]" : "[Áudio enviado]");
@@ -522,31 +730,41 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
         ptt: kind === "voice",
       };
     }
+    /* Mesmo cuidado do envio de texto: a linha nasce antes, com o ID que vamos
+       usar no envio, para o eco do celular não abrir uma segunda conversa. */
+    const messageId = generateMessageID();
+    const timestamp = new Date().toISOString();
+    const rascunho = await supabase.from("whatsapp_messages").insert({ id: messageId, conversation_id: id, direction: "outgoing", content, timestamp, status: "pending", sent_by: sentBy || null, provider_message_id: messageId });
+    if (rascunho.error) throw databaseError(rascunho.error, "Não foi possível anotar o arquivo antes do envio.");
     let sent;
     try {
-      sent = await this.sock.sendMessage(jidNormalizedUser(recipient.jid), payload);
+      sent = await this.sock.sendMessage(destino.jid, payload, { messageId });
     } catch (error) {
+      await supabase.from("whatsapp_messages").delete().eq("id", messageId);
       const reason = error?.message ? ` (${error.message})` : "";
       throw new ApiError(502, `O WhatsApp não aceitou o envio do arquivo${reason}.`);
     }
-
-    const messageId = sent?.key?.id || randomUUID();
-    const timestamp = new Date().toISOString();
+    chatJidStore.registrarJid(phone, destino.jid);
+    if (destino.trocou) chatJidStore.registrarJid(destino.phone, destino.jid);
+    /* Se o WhatsApp usou outro ID, a linha passa a carregar o ID dele: é com esse
+       ID que o celular bate de novo na porta. */
+    const idReal = sent?.key?.id || messageId;
     const initialStatus = messageStatusAfterSend(
-      this.recentMessageStatuses.get(messageId) || sent?.status
+      this.recentMessageStatuses.get(idReal) || sent?.status
     );
-    const { data: saved, error } = await supabase.from("whatsapp_messages").insert({
-      id: messageId,
+    const { data: saved, error } = await supabase.from("whatsapp_messages").upsert({
+      id: idReal,
       conversation_id: id,
       direction: "outgoing",
       content,
       timestamp,
       status: initialStatus,
       sent_by: sentBy || null,
-      provider_message_id: messageId,
-    }).select().single();
+      provider_message_id: idReal,
+    }, { onConflict: "id" }).select().single();
     if (error) throw databaseError(error, "O arquivo foi enviado ao WhatsApp, mas não foi possível salvar o histórico.");
-    this.recentMessageStatuses.delete(messageId);
+    if (idReal !== messageId) await supabase.from("whatsapp_messages").delete().eq("id", messageId);
+    this.recentMessageStatuses.delete(idReal);
     const updated = await supabase.from("whatsapp_conversations").update({
       status: conversationStatus.nextOnOutgoing(conversation.status),
       updated_at: timestamp,
@@ -599,23 +817,235 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     }
   }
 
+  /* O áudio que o CLIENTE manda era o que mais se perdia: o Baileys entrega o
+     arquivo e o CRM gravava só o rótulo "[Áudio]", então ninguém ouvia nada
+     pela tela e a IA sugeria resposta sem saber o que ele falou. Aqui o arquivo
+     vai para o Supabase Storage e o texto da mensagem vira a transcrição.
+     Nada aqui pode derrubar a mensagem: falhou o áudio, o "[Áudio]" continua
+     na tela igual antes. */
+  async armarAudioDoCliente(msg, conversationId, messageId) {
+    const audio = msg?.message?.audioMessage;
+    if (!audio) return null;
+    const mimetype = String(audio.mimetype || "audio/ogg; codecs=opus");
+
+    let buffer;
+    try {
+      buffer = await withTimeout(
+        downloadMediaMessage(msg, "buffer", { maxByteLength: incomingAudio.MAX_AUDIO_BYTES }),
+        45000,
+        "o download do áudio do WhatsApp demorou demais",
+      );
+    } catch (error) {
+      console.warn(`[audio] ${error?.message || "download falhou"} — a mensagem fica sem o arquivo.`);
+      return null;
+    }
+    if (!buffer?.length) {
+      console.warn("[audio] O WhatsApp devolveu o áudio vazio — a mensagem fica sem o arquivo.");
+      return null;
+    }
+
+    const path = await incomingAudio.uploadAudio({ conversationId, messageId, buffer, mimetype });
+
+    /* Música e áudio de arquivo (ptt = false) não viram fala: só a nota de voz
+       do cliente é transcrita. */
+    const ehNotaDeVoz = audio.ptt !== false;
+    const transcricao = ehNotaDeVoz
+      ? await incomingAudio.transcribeAudio(buffer, mimetype)
+      : { text: "", reason: "não é nota de voz" };
+    const content = incomingAudio.transcriptContent(transcricao.text);
+
+    const { error } = await supabase.from("whatsapp_messages").update({ content }).eq("id", messageId);
+    if (error) console.warn("[audio] Áudio guardado, mas não consegui trocar o texto da mensagem:", error.message);
+    console.log(`[audio] Áudio do cliente em ${path}${transcricao.text ? ` — transcrito (${transcricao.text.length} caracteres, ${transcricao.model})` : ` — sem transcrição (${transcricao.reason})`}`);
+    return { path, content };
+  }
+
   async handleIncoming(upsert) {
     if (upsert?.type && !["notify", "append"].includes(upsert.type)) return;
     for (const msg of upsert?.messages || []) {
-      if (!msg?.message || msg.key?.fromMe) continue;
-      const phone = incomingPhone(msg.key);
-      if (!phone) continue;
-      const content = messageText(msg);
-      const contactName = msg.pushName || phone;
-      const timestamp = timestampFromMessage(msg);
-      const conversation = await this.ensureConversation(phone, contactName);
-      const messageId = msg.key?.id || randomUUID();
-      const inserted = await supabase.from("whatsapp_messages").upsert({ id: messageId, conversation_id: conversation.id, direction: "incoming", content, timestamp, status: "delivered", provider_message_id: messageId }, { onConflict: "id" });
-      if (inserted.error) throw databaseError(inserted.error, "Não foi possível salvar a mensagem recebida.");
-      const updated = await supabase.from("whatsapp_conversations").update({ status: conversationStatus.nextOnIncoming(conversation.status), unread_count: (conversation.unread_count || 0) + 1, updated_at: timestamp, contact_name: contactName || conversation.contact_name }).eq("id", conversation.id);
-      if (updated.error) throw databaseError(updated.error, "Não foi possível atualizar a conversa recebida.");
+      /* Antes toda mensagem com key.fromMe era jogada fora, então o que ele
+         digitava no APP do WhatsApp nunca aparecia no CRM. Agora ela entra como
+         saída — a cópia chega pelo mesmo canal da recebida. */
+      const gravada = await this.persistirMensagem(msg, { origem: "tempo-real" });
+      if (!gravada || gravada.duplicada) continue;
+      if (msg?.message?.audioMessage && !msg.key?.fromMe) {
+        await this.armarAudioDoCliente(msg, gravada.conversationId, gravada.messageId)
+          .catch(error => console.warn("[audio] Preparei mal o áudio recebido:", error?.message || error));
+      }
+    }
+  }
+
+  /* Uma mensagem do Baileys virando linha no banco, dos dois lados. `origem`
+     separa o que está acontecendo agora do que é passado chegando em lote: só o
+     "tempo-real" mexe no status do atendimento e conta como não lida. */
+  async persistirMensagem(msg, { origem = "tempo-real", nomeDoContato = null } = {}) {
+    assertSupabase();
+    if (!msg?.message || !msg.key?.remoteJid) return null;
+    /* Protocolo não é conversa: é o próprio pedido de histórico indo e vindo, e
+       um "[Mensagem não textual]" na tela só confundiria o atendimento. */
+    if (msg.message.protocolMessage) return null;
+    const phone = incomingPhone(msg.key);
+    if (!phone) return null;
+    const enviada = Boolean(msg.key.fromMe);
+    /* O papo do CRM com o PRÓPRIO número (os lembretes de follow-up que o
+       backend manda para o celular dele) não é atendimento: sem esta linha cada
+       aviso viraria uma conversa nova no menu do WhatsApp. */
+    if (enviada && this.phoneNumber && phone === this.phoneNumber) return null;
+    /* A linha desta mensagem já existe? Então a conversa dela já está decidida.
+       Sem esta checagem, a cópia que o celular devolve de um envio do CRM — que
+       às vezes volta com outro JID, porque o WhatsApp troca o número pelo LID ou
+       pelo telefone sem o 9º dígito — criava uma conversa vazia para o mesmo
+       cliente, e ele aparecia duas vezes no menu do WhatsApp. */
+    const idDaMensagem = typeof msg.key?.id === "string" && msg.key.id ? msg.key.id : null;
+    if (idDaMensagem) {
+      const existente = await supabase.from("whatsapp_messages").select("conversation_id").eq("id", idDaMensagem).maybeSingle();
+      if (existente.error) throw databaseError(existente.error, "Falha ao consultar a mensagem do WhatsApp.");
+      if (existente.data) return { duplicada: true, conversationId: existente.data.conversation_id, messageId: idDaMensagem };
+    }
+    chatJidStore.registrarJid(phone, msg.key.remoteJid);
+
+    const content = messageText(msg);
+    const timestamp = timestampFromMessage(msg);
+    /* Numa mensagem minha o pushName é o MEU nome, nunca o do cliente — por isso
+       o nome só é aproveitado no lado recebido. */
+    const conversa = await this.ensureConversation(
+      phone,
+      enviada ? nomeDoContato : (nomeDoContato || msg.pushName || phone)
+    );
+    const messageId = msg.key?.id || randomUUID();
+    const linha = {
+      id: messageId,
+      conversation_id: conversa.id,
+      direction: enviada ? "outgoing" : "incoming",
+      content,
+      timestamp,
+      status: enviada ? messageStatusAfterSend(msg.status) : "delivered",
+      sent_by: enviada ? ENVIADA_PELO_CELULAR : null,
+      provider_message_id: msg.key?.id || null,
+    };
+    const inserida = await supabase.from("whatsapp_messages").insert(linha);
+    if (inserida.error && inserida.error.code !== "23505") {
+      throw databaseError(inserida.error, "Não foi possível salvar a mensagem do WhatsApp.");
+    }
+    /* 23505 = a mensagem já estava lá (cópia do que o próprio CRM enviou, ou um
+       lote que se repetiu). Não se reescreve o sent_by nem se conta de novo. */
+    if (inserida.error) return { duplicada: true, conversationId: conversa.id, messageId };
+
+    const patch = {};
+    if (origem === "tempo-real" && mensagemViva(timestamp)) {
+      patch.status = enviada
+        ? conversationStatus.nextOnOutgoing(conversa.status)
+        : conversationStatus.nextOnIncoming(conversa.status);
+      if (!enviada) patch.unread_count = (conversa.unread_count || 0) + 1;
       this.lastSyncAt = timestamp;
     }
+    /* Histórico velho não puxa a conversa para o topo da lista; só uma atividade
+       mais recente que a última registrada faz isso. */
+    if ((Date.parse(timestamp) || 0) > (Date.parse(conversa.updated_at || "") || 0)) {
+      patch.updated_at = timestamp;
+    }
+    if (Object.keys(patch).length) {
+      const atualizado = await supabase.from("whatsapp_conversations").update(patch).eq("id", conversa.id);
+      if (atualizado.error) throw databaseError(atualizado.error, "Não foi possível atualizar a conversa do WhatsApp.");
+    }
+    return { duplicada: false, conversationId: conversa.id, messageId, direction: linha.direction };
+  }
+
+  /* Lote de mensagens antigas que o celular devolveu. Chega fora de ordem e em
+     vários pacotes; nada aqui reabre atendimento nem marca não lido. */
+  async importarHistorico(payload) {
+    const mensagens = Array.isArray(payload?.messages) ? payload.messages : [];
+    const chats = Array.isArray(payload?.chats) ? payload.chats : [];
+    const contatos = Array.isArray(payload?.contacts) ? payload.contacts : [];
+    if (!mensagens.length && !chats.length) return null;
+    assertSupabase();
+
+    /* Nome que o celular dá ao contato: é melhor que o número puro. */
+    const nomes = new Map();
+    const registrarNome = (key, nome) => {
+      const phone = incomingPhone({ remoteJid: key });
+      if (phone && nome && !nomes.has(phone)) nomes.set(phone, String(nome).slice(0, 80));
+    };
+    for (const contato of contatos) registrarNome(contato?.id, contato?.name || contato?.notify);
+    for (const chat of chats) registrarNome(chat?.id, chat?.name || chat?.displayName);
+
+    let importadas = 0;
+    let repetidas = 0;
+    for (const msg of mensagens) {
+      const phone = incomingPhone(msg?.key);
+      const gravada = await this.persistirMensagem(msg, {
+        origem: "historico",
+        nomeDoContato: phone ? nomes.get(phone) : null,
+      });
+      if (!gravada) continue;
+      if (gravada.duplicada) repetidas++;
+      else importadas++;
+    }
+    this.lastHistoryImportAt = new Date().toISOString();
+    console.log(`[historico] Importadas ${importadas} mensagens antigas (${repetidas} já estavam no CRM), de ${chats.length} conversa(s) no lote.`);
+    return { importadas, repetidas, conversas: chats.length };
+  }
+
+  /* "Puxe as mensagens antigas desta conversa": o celular só entrega o que vem
+     ANTES de uma mensagem que ele reconhece, então a âncora é a mensagem mais
+     antiga que o CRM já tem. O retorno é o pedido; as mensagens chegam depois,
+     pelo messaging-history.set. */
+  async fetchConversationHistory(id, quantidade = 50) {
+    assertSupabase();
+    if (!this.sock || this.status !== "CONNECTED") {
+      throw new ApiError(409, "Conecte o WhatsApp via Baileys antes de puxar as mensagens antigas.");
+    }
+    if (typeof this.sock.fetchMessageHistory !== "function") {
+      throw new ApiError(503, "Esta versão do Baileys não sabe pedir mensagens antigas ao WhatsApp.");
+    }
+    const { data: conversa, error } = await supabase.from("whatsapp_conversations").select("*").eq("id", id).maybeSingle();
+    if (error) throw databaseError(error, "Falha ao consultar a conversa do WhatsApp.");
+    if (!conversa) return null;
+
+    const { data: ancora, error: erroAncora } = await supabase
+      .from("whatsapp_messages")
+      .select("id, provider_message_id, direction, timestamp")
+      .eq("conversation_id", id)
+      .not("provider_message_id", "is", null)
+      .order("timestamp", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (erroAncora) throw databaseError(erroAncora, "Falha ao consultar a mensagem mais antiga da conversa.");
+    if (!ancora?.provider_message_id) {
+      throw new ApiError(409, "O CRM ainda não tem nenhuma mensagem desta conversa, então não há o que pedir ao celular — mande ou receba uma mensagem nela primeiro.");
+    }
+
+    /* O JID real do chat, não o número: conversa identificada por LID
+       simplesmente não responderia se pedíssemos pelo telefone. */
+    const jid = chatJidStore.jidDe(conversa.phone)
+      || jidNormalizedUser(`${normalizeWhatsAppPhone(conversa.phone)}@s.whatsapp.net`);
+    const chave = {
+      remoteJid: jid,
+      fromMe: ancora.direction === "outgoing",
+      id: ancora.provider_message_id,
+    };
+    const segundos = Math.floor(Date.parse(ancora.timestamp) / 1000);
+
+    let pedido;
+    try {
+      pedido = await withTimeout(
+        this.sock.fetchMessageHistory(quantidade, chave, segundos),
+        30000,
+        "o celular não respondeu ao pedido de mensagens antigas em 30 segundos",
+      );
+    } catch (error) {
+      throw new ApiError(
+        502,
+        `O WhatsApp não aceitou mandar as mensagens antigas${error?.message ? ` (${error.message})` : ""}. Confira se o celular está com internet e com o WhatsApp aberto, e tente de novo.`
+      );
+    }
+    console.log(`[historico] Pedi ao celular ${quantidade} mensagens anteriores de ${conversa.phone} (antes de ${ancora.timestamp}).`);
+    return {
+      conversationId: id,
+      quantidade,
+      ate: ancora.timestamp,
+      requestId: typeof pedido === "string" ? pedido : null,
+    };
   }
 
   async simulateIncomingMessage() { throw new ApiError(404, "A simulação foi removida. As mensagens reais entram pelo WhatsApp conectado via Baileys."); }

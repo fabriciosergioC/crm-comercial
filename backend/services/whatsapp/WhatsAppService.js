@@ -32,6 +32,8 @@ class VercelWhatsAppProvider extends WhatsAppProvider {
   getConversation() { return this.unavailable(); }
   sendText() { return this.unavailable(); }
   sendMedia() { return this.unavailable(); }
+  getAudioUrl() { return this.unavailable(); }
+  fetchConversationHistory() { return this.unavailable(); }
   sendNotification() { return this.unavailable(); }
   deleteConversation() { return this.unavailable(); }
   markConversationOpen() { return this.unavailable(); }
@@ -51,9 +53,26 @@ class WhatsAppService {
     if (!phone) {
       throw new ApiError(400, "Este lead não tem um número de WhatsApp ou telefone válido cadastrado.");
     }
+    /* O lead pode ter o número sem o 9º dígito enquanto o WhatsApp do cliente é
+       o com o 9 (ou o contrário). Se a conversa com mensagens já existe no
+       número irmão, é nela que o atendimento acontece — abrir conversa para o
+       número do cadastro duplicava o cliente no menu. Uma conversa VAZIA no
+       número do lead também não segura a troca: ficha fantasma não é atendimento. */
+    let destino = phone;
+    const propria = await this.provider.conversaPorTelefone?.(phone);
+    const propriaTemMensagens = propria ? await this.provider.conversaTemMensagens?.(propria.id) : false;
+    if (!propriaTemMensagens) {
+      const irma = await this.provider.conversaIrmaComMensagens?.(phone);
+      if (irma?.phone && irma.phone !== phone) {
+        destino = irma.phone;
+        await leadsService.update(leadId, { whatsapp: irma.phone })
+          .catch(error => console.warn("[whatsapp] Achei a conversa no número irmão, mas não consegui corrigir o lead:", error?.message || error));
+        console.log(`[whatsapp] Lead ${leadId}: conversa encontrada em ${irma.phone} (o cadastro tinha ${phone}); número do lead corrigido.`);
+      }
+    }
     return this.provider.openLeadConversation({
-      phone,
-      contactName: lead.contactName || lead.company || phone,
+      phone: destino,
+      contactName: lead.contactName || lead.company || destino,
       company: lead.company || "",
     });
   }
@@ -61,6 +80,28 @@ class WhatsAppService {
     const conversation = await this.provider.getConversation(id);
     if (!conversation) throw new ApiError(404, "Conversa não encontrada.");
     return conversation;
+  }
+  /* Áudio que o cliente mandou: a URL assinada do Supabase sai aqui, no primeiro
+     clique em Tocar, e não junto com a conversa (que é recarregada o tempo todo). */
+  async getAudioUrl(id, messageId) {
+    if (typeof messageId !== "string" || !messageId.trim()) {
+      throw new ApiError(400, "Diga qual mensagem de voz você quer ouvir.");
+    }
+    const resultado = await this.provider.getAudioUrl(id, messageId.trim());
+    if (!resultado?.url) throw new ApiError(404, "Não encontramos o áudio desta mensagem.");
+    return resultado;
+  }
+
+  /* Pedido de mensagens antigas ao celular. A quantidade é cortada porque o
+     WhatsApp responde em lote e um pedido enorme travaria a fila do pareamento. */
+  async fetchConversationHistory(id, quantidade = 50) {
+    const numero = Math.round(Number(quantidade) || 50);
+    if (!Number.isFinite(numero) || numero < 1 || numero > 200) {
+      throw new ApiError(400, "Peça entre 1 e 200 mensagens antigas por vez.");
+    }
+    const resultado = await this.provider.fetchConversationHistory(id, numero);
+    if (!resultado) throw new ApiError(404, "Conversa não encontrada.");
+    return resultado;
   }
   /* Atendente abriu a conversa: aplica a transição de abertura
      (Novo / Respondido -> Atendimento iniciado) e devolve a conversa. */
