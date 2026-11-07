@@ -544,7 +544,7 @@ async function changePasswordThroughApi(userId, currentPassword, newPassword) {
   return { ok: true, data: response.data };
 }
 
-const STATUS_LIST = ["Contato pendente","Interessado","Proposta enviada","Negociação","Fechado","Perdido"];
+const STATUS_LIST = ["Contato pendente","Proposta enviada","Negociação","Fechado","Perdido"];
 /* Rótulo curto só para o botão do menu, quando UM estágio está marcado: o filtro
    continua gravando o nome inteiro, igual ao banco e ao funil. */
 const ETAPA_CURTA = { "Contato pendente": "Contato", "Proposta enviada": "Proposta" };
@@ -558,7 +558,7 @@ const SEGMENTS = ["Alimentação","Saúde","Fitness","Jurídico","Beleza","Imóv
 const PLANS = ["Site institucional","Landing page","E-commerce","Site + manutenção mensal"];
 
 const STATUS_TONE = {
-  "Contato pendente": "amber", "Interessado": "amber",
+  "Contato pendente": "amber",
   "Proposta enviada": "teal", "Negociação": "teal", "Fechado": "green", "Perdido": "red",
 };
 
@@ -715,15 +715,14 @@ const CHANNEL_ICON = {
    each card) — this grouping is purely a display concern shared by the
    Dashboard funnel and the Pipeline (Kanban) view, so the two stay consistent.
    "Novo", "Contatado" e "Respondeu" saíram do funil em 12/10/2026: quem estava
-   neles foi para "Contato pendente" (Novo/Contatado) ou "Interessado"
+   neles foi para "Contato pendente" (Novo/Contatado ou Respondeu)
    (Respondeu). No mesmo dia saíram "Demo enviada" e "Demo em análise", que
-   também viraram "Interessado" — a demo continua sendo acompanhada pela aba
+   também viraram "Contato pendente" — a demo continua sendo acompanhada pela aba
    Demonstrações (validade, visualizações), só que ela não é mais uma etapa.
    O atendimento na frente do WhatsApp tem rótulos próprios
    (CONVERSATION_STATUSES) e não tinha relação com essas etapas. */
 const STAGE_GROUPS = [
   { key: "contato", label: "Contato", statuses: ["Contato pendente"] },
-  { key: "interessado", label: "Interessado", statuses: ["Interessado"] },
   { key: "proposta", label: "Proposta", statuses: ["Proposta enviada"] },
   { key: "negociacao", label: "Negociação", statuses: ["Negociação"] },
   { key: "fechado", label: "Fechado", statuses: ["Fechado"] },
@@ -739,17 +738,9 @@ const STAGE_BY_STATUS = Object.fromEntries(STAGE_GROUPS.flatMap(g => g.statuses.
    ficha fora do funil. */
 const RETIRED_FUNNEL_STATUSES = ["Novo", "Contatado", "Respondeu", "Demo enviada", "Demo em análise"];
 
-/* Etapas que já passaram do ponto em que uma demo faz sentido: quem está em
-   proposta, negociação, fechado ou perdido não "volta" para interessado só
-   porque reenviamos uma prévia. */
-const LATE_FUNNEL_STATUSES = ["Proposta enviada", "Negociação", "Fechado", "Perdido"];
-/* Enviar uma demo conta como interesse. Devolve a etapa nova ou null quando
-   não é para mexer (lead já interessado ou já mais avançado que isso). Usado
-   pela ficha (demo criada/enviada) — a aba Demonstrações registra a demo e a
-   interação, mas nunca mudou etapa nenhuma, e continua assim. */
+/* Enviar uma demonstração não altera automaticamente o estágio do lead. */
 function stageAfterDemoSent(lead) {
-  if (!lead || LATE_FUNNEL_STATUSES.includes(lead.status)) return null;
-  return lead.status === "Interessado" ? null : "Interessado";
+  return null;
 }
 
 /* =========================================================================
@@ -852,18 +843,18 @@ function suggestTemperature(current, result) {
 
 const MOCK_LEADS = [
   { id: "l1", company: "Padaria Ponto Doce", contactName: "Marta Nunes", phone: "(31) 98811-2233", whatsapp: "(31) 98811-2233", instagram: "@padariapontodoce", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Alimentação", notes: "Quer algo simples para mostrar o cardápio.", owner: "erick", priority: "Média", temperature: "Morno", source: "Indicação", status: "Contato pendente", createdAt: daysAgo(6), lastContactAt: daysAgo(1, 15, 30), nextAction: { date: daysFromNow(0, 10, 0), note: "Ligar confirmando interesse na demo" }, score: { dor: 3, facilidade: 4, pagamento: 3, recorrencia: 2 } },
-  { id: "l2", company: "Clínica OdontoVida", contactName: "Dr. Ricardo Passos", phone: "(31) 3822-4410", whatsapp: "(31) 99900-1122", instagram: "@odontovidaipatinga", gmaps: "https://maps.google.com/?q=OdontoVida", currentSite: "", city: "Ipatinga", neighborhood: "Cariru", segment: "Saúde", notes: "Recepcionista é o contato principal.", owner: "fabricio", priority: "Alta", temperature: "Quente", source: "Instagram", status: "Interessado", createdAt: daysAgo(3), lastContactAt: hoursAgo(4), nextAction: { date: daysFromNow(0, 14, 0), note: "Verificar demo antes de expirar" }, score: { dor: 4, facilidade: 3, pagamento: 4, recorrencia: 4 } },
-  { id: "l3", company: "Estúdio Fitness Corpo&Cia", contactName: "Bruna Lopes", phone: "(31) 98765-1010", whatsapp: "(31) 98765-1010", instagram: "@corpoecia.fit", gmaps: "", currentSite: "corpoecia.wixsite.com", city: "Timóteo", neighborhood: "Del Rey", segment: "Fitness", notes: "Site atual está desatualizado há anos.", owner: "erick", priority: "Média", temperature: "Morno", source: "Prospecção ativa", status: "Interessado", createdAt: daysAgo(4), lastContactAt: hoursAgo(20), nextAction: { date: daysFromNow(0, 17, 0), note: "Cobrar retorno sobre a prévia" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 3 } },
+  { id: "l2", company: "Clínica OdontoVida", contactName: "Dr. Ricardo Passos", phone: "(31) 3822-4410", whatsapp: "(31) 99900-1122", instagram: "@odontovidaipatinga", gmaps: "https://maps.google.com/?q=OdontoVida", currentSite: "", city: "Ipatinga", neighborhood: "Cariru", segment: "Saúde", notes: "Recepcionista é o contato principal.", owner: "fabricio", priority: "Alta", temperature: "Quente", source: "Instagram", status: "Contato pendente", createdAt: daysAgo(3), lastContactAt: hoursAgo(4), nextAction: { date: daysFromNow(0, 14, 0), note: "Verificar demo antes de expirar" }, score: { dor: 4, facilidade: 3, pagamento: 4, recorrencia: 4 } },
+  { id: "l3", company: "Estúdio Fitness Corpo&Cia", contactName: "Bruna Lopes", phone: "(31) 98765-1010", whatsapp: "(31) 98765-1010", instagram: "@corpoecia.fit", gmaps: "", currentSite: "corpoecia.wixsite.com", city: "Timóteo", neighborhood: "Del Rey", segment: "Fitness", notes: "Site atual está desatualizado há anos.", owner: "erick", priority: "Média", temperature: "Morno", source: "Prospecção ativa", status: "Contato pendente", createdAt: daysAgo(4), lastContactAt: hoursAgo(20), nextAction: { date: daysFromNow(0, 17, 0), note: "Cobrar retorno sobre a prévia" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 3 } },
   { id: "l4", company: "Advocacia Reis & Martins", contactName: "Dra. Camila Reis", phone: "(31) 3221-7788", whatsapp: "(31) 99111-4400", instagram: "", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Centro", segment: "Jurídico", notes: "Precisa de aprovação da sócia.", owner: "fabricio", priority: "Alta", temperature: "Quente", source: "Indicação", status: "Proposta enviada", createdAt: daysAgo(12), lastContactAt: daysAgo(5, 11, 0), nextAction: { date: daysAgo(1, 10, 0), note: "Cobrar resposta da proposta" }, score: { dor: 4, facilidade: 2, pagamento: 5, recorrencia: 4 } },
   { id: "l5", company: "Salão Bela Face", contactName: "Juliana Prado", phone: "(31) 98844-6655", whatsapp: "(31) 98844-6655", instagram: "@belafacesalao", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Chapada", segment: "Beleza", notes: "Quer agendamento online integrado no futuro.", owner: "erick", priority: "Alta", temperature: "Quente", source: "Instagram", status: "Negociação", createdAt: daysAgo(15), lastContactAt: daysAgo(1, 16, 0), nextAction: { date: daysFromNow(1, 10, 0), note: "Retornar com nova condição de pagamento" }, score: { dor: 4, facilidade: 4, pagamento: 3, recorrencia: 4 } },
   { id: "l6", company: "Imobiliária Chave Certa", contactName: "Sérgio Aguiar", phone: "(31) 3835-9090", whatsapp: "(31) 99222-3311", instagram: "@chavecertaimoveis", gmaps: "", currentSite: "chavecertaimoveis.com.br", city: "Ipatinga", neighborhood: "Bethânia", segment: "Imóveis", notes: "", owner: "fabricio", priority: "Baixa", temperature: "Frio", source: "Site", status: "Perdido", createdAt: daysAgo(30), lastContactAt: daysAgo(18, 9, 0), nextAction: null, lossReason: "Escolheu concorrente", score: { dor: 2, facilidade: 2, pagamento: 3, recorrencia: 2 } },
   { id: "l7", company: "Marcenaria Bom Corte", contactName: "Adilson Ferraz", phone: "(31) 98700-2020", whatsapp: "(31) 98700-2020", instagram: "", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Água Santa", segment: "Móveis", notes: "Cadastrado após indicação do cliente Rodagem Mil.", owner: "erick", priority: "Média", temperature: "Frio", source: "Indicação", status: "Contato pendente", createdAt: daysAgo(1), lastContactAt: null, nextAction: { date: daysFromNow(0, 11, 0), note: "Primeiro contato" }, score: { dor: 2, facilidade: 3, pagamento: 2, recorrencia: 2 } },
   { id: "l8", company: "Pet Shop Amigo Fiel", contactName: "Renata Costa", phone: "(31) 98899-7766", whatsapp: "(31) 98899-7766", instagram: "@amigofielpet", gmaps: "", currentSite: "", city: "Timóteo", neighborhood: "Del Rey", segment: "Pet", notes: "", owner: "fabricio", priority: "Baixa", temperature: "Frio", source: "Google", status: "Contato pendente", createdAt: daysAgo(7), lastContactAt: daysAgo(5, 10, 0), nextAction: { date: daysAgo(2, 9, 0), note: "Tentar novamente por WhatsApp" }, score: { dor: 2, facilidade: 2, pagamento: 2, recorrencia: 3 } },
-  { id: "l9", company: "Estúdio Tattoo Traço Fino", contactName: "Kaique Vidal", phone: "(31) 98922-3344", whatsapp: "(31) 98922-3344", instagram: "@tracofino.tattoo", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Cidade Nobre", segment: "Estética", notes: "Respondeu uma vez e sumiu.", owner: "erick", priority: "Média", temperature: "Morno", source: "Instagram", status: "Interessado", createdAt: daysAgo(9), lastContactAt: daysAgo(4, 18, 0), nextAction: { date: daysAgo(2, 9, 0), note: "Fazer nova tentativa" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 2 } },
-  { id: "l10", company: "Contabilidade Serra Azul", contactName: "Fábio Teixeira", phone: "(31) 3823-5566", whatsapp: "(31) 99333-8899", instagram: "", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Contabilidade", notes: "Pediu valores por WhatsApp.", owner: "fabricio", priority: "Alta", temperature: "Quente", source: "Indicação", status: "Interessado", createdAt: daysAgo(5), lastContactAt: daysAgo(0, 8, 30), nextAction: { date: daysFromNow(0, 15, 0), note: "Enviar valores e condições" }, score: { dor: 4, facilidade: 4, pagamento: 4, recorrencia: 4 } },
+  { id: "l9", company: "Estúdio Tattoo Traço Fino", contactName: "Kaique Vidal", phone: "(31) 98922-3344", whatsapp: "(31) 98922-3344", instagram: "@tracofino.tattoo", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Cidade Nobre", segment: "Estética", notes: "Respondeu uma vez e sumiu.", owner: "erick", priority: "Média", temperature: "Morno", source: "Instagram", status: "Contato pendente", createdAt: daysAgo(9), lastContactAt: daysAgo(4, 18, 0), nextAction: { date: daysAgo(2, 9, 0), note: "Fazer nova tentativa" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 2 } },
+  { id: "l10", company: "Contabilidade Serra Azul", contactName: "Fábio Teixeira", phone: "(31) 3823-5566", whatsapp: "(31) 99333-8899", instagram: "", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Contabilidade", notes: "Pediu valores por WhatsApp.", owner: "fabricio", priority: "Alta", temperature: "Quente", source: "Indicação", status: "Contato pendente", createdAt: daysAgo(5), lastContactAt: daysAgo(0, 8, 30), nextAction: { date: daysFromNow(0, 15, 0), note: "Enviar valores e condições" }, score: { dor: 4, facilidade: 4, pagamento: 4, recorrencia: 4 } },
   { id: "l11", company: "Autopeças Rodagem Mil", contactName: "Marcelo Assis", phone: "(31) 3822-1199", whatsapp: "(31) 99887-6655", instagram: "@rodagemmil", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Horto", segment: "Automotivo", notes: "", owner: "erick", priority: "Alta", temperature: "Quente", source: "Indicação", status: "Fechado", createdAt: daysAgo(40), lastContactAt: daysAgo(20, 14, 0), nextAction: null, score: { dor: 4, facilidade: 4, pagamento: 5, recorrencia: 4 } },
   { id: "l12", company: "Buffet Doce Encontro", contactName: "Patrícia Melo", phone: "(31) 98711-0033", whatsapp: "(31) 98711-0033", instagram: "@doceencontrobuffet", gmaps: "", currentSite: "", city: "Timóteo", neighborhood: "Del Rey", segment: "Eventos", notes: "", owner: "fabricio", priority: "Média", temperature: "Quente", source: "Instagram", status: "Fechado", createdAt: daysAgo(25), lastContactAt: daysAgo(10, 9, 0), nextAction: null, score: { dor: 3, facilidade: 4, pagamento: 4, recorrencia: 3 } },
-  { id: "l13", company: "Arquitetura Linha Viva", contactName: "Rafael Sant'Anna", phone: "(31) 99123-4567", whatsapp: "(31) 99123-4567", instagram: "@linhaviva.arq", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Arquitetura", notes: "Demo enviada mas sem retorno desde então.", owner: "erick", priority: "Média", temperature: "Morno", source: "Site", status: "Interessado", createdAt: daysAgo(4), lastContactAt: daysAgo(2, 9, 0), nextAction: { date: daysAgo(1, 9, 0), note: "Cobrar retorno sobre a prévia expirada" }, score: { dor: 3, facilidade: 2, pagamento: 3, recorrencia: 3 } },
+  { id: "l13", company: "Arquitetura Linha Viva", contactName: "Rafael Sant'Anna", phone: "(31) 99123-4567", whatsapp: "(31) 99123-4567", instagram: "@linhaviva.arq", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Arquitetura", notes: "Demo enviada mas sem retorno desde então.", owner: "erick", priority: "Média", temperature: "Morno", source: "Site", status: "Contato pendente", createdAt: daysAgo(4), lastContactAt: daysAgo(2, 9, 0), nextAction: { date: daysAgo(1, 9, 0), note: "Cobrar retorno sobre a prévia expirada" }, score: { dor: 3, facilidade: 2, pagamento: 3, recorrencia: 3 } },
   { id: "l14", company: "Academia Potência", contactName: "Diego Fontes", phone: "(31) 98456-7788", whatsapp: "(31) 98456-7788", instagram: "@potenciaacademia", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Veneza", segment: "Fitness", notes: "", owner: "fabricio", priority: "Alta", temperature: "Morno", source: "Prospecção ativa", status: "Proposta enviada", createdAt: daysAgo(20), lastContactAt: daysAgo(9, 10, 0), nextAction: { date: daysAgo(3, 9, 0), note: "Verificar validade da proposta" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 3 } },
 ];
 
@@ -3931,10 +3922,10 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
     window.open(`https://wa.me/${lead.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`, "_blank");
     /* As etapas "Novo" e "Contatado" saíram do funil: abrir a saudação no
        WhatsApp continua contando como contato feito, e o lead passa direto
-       para "Interessado". Leads que ainda vierem com um rótulo extinto também
+       para "Contato pendente". Leads que ainda vierem com um rótulo extinto também
        entram nessa regra, para não ficarem fora do funil. */
     if (!lead.status || lead.status === "Contato pendente" || RETIRED_FUNNEL_STATUSES.includes(lead.status)) {
-      dispatch({ type: "CHANGE_STATUS", id: lead.id, status: "Interessado", user: currentUser });
+      dispatch({ type: "CHANGE_STATUS", id: lead.id, status: "Contato pendente", user: currentUser });
     }
   };
 
@@ -7189,14 +7180,14 @@ const PERF_STEPS = [
   {
     key: "contato",
     label: "Contato feito",
-    statuses: ["Contatado", "Respondeu", "Demo enviada", "Demo em análise", "Interessado", "Proposta enviada", "Negociação", "Fechado"],
+    statuses: ["Contatado", "Respondeu", "Demo enviada", "Demo em análise", "Contato pendente", "Proposta enviada", "Negociação", "Fechado"],
     tone: "blue",
     icon: Phone,
   },
   {
     key: "resposta",
     label: "Respondeu",
-    statuses: ["Respondeu", "Demo enviada", "Demo em análise", "Interessado", "Proposta enviada", "Negociação", "Fechado"],
+    statuses: ["Respondeu", "Demo enviada", "Demo em análise", "Contato pendente", "Proposta enviada", "Negociação", "Fechado"],
     tone: "teal",
     icon: MessageCircle,
   },

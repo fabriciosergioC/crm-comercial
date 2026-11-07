@@ -4,7 +4,6 @@
 
 const STATUS_LIST = [
   'Contato pendente',
-  'Interessado',
   'Proposta enviada',
   'Negociação',
   'Fechado',

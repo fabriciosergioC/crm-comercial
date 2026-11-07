@@ -43,7 +43,7 @@ declare
   v_entry jsonb;
 begin
   if p_to is null or p_to not in (
-      'Contato pendente','Interessado','Proposta enviada','Negociação',
+      'Contato pendente','Proposta enviada','Negociação',
       'Fechado','Perdido') then
     raise exception 'Status inválido: %', p_to using errcode = '22023';
   end if;

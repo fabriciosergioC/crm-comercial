@@ -442,7 +442,7 @@ async function changePasswordThroughApi(userId, currentPassword, newPassword) {
   return { ok: true, data: response.data };
 }
 
-const STATUS_LIST = ["Novo","Contato pendente","MSG 1: Saudação","Contatado","Respondeu","MSG 2: Apresentação","Demo enviada","Demo em análise","Interessado","Proposta enviada","Negociação","Fechado","Perdido"];
+const STATUS_LIST = ["Novo","Contato pendente","MSG 1: Saudação","Contatado","Respondeu","MSG 2: Apresentação","Demo enviada","Demo em análise","Proposta enviada","Negociação","Fechado","Perdido"];
 const TEMPERATURES = ["Frio","Morno","Quente"];
 const PRIORITIES = ["Baixa","Média","Alta"];
 const CHANNELS = ["Ligação","WhatsApp","Instagram","E-mail","Presencial","Outro"];
@@ -455,7 +455,7 @@ const PLANS = ["Site institucional","Landing page","E-commerce","Site + manuten�
 const STATUS_TONE = {
   "Novo": "slate", "Contato pendente": "amber", "MSG 1: Saudação": "blue", "MSG 2: Apresentação": "blue",
   "Contatado": "blue", "Respondeu": "blue",
-  "Demo enviada": "violet", "Demo em análise": "violet", "Interessado": "amber",
+  "Demo enviada": "violet", "Demo em análise": "violet", "Contato pendente": "amber",
   "Proposta enviada": "teal", "Negociação": "teal", "Fechado": "green", "Perdido": "red",
 };
 
@@ -483,7 +483,7 @@ const STAGE_GROUPS = [
   { key: "contato", label: "Contato", statuses: ["Contato pendente", "MSG 1: Saudação", "Contatado"] },
   { key: "respondeu", label: "Respondeu", statuses: ["Respondeu", "MSG 2: Apresentação"] },
   { key: "demo", label: "Demo", statuses: ["Demo enviada", "Demo em análise"] },
-  { key: "interessado", label: "Interessado", statuses: ["Interessado"] },
+  { key: "proposta", label: "Proposta", statuses: ["Proposta enviada"] },
   { key: "proposta", label: "Proposta", statuses: ["Proposta enviada"] },
   { key: "negociacao", label: "Negociação", statuses: ["Negociação"] },
   { key: "fechado", label: "Fechado", statuses: ["Fechado"] },
@@ -588,7 +588,7 @@ const MOCK_LEADS = [
   { id: "l7", company: "Marcenaria Bom Corte", contactName: "Adilson Ferraz", phone: "(31) 98700-2020", whatsapp: "(31) 98700-2020", instagram: "", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Água Santa", segment: "Móveis", notes: "Cadastrado após indicação do cliente Rodagem Mil.", owner: "erick", priority: "Média", temperature: "Frio", source: "Indicação", status: "Novo", createdAt: daysAgo(1), lastContactAt: null, nextAction: { date: daysFromNow(0, 11, 0), note: "Primeiro contato" }, score: { dor: 2, facilidade: 3, pagamento: 2, recorrencia: 2 } },
   { id: "l8", company: "Pet Shop Amigo Fiel", contactName: "Renata Costa", phone: "(31) 98899-7766", whatsapp: "(31) 98899-7766", instagram: "@amigofielpet", gmaps: "", currentSite: "", city: "Timóteo", neighborhood: "Del Rey", segment: "Pet", notes: "", owner: "fabricio", priority: "Baixa", temperature: "Frio", source: "Google", status: "Contato pendente", createdAt: daysAgo(7), lastContactAt: daysAgo(5, 10, 0), nextAction: { date: daysAgo(2, 9, 0), note: "Tentar novamente por WhatsApp" }, score: { dor: 2, facilidade: 2, pagamento: 2, recorrencia: 3 } },
   { id: "l9", company: "Estúdio Tattoo Traço Fino", contactName: "Kaique Vidal", phone: "(31) 98922-3344", whatsapp: "(31) 98922-3344", instagram: "@tracofino.tattoo", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Cidade Nobre", segment: "Estética", notes: "Respondeu uma vez e sumiu.", owner: "erick", priority: "Média", temperature: "Morno", source: "Instagram", status: "Respondeu", createdAt: daysAgo(9), lastContactAt: daysAgo(4, 18, 0), nextAction: { date: daysAgo(2, 9, 0), note: "Fazer nova tentativa" }, score: { dor: 3, facilidade: 3, pagamento: 2, recorrencia: 2 } },
-  { id: "l10", company: "Contabilidade Serra Azul", contactName: "Fábio Teixeira", phone: "(31) 3823-5566", whatsapp: "(31) 99333-8899", instagram: "", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Contabilidade", notes: "Pediu valores por WhatsApp.", owner: "fabricio", priority: "Alta", temperature: "Quente", source: "Indicação", status: "Interessado", createdAt: daysAgo(5), lastContactAt: daysAgo(0, 8, 30), nextAction: { date: daysFromNow(0, 15, 0), note: "Enviar valores e condições" }, score: { dor: 4, facilidade: 4, pagamento: 4, recorrencia: 4 } },
+  { id: "l10", company: "Contabilidade Serra Azul", contactName: "Fábio Teixeira", phone: "(31) 3823-5566", whatsapp: "(31) 99333-8899", instagram: "", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Contabilidade", notes: "Pediu valores por WhatsApp.", owner: "fabricio", priority: "Alta", temperature: "Quente", source: "Indicação", status: "Contato pendente", createdAt: daysAgo(5), lastContactAt: daysAgo(0, 8, 30), nextAction: { date: daysFromNow(0, 15, 0), note: "Enviar valores e condições" }, score: { dor: 4, facilidade: 4, pagamento: 4, recorrencia: 4 } },
   { id: "l11", company: "Autopeças Rodagem Mil", contactName: "Marcelo Assis", phone: "(31) 3822-1199", whatsapp: "(31) 99887-6655", instagram: "@rodagemmil", gmaps: "", currentSite: "", city: "Ipatinga", neighborhood: "Horto", segment: "Automotivo", notes: "", owner: "erick", priority: "Alta", temperature: "Quente", source: "Indicação", status: "Fechado", createdAt: daysAgo(40), lastContactAt: daysAgo(20, 14, 0), nextAction: null, score: { dor: 4, facilidade: 4, pagamento: 5, recorrencia: 4 } },
   { id: "l12", company: "Buffet Doce Encontro", contactName: "Patrícia Melo", phone: "(31) 98711-0033", whatsapp: "(31) 98711-0033", instagram: "@doceencontrobuffet", gmaps: "", currentSite: "", city: "Timóteo", neighborhood: "Del Rey", segment: "Eventos", notes: "", owner: "fabricio", priority: "Média", temperature: "Quente", source: "Instagram", status: "Fechado", createdAt: daysAgo(25), lastContactAt: daysAgo(10, 9, 0), nextAction: null, score: { dor: 3, facilidade: 4, pagamento: 4, recorrencia: 3 } },
   { id: "l13", company: "Arquitetura Linha Viva", contactName: "Rafael Sant'Anna", phone: "(31) 99123-4567", whatsapp: "(31) 99123-4567", instagram: "@linhaviva.arq", gmaps: "", currentSite: "", city: "Coronel Fabriciano", neighborhood: "Centro", segment: "Arquitetura", notes: "Demo enviada mas sem retorno desde então.", owner: "erick", priority: "Média", temperature: "Morno", source: "Site", status: "Demo enviada", createdAt: daysAgo(4), lastContactAt: daysAgo(2, 9, 0), nextAction: { date: daysAgo(1, 9, 0), note: "Cobrar retorno sobre a prévia expirada" }, score: { dor: 3, facilidade: 2, pagamento: 3, recorrencia: 3 } },
@@ -600,7 +600,7 @@ const MOCK_STATUS_HISTORY = [
   { id: "sh2", leadId: "l1", from: "Contato pendente", to: "Contatado", date: daysAgo(1, 15, 30), user: "erick" },
   { id: "sh3", leadId: "l2", from: "Contatado", to: "Respondeu", date: daysAgo(2, 9, 0), user: "fabricio" },
   { id: "sh4", leadId: "l2", from: "Respondeu", to: "Demo enviada", date: hoursAgo(4), user: "fabricio" },
-  { id: "sh5", leadId: "l4", from: "Interessado", to: "Proposta enviada", date: daysAgo(5, 11, 0), user: "fabricio" },
+  { id: "sh5", leadId: "l4", from: "Contato pendente", to: "Proposta enviada", date: daysAgo(5, 11, 0), user: "fabricio" },
   { id: "sh6", leadId: "l6", from: "Negociação", to: "Perdido", date: daysAgo(18, 9, 0), user: "fabricio" },
   { id: "sh7", leadId: "l11", from: "Negociação", to: "Fechado", date: daysAgo(20, 14, 0), user: "erick" },
   { id: "sh8", leadId: "l12", from: "Negociação", to: "Fechado", date: daysAgo(10, 9, 0), user: "fabricio" },

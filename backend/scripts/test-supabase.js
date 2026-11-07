@@ -138,12 +138,12 @@ async function main() {
     if (accepted.length) fail('o banco ACEITOU dado invalido: ' + accepted.join(' | '));
 
     console.log('\n[6/7] RPC, UPDATE e SELECT');
-    const st = await db.rpc('change_lead_status', { p_lead_id: LEAD_ID, p_to: 'Interessado', p_user: USER_ID });
+    const st = await db.rpc('change_lead_status', { p_lead_id: LEAD_ID, p_to: 'Proposta enviada', p_user: USER_ID });
     if (st.error) fail('rpc change_lead_status: ' + st.error.message);
-    if (!st.data || !st.data.entry || st.data.entry.from_status !== 'Contato pendente' || st.data.entry.to_status !== 'Interessado') {
+    if (!st.data || !st.data.entry || st.data.entry.from_status !== 'Contato pendente' || st.data.entry.to_status !== 'Proposta enviada') {
       fail('change_lead_status fora do formato esperado: ' + JSON.stringify(st.data));
     }
-    ok('change_lead_status: "Contato pendente" -> "Interessado" + entrada de historico');
+    ok('change_lead_status: "Contato pendente" -> "Proposta enviada" + entrada de historico');
 
     const it = await db.rpc('add_lead_interaction', {
       p_lead_id: LEAD_ID, p_user: USER_ID, p_channel: 'WhatsApp', p_result: 'Pediu preço', p_note: 'Interacao de teste',

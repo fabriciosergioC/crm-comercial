@@ -70,7 +70,7 @@ create table if not exists public.leads (
   constraint leads_priority_chk check (priority in ('Baixa','Média','Alta')),
   constraint leads_temperature_chk check (temperature in ('Frio','Morno','Quente')),
   constraint leads_status_chk check (status in (
-    'Contato pendente','Interessado','Proposta enviada','Negociação',
+    'Contato pendente','Proposta enviada','Negociação',
     'Fechado','Perdido')),
   constraint leads_source_chk check (source is null or source in (
     'Indicação','Instagram','Google','Prospecção ativa','Site','Outro')),
@@ -114,11 +114,11 @@ create table if not exists public.lead_status_history (
   created_at  timestamptz not null default now(),
   constraint lsh_from_chk check (from_status is null or from_status in (
     'Novo','Contato pendente','Contatado','Respondeu',
-    'Demo enviada','Demo em análise','Interessado','Proposta enviada',
+    'Demo enviada','Demo em análise','Contato pendente','Proposta enviada',
     'Negociação','Fechado','Perdido')),
   constraint lsh_to_chk check (to_status in (
     'Novo','Contato pendente','Contatado','Respondeu',
-    'Demo enviada','Demo em análise','Interessado','Proposta enviada',
+    'Demo enviada','Demo em análise','Contato pendente','Proposta enviada',
     'Negociação','Fechado','Perdido'))
 );
 

@@ -102,9 +102,9 @@ async function main() {
     check('PATCH /api/leads/:id aplicou notes e score',
       patched.status === 200 && patched.body.data.notes === 'nota atualizada pela API' && patched.body.data.score.dor === 5);
 
-    const status = await req('POST', '/leads/' + LEAD_ID + '/status', { status: 'Interessado', user: USER_ID });
-    check('POST /api/leads/:id/status gravou historico (Contato pendente -> Interessado)',
-      status.status === 200 && status.body.data.entry.from === 'Contato pendente' && status.body.data.entry.to === 'Interessado');
+    const status = await req('POST', '/leads/' + LEAD_ID + '/status', { status: 'Proposta enviada', user: USER_ID });
+    check('POST /api/leads/:id/status gravou historico (Contato pendente -> Proposta enviada)',
+      status.status === 200 && status.body.data.entry.from === 'Contato pendente' && status.body.data.entry.to === 'Proposta enviada');
 
     const inter = await req('POST', '/leads/' + LEAD_ID + '/interactions', {
       channel: 'WhatsApp', result: 'Pediu preço', note: 'Interacao via API', user: USER_ID,
