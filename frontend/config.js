@@ -4,7 +4,7 @@
 //  Arquitetura atual (Railway/Vercel/VPS):
 //
 //    - DADOS (leads, auth, propostas, enriquecimento...): API do Railway em
-//      https://crm-comercial-production-e707.up.railway.app/api.
+//      https://crm-comercial.up.railway.app/api.
 //    - WHATSAPP/Baileys: mesmo backend persistente do Railway, pois exige um
 //      processo Node conectado e armazenamento durável.
 //    - WHATSAPP (Baileys): NÃO roda na Vercel (exige processo Node persistente
@@ -17,8 +17,8 @@
 //  Localmente (localhost/file://), a configuração continua vazia e os helpers
 //  usam http://localhost:3001/api.
 // ============================================================================
-const CRM_PROD_API_URL = "https://crm-comercial-production-e707.up.railway.app/api";
-const CRM_PROD_WHATSAPP_URL = "https://crm-comercial-production-e707.up.railway.app/api";
+const CRM_PROD_API_URL = "https://crm-comercial.up.railway.app/api";
+const CRM_PROD_WHATSAPP_URL = "https://crm-comercial.up.railway.app/api";
 
 const CRM_IS_LOCAL =
   typeof window !== "undefined" &&
