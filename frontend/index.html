@@ -9624,40 +9624,7 @@ function WhatsAppView({ currentUser }) {
                 </div>
               )}
               <TextArea value={draft} onChange={event => { setDraft(event.target.value); setGeneratedAudioUrl(""); setGeneratedAudioBlob(null); }} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder={attachment?.type.startsWith("image/") ? "Legenda da imagem (opcional)…" : "Digite uma mensagem…"} rows={2} maxLength={4000} disabled={!connected || sending || generatingAudio || sendingGeneratedAudio} aria-label={attachment?.type.startsWith("image/") ? "Legenda da imagem" : "Mensagem"} />
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button type="button" variant="secondary" size="sm" icon={Sparkles} onClick={generateDraftAudio} disabled={!connected || !draft.trim() || sending || generatingAudio || sendingGeneratedAudio || Boolean(attachment)}>
-                  {generatingAudio ? "Gerando voz…" : "Gerar áudio com IA"}
-                </Button>
-                {voiceProfiles.length > 1 && (
-                  <div className="flex items-center gap-0.5 rounded-lg border p-0.5" role="radiogroup" aria-label="Tipo de voz" style={{ borderColor: "var(--line)", background: "var(--surface-sunken)" }}>
-                    {voiceProfiles.map(profile => {
-                      const active = profile.key === voiceProfile;
-                      return (
-                        <button
-                          key={profile.key}
-                          type="button"
-                          role="radio"
-                          aria-checked={active}
-                          title={profile.hint}
-                          onClick={() => setVoiceProfile(profile.key)}
-                          className="rounded-md px-2 py-1 text-[11px] transition-colors hover:opacity-80"
-                          style={active
-                            ? { background: "var(--surface)", color: "var(--ink)", fontWeight: 600, border: "1px solid var(--line)" }
-                            : { background: "transparent", color: "var(--slate)", border: "1px solid transparent" }}
-                        >
-                          {profile.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                <span className="text-[11px]" style={{ color: "var(--slate)" }}>
-                  {activeVoiceProfile?.hint || "Gera uma voz natural em português; confira a prévia antes de enviar."}
-                </span>
-                {activeVoiceProfile?.moreExpensive && (
-                  <span className="rounded-md px-1.5 py-0.5 text-[10px]" style={{ background: "var(--tone-amber-bg)", color: "var(--tone-amber-fg)" }}>gasta mais crédito</span>
-                )}
-              </div>
+              {/* Geração de áudio por IA ocultada temporariamente. */}
               {generatedAudioUrl && (
                 <div className="flex flex-wrap items-center gap-2 rounded-lg border p-2" style={{ borderColor: "var(--line)", background: "var(--surface-sunken)" }}>
                   <audio src={generatedAudioUrl} controls className="min-w-0 flex-1" aria-label="Prévia do áudio gerado por IA" />
