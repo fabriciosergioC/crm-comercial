@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/enrichment.css">
 
+<script src="js/session.js"></script>
 <script src="js/script.js"></script>
 <script src="js/enrichment.js"></script>
 <script src="js/brasil.js"></script>
@@ -97,6 +98,13 @@ const VolumeX = (p) => <Icon {...p}><path d="M11 5 6 9H3v6h3l5 4V5z" /><line x1=
 const Play = (p) => <Icon {...p}><path d="M7 4.5 19 12 7 19.5z" fill="currentColor" stroke="none" /></Icon>;
 const Pause = (p) => <Icon {...p}><rect x="7" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none" /><rect x="13.5" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none" /></Icon>;
 const History = (p) => <Icon {...p}><polyline points="3 4 3 10 9 10" /><path d="M3.05 13A9 9 0 1 0 6 5.3L3 10" /><polyline points="12 7 12 12 16 14" /></Icon>;
+/* Cédula desenhada à mão para o menu Financeiro — não havia ícone de dinheiro
+   na coleção, e o nome do menu não pode depender de biblioteca externa. */
+const Banknote = (p) => <Icon {...p}><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><line x1="6" y1="10" x2="6.01" y2="10" /><line x1="18" y1="14" x2="18.01" y2="14" /></Icon>;
+/* Cadeado para os dois atos que pedem senha no Financeiro (excluir lançamento e
+   desfazer pagamento). Desenhado aqui pelo mesmo motivo dos outros: a tela não
+   depende de biblioteca de ícones. */
+const LockIcon = (p) => <Icon {...p}><rect x="4.5" y="10.5" width="15" height="10" rx="2" /><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" /><line x1="12" y1="14.5" x2="12" y2="17" /></Icon>;
 
 /* Som de notificação sintetizado via Web Audio (sem arquivo externo).
    O AudioContext só é criado no primeiro play — navegadores exigem gesto do
@@ -298,6 +306,47 @@ const Tokens = () => (
     .gc-collapse.collapsed { grid-template-rows: 0fr; }
     .gc-collapse.collapsed > * { visibility: hidden; transition: visibility 0s linear 0.25s; }
     .gc-sidebar { transition: width 0.2s ease; }
+    .gc-login-shell {
+      background: radial-gradient(circle at 50% -10%, var(--accent-soft), transparent 42%), var(--surface-sunken);
+    }
+    .gc-login-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(23,25,28,0.10);
+      padding: 32px;
+    }
+    .gc-login-logo {
+      box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 28%, transparent);
+      letter-spacing: -0.04em;
+    }
+    .gc-login-user {
+      transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+    }
+    .gc-login-user:hover {
+      border-color: var(--accent) !important;
+      background: var(--accent-soft) !important;
+      box-shadow: 0 4px 14px rgba(23,25,28,0.06);
+      transform: translateY(-1px);
+    }
+    .gc-login-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--slate);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .gc-login-divider::before, .gc-login-divider::after {
+      content: "";
+      height: 1px;
+      flex: 1;
+      background: var(--line);
+    }
+    @media (max-width: 480px) {
+      .gc-login-card { padding: 24px 20px; border-radius: 20px; }
+    }
     @media (prefers-reduced-motion: reduce) {
       .gc-slide-in, .gc-fade-in, .gc-pop-in, .gc-toast-in, .gc-spin, .gc-pulse-soft { animation: none; }
       .gc-card, .gc-pressable, .gc-btn, .gc-collapse, .gc-collapse > *, .gc-sidebar { transition: none; }
@@ -357,15 +406,43 @@ function readSessionUserId() {
   try {
     const value = window.localStorage.getItem(AUTH_SESSION_KEY);
     const session = value ? JSON.parse(value) : null;
-    return session && USERS.some((user) => user.id === session.userId) ? session.userId : null;
+    if (!session || typeof session.userId !== "string" || !session.userId) return null;
+    /* Não se exige mais que o id esteja em USERS: quando a equipe entra pelo link
+       do túnel, o login devolve o nome de quem é e ensureKnownUser() adiciona a
+       pessoa na lista. Quem decide o acesso é o token do backend, não esta lista —
+       ela só dá os rótulos na tela. */
+    return session.userId;
   } catch (error) {
     return null;
   }
 }
 
-function writeSessionUserId(userId) {
+/* Guarda o nome que o backend devolveu no login, para o responsável aparecer
+   com o nome certo em Leads, Agenda e no painel por pessoa. */
+function ensureKnownUser(userId, name) {
+  if (!userId) return;
+  const label = name && String(name).trim() ? String(name).trim() : userId;
+  const existing = USERS.find((user) => user.id === userId);
+  if (existing) {
+    if (name && existing.name !== label) existing.name = label;
+    return;
+  }
+  USERS.push({ id: userId, name: label });
+}
+
+function readSessionName(userId) {
   try {
-    window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ userId }));
+    const session = JSON.parse(window.localStorage.getItem(AUTH_SESSION_KEY) || "null");
+    return session && session.userId === userId && session.name ? session.name : "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function writeSessionUserId(userId, name) {
+  try {
+    window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ userId, name: name || "" }));
+    ensureKnownUser(userId, name);
   } catch (error) {
     return null;
   }
@@ -451,6 +528,9 @@ async function loginThroughApi(userId, password) {
     return { ok: false, message: response.message || "Usuário ou senha incorretos." };
   }
   if (!response.ok || !response.data) return null;
+  /* O backend devolve o token de sessão junto com o login. Guardado aqui, ele sai
+     do alcance do resto do código de tela: quem chama a API nem precisa saber. */
+  if (response.data.sessionToken && window.CrmSession) window.CrmSession.set(response.data.sessionToken);
   return { ok: true, data: response.data };
 }
 
@@ -460,6 +540,7 @@ async function changePasswordThroughApi(userId, currentPassword, newPassword) {
     return { ok: false, message: response.message || "Não foi possível alterar a senha." };
   }
   if (!response.ok || !response.data) return null;
+  if (response.data.sessionToken && window.CrmSession) window.CrmSession.set(response.data.sessionToken);
   return { ok: true, data: response.data };
 }
 
@@ -681,8 +762,19 @@ const daysFromNow = (n, h = 9, m = 0) => { const d = new Date(); d.setDate(d.get
 const hoursFromNow = (n) => new Date(Date.now() + n * 3600000).toISOString();
 const hoursAgo = (n) => new Date(Date.now() - n * 3600000).toISOString();
 
-function fmtDate(d) { if (!d) return "—"; const dt = new Date(d); return `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}`; }
-function fmtDateFull(d) { if (!d) return "—"; const dt = new Date(d); return `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}/${dt.getFullYear()}`; }
+/* "2026-11-20" sem hora o JS lê como meia-noite UTC: no fuso de Ipatinga (-03)
+   isso cai em 19/11 e a tela mostra o dia errado. As colunas `date` do Postgres
+   (vencimento, data da venda, dia do relatório) vêm sempre nesse formato, então
+   a chave vira Date do meio-dia local antes de qualquer formatação. */
+function asDateLocal(d) {
+  if (typeof d === "string") {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d.trim());
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+  }
+  return new Date(d);
+}
+function fmtDate(d) { if (!d) return "—"; const dt = asDateLocal(d); return `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}`; }
+function fmtDateFull(d) { if (!d) return "—"; const dt = asDateLocal(d); return `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}/${dt.getFullYear()}`; }
 function fmtTime(d) { if (!d) return ""; const dt = new Date(d); return `${pad(dt.getHours())}:${pad(dt.getMinutes())}`; }
 function fmtDateTime(d) { if (!d) return "—"; return `${fmtDate(d)} · ${fmtTime(d)}`; }
 function toLocalDateTimeInput(iso) {
@@ -788,6 +880,12 @@ const initialDb = {
   proposals: [],
   clients: [],
   clientUpdates: [],
+  /* Financeiro: financeSales são só as avulsas lançadas à mão; a venda de um
+     Cliente fechado vem de clients e é somada na tela. */
+  financeSales: [],
+  financePayments: [],
+  financeSettings: null,
+  financeIndisponivel: false,
 };
 
 /* =========================================================================
@@ -819,8 +917,25 @@ function getApiBaseUrl() {
 
 let CRM_API_BASE = getApiBaseUrl();
 
+/* Endereço do túnel que você abre com o ABRIR_PARA_A_EQUIPE.bat. Reconhece os
+   domínios do ngrok (xxxx.ngrok-free.app, xxxx.ngrok.app e as variações antigas). */
+function isTunelNgrok() {
+  if (typeof window === "undefined") return false;
+  return /(^|\.)ngrok(-free)?\.(app|com|dev|io)$/i.test(String(window.location.hostname || ""));
+}
+
 function getWhatsAppApiBaseUrl() {
   if (typeof window === "undefined") return CRM_API_BASE;
+  /* Pelo link do túnel, o WhatsApp TEM que vir da mesma origem do site: o próprio
+     ngrok encaminha tudo para o seu backend na 3001. Apontar para
+     http://localhost:3001 daqui seria duplamente errado — o navegador bloqueia
+     página https chamando http, e o "localhost" seria o computador de quem abriu
+     o link, não o seu. */
+  if (isTunelNgrok()) {
+    const base = String(CRM_API_BASE || "");
+    if (/^https?:\/\//i.test(base) && base.indexOf(window.location.hostname) < 0) return "/api";
+    return base || "/api";
+  }
   if (window.CRM_WHATSAPP_API_URL && window.CRM_WHATSAPP_API_URL.trim()) {
     return window.CRM_WHATSAPP_API_URL.trim().replace(/\/+$/, "");
   }
@@ -830,6 +945,23 @@ function getWhatsAppApiBaseUrl() {
     return "http://localhost:3001/api";
   }
   return CRM_API_BASE;
+}
+
+/* Cabeçalhos de senha para os dois atos sem volta do Financeiro (excluir um
+   recebimento e desfazer um pagamento que já entrou).
+   Por que cabeçalho: a URL fica registrada em log de proxy e de navegador, e o
+   corpo do PATCH já está ocupado com os campos do lançamento. O backend confere
+   essa senha com o mesmo serviço do login antes de fazer qualquer coisa — então
+   quem abrir o link da equipe precisa da senha dele também, não adianta mexer no
+   site. A senha não fica guardada em lugar nenhum: ela vive só naquele campo,
+   desaparece quando a ação termina. */
+function cabecalhosSenha(credenciais) {
+  const senha = credenciais && credenciais.senha ? String(credenciais.senha) : "";
+  const usuario = credenciais && credenciais.usuario ? String(credenciais.usuario) : "";
+  const headers = {};
+  if (senha) headers["x-crm-senha"] = senha;
+  if (usuario) headers["x-crm-usuario"] = usuario;
+  return headers;
 }
 
 const crmApi = {
@@ -882,19 +1014,43 @@ const crmApi = {
           },
         });
       } catch (error) {
+        const nome = String(error?.name || "");
+        const msg = String(error?.message || "");
+        const timeout = /timeout|abort/i.test(nome + msg);
+        /* Pelo link do túnel o WhatsApp vem do MESMO endereço do site, então falha
+           de rede aqui nunca é "libere o acesso à rede local": é o túnel ou o
+           run-crm.bat dele que caiu. A frase tem que dizer isso, senão quem abriu o
+           link perde tempo mexendo em configuração que não existe. */
+        if (isTunelNgrok()) {
+          throw new Error(timeout
+            ? `O WhatsApp demorou para responder pelo link do túnel (${baseUrl}). O CRM de quem te passou o link está travado ou o celular não respondeu.`
+            : "O link do túnel não está chegando no CRM. Recarregue a página; se continuar, peça para quem te passou o link reabrir o ABRIR_PARA_A_EQUIPE.bat — o WhatsApp só funciona com o notebook dele ligado e o run-crm.bat aberto.");
+        }
         if (baseUrl.includes("localhost:3001") && window.location.hostname !== "localhost") {
           throw new Error("Não foi possível acessar o WhatsApp neste computador. Confirme que run-crm.bat está aberto; no Chrome/Edge, permita o acesso à rede local para este site (ícone ao lado do endereço → Configurações do site → Acesso à rede local → Permitir) e recarregue a página.");
         }
         /* Conexão recusada / timeout: é o backend fechado, e a frase tem que dizer
            isso em português em vez do "Failed to fetch" do navegador. */
-        const nome = String(error?.name || "");
-        const msg = String(error?.message || "");
-        if (/timeout|abort/i.test(nome + msg)) {
+        if (timeout) {
           throw new Error(`O WhatsApp demorou para responder em ${baseUrl}. O backend está travado ou o celular não respondeu.`);
         }
         throw new Error(`Nenhum backend respondeu em ${baseUrl} — a conexão foi recusada, ou seja, o run-crm.bat está fechado (${msg || "sem conexão"}).`);
       }
-      const data = await response.json();
+      /* O ngrok e o backend podem devolver HTML no lugar de JSON (página do túnel,
+         erro de proxy). Ler o texto e tentar parsear evita o SyntaxError cru do
+         navegador no meio da tela. */
+      const texto = await response.text();
+      let data = null;
+      try {
+        data = texto ? JSON.parse(texto) : null;
+      } catch (ignorido) {
+        data = null;
+      }
+      if (!data || typeof data !== "object") {
+        throw new Error(response.ok
+          ? "O backend do WhatsApp respondeu algo que o CRM não consegue ler (provavelmente a página do próprio túnel). Abra o link de novo."
+          : `O backend do WhatsApp respondeu HTTP ${response.status} sem explicar o erro.`);
+      }
       if (!response.ok || !data.success) {
         throw new Error(data.message || "Falha ao consultar o WhatsApp.");
       }
@@ -1015,9 +1171,19 @@ const crmApi = {
 
   auth: {
     status: (userId) => crmApi.authRequest("/auth/status/" + encodeURIComponent(userId), null, "GET"),
+    /* Quem aparece na tela de entrada. Falhou (backend fechado, banco sem
+       configuração)? Lista vazia e ficam os nomes de sempre do arquivo. */
+    users: async () => {
+      const res = await crmApi.authRequest("/auth/users", null, "GET");
+      return res.ok && Array.isArray(res.data) ? res.data : [];
+    },
     login: (userId, password) => crmApi.authRequest("/auth/login", { userId, password }),
+    register: (id, name, adminUserId, adminPassword) => crmApi.authRequest("/auth/users", { id, name, adminUserId, adminPassword }),
     changePassword: (userId, currentPassword, newPassword) =>
       crmApi.authRequest("/auth/change-password", { userId, currentPassword, newPassword }),
+    /* Diz ao backend para limpar o cookie de sessão. Se ele estiver fechado, tanto
+       faz: o token do sessionStorage também vai embora no logout. */
+    logout: () => crmApi.authRequest("/auth/logout", {}),
   },
 
   async loadAll() {
@@ -1026,15 +1192,39 @@ const crmApi = {
        um dia inteiro sem nenhum lead e ninguém saberia que o backend adoeceu. */
     let falhas = 0;
     let leadsFalharam = false;
-    const fetchJson = (path, essencial = false) =>
-      fetch(`${CRM_API_BASE}${path}`, { cache: "no-store" })
-        .then((r) => {
-          if (!r.ok) { falhas++; if (essencial) leadsFalharam = true; return { data: [] }; }
-          return r.json().catch(() => { falhas++; if (essencial) leadsFalharam = true; return { data: [] }; });
+    let semSessao = false;
+    /* O Financeiro pode falhar sozinho (tabelas da migration 014 ainda não
+       existem, ou o backend está rodando sem a rota nova). Isso não é motivo
+       para esconder as outras telas — é motivo para a tela dele explicar o que
+       falta. Daí esta marca separada. */
+    let financeiroFalhou = false;
+    let leadsErroServidor = "";
+    const total = 12;
+    const fetchJson = (path, essencial = false, doFinanceiro = false) => {
+      const falhar = (mensagem = "") => {
+        falhas++;
+        if (essencial) {
+          leadsFalharam = true;
+          if (mensagem && !leadsErroServidor) leadsErroServidor = mensagem;
+        }
+        if (doFinanceiro) financeiroFalhou = true;
+        return { data: [] };
+      };
+      return fetch(`${CRM_API_BASE}${path}`, { cache: "no-store" })
+        .then(async (r) => {
+          /* 401 tem causa e remédio diferentes de "backend doente": aqui quem
+             falta é a senha, não o servidor. */
+          if (r.status === 401) semSessao = true;
+          if (!r.ok) {
+            const body = await r.json().catch(() => null);
+            return falhar(body && body.message ? body.message : `HTTP ${r.status}`);
+          }
+          return r.json().catch(() => falhar());
         })
-        .catch(() => { falhas++; if (essencial) leadsFalharam = true; return { data: [] }; });
+        .catch(falhar);
+    };
 
-    const [leads, statusHistory, interactions, followups, agendaEvents, demos, proposals, clients, clientUpdates] =
+    const [leads, statusHistory, interactions, followups, agendaEvents, demos, proposals, clients, clientUpdates, financeSales, financePayments, financeSettings] =
       await Promise.all([
         fetchJson("/leads", true),
         fetchJson("/status-history"),
@@ -1045,10 +1235,22 @@ const crmApi = {
         fetchJson("/proposals"),
         fetchJson("/clients"),
         fetchJson("/client-updates"),
+        fetchJson("/finance/sales", false, true),
+        fetchJson("/finance/payments", false, true),
+        fetchJson("/finance/settings", false, true),
       ]);
 
+    if (semSessao && leadsFalharam) {
+      const erro = new Error("Este navegador não tem sessão válida no momento.");
+      erro.sessionExpired = true;
+      throw erro;
+    }
+
     if (leadsFalharam) {
-      throw new Error(`O servidor respondeu ${9 - falhas} de 9 pedidos, e os leads não vieram (HTTP ou banco indisponível).`);
+      if (leadsErroServidor && leadsErroServidor !== `HTTP 401`) {
+        throw new Error(leadsErroServidor);
+      }
+      throw new Error(`O servidor respondeu ${total - falhas} de ${total} pedidos, e os leads não vieram (HTTP ou banco indisponível).`);
     }
 
     return {
@@ -1061,6 +1263,12 @@ const crmApi = {
       proposals: proposals.data || [],
       clients: clients.data || [],
       clientUpdates: clientUpdates.data || [],
+      financeSales: financeSales.data || [],
+      financePayments: financePayments.data || [],
+      /* /finance/settings devolve um objeto; no erro vira a lista vazia de
+         reserva, que não é configuração nenhuma. */
+      financeSettings: Array.isArray(financeSettings.data) ? null : (financeSettings.data || null),
+      financeIndisponivel: financeiroFalhou,
     };
   },
 
@@ -1188,6 +1396,66 @@ const crmApi = {
       }).then((r) => r.json()),
   },
 
+  /* Financeiro (tabelas da migration 014). A venda que nasce de um Cliente
+     fechado NÃO é criada aqui — a tela soma o db.clients com estas vendas
+     avulsas, senão o mesmo dinheiro ficaria guardado em dois lugares. */
+  finance: {
+    sales: {
+      create: (sale) =>
+        fetch(`${CRM_API_BASE}/finance/sales`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sale),
+        }).then((r) => r.json()),
+      update: (id, patch) =>
+        fetch(`${CRM_API_BASE}/finance/sales/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        }).then((r) => r.json()),
+    },
+    payments: {
+      create: (payment) =>
+        fetch(`${CRM_API_BASE}/finance/payments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payment),
+        }).then((r) => r.json()),
+      update: (id, patch, credenciais) =>
+        fetch(`${CRM_API_BASE}/finance/payments/${id}`, {
+          method: "PATCH",
+          headers: Object.assign({ "Content-Type": "application/json" }, cabecalhosSenha(credenciais)),
+          body: JSON.stringify(patch),
+        }).then((r) => r.json()),
+      /* O único apagamento do Financeiro: o lançamento digitado errado. A tela
+         mostra empresa, valor e vencimento antes de confirmar e avisa que não tem
+         volta — quem decide apagar é sempre você, nunca a tela sozinha.
+         A senha vai em CABEÇALHO (ver cabecalhosSenha) e o backend confere antes
+         de apagar: sem ela o pedido não passa de um clique na tela. */
+      remove: (id, credenciais) =>
+        fetch(`${CRM_API_BASE}/finance/payments/${id}`, {
+          method: "DELETE",
+          headers: cabecalhosSenha(credenciais),
+        }).then((r) => r.json()),
+      /* Gera a mensalidade pendente de cada cliente ativo com mensalidade que
+         ainda não tem lançamento no mês. Repetir o mês não dobra nada. */
+      recorrentes: (period) =>
+        fetch(`${CRM_API_BASE}/finance/payments/recorrentes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ period }),
+        }).then((r) => r.json()),
+    },
+    settings: {
+      save: (commissionPercent) =>
+        fetch(`${CRM_API_BASE}/finance/settings`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ commissionPercent }),
+        }).then((r) => r.json()),
+    },
+  },
+
   async seedDemoData() {
     for (const lead of MOCK_LEADS) {
       try {
@@ -1294,8 +1562,55 @@ function dbReducer(db, action) {
     case "CONVERT_TO_CLIENT": {
       return { ...db, clients: [action.client, ...db.clients] };
     }
+    case "UPDATE_CLIENT": {
+      return { ...db, clients: db.clients.map(c => c.id === action.id ? { ...c, ...action.patch } : c) };
+    }
     case "ADD_CLIENT_UPDATE": {
       return { ...db, clientUpdates: [action.update, ...db.clientUpdates] };
+    }
+    /* ------------------------------ Financeiro ----------------------------
+       Tudo entra aqui já com o eco do servidor? Não: igual ao resto do app, a
+       tela responde na hora (otimista) e o dispatch grava atrás. */
+    case "ADD_FINANCE_SALE": {
+      return { ...db, financeSales: [action.sale, ...db.financeSales], financeIndisponivel: false };
+    }
+    case "ADD_FINANCE_SALE_WITH_PAYMENT": {
+      return {
+        ...db,
+        financeSales: [action.sale, ...db.financeSales],
+        financePayments: [action.payment, ...db.financePayments],
+        financeIndisponivel: false,
+      };
+    }
+    case "UPDATE_FINANCE_SALE": {
+      return { ...db, financeSales: db.financeSales.map(s => s.id === action.id ? { ...s, ...action.patch } : s) };
+    }
+    case "ADD_FINANCE_PAYMENT": {
+      return { ...db, financePayments: [action.payment, ...db.financePayments], financeIndisponivel: false };
+    }
+    /* Várias de uma vez é o "gerar mensalidades do mês": o servidor devolve
+       exatamente as linhas que criou, então nada é duplicado aqui. */
+    case "ADD_FINANCE_PAYMENTS": {
+      return { ...db, financePayments: [...action.payments, ...db.financePayments], financeIndisponivel: false };
+    }
+    case "UPDATE_FINANCE_PAYMENT": {
+      return { ...db, financePayments: db.financePayments.map(p => p.id === action.id ? { ...p, ...action.patch } : p) };
+    }
+    /* Desfazer o pagamento / cancelar um lançamento que já entrou: o pedido com a
+       senha já foi feito pelo botão da linha, aqui só pinta a tela. Se esse case
+       entrasse no "UPDATE_FINANCE_PAYMENT" normal, o espelho do banco reenviaria
+       o mesmo PATCH sem a senha e o backend responderia 401 — a linha voltaria
+       para o lugar certo na hora errada. */
+    case "FINANCE_PAYMENT_SECURED": {
+      return { ...db, financePayments: db.financePayments.map(p => p.id === action.id ? { ...p, ...action.patch } : p) };
+    }
+    /* Só o recebimento errado pode sumir mesmo (o "Excluir" da tela, depois da
+       confirmação com nome e valor). Venda avulsa continua virando 'Cancelada'. */
+    case "DELETE_FINANCE_PAYMENT": {
+      return { ...db, financePayments: db.financePayments.filter(p => p.id !== action.id) };
+    }
+    case "SET_FINANCE_SETTINGS": {
+      return { ...db, financeSettings: action.settings, financeIndisponivel: false };
     }
     case "SET_LOSS_REASON": {
       return { ...db, leads: db.leads.map(l => l.id === action.id ? { ...l, lossReason: action.reason } : l) };
@@ -1311,9 +1626,9 @@ function dbReducer(db, action) {
 
 const TONE_STYLE = (tone) => ({ background: `var(--tone-${tone}-bg, var(--tone-slate-bg))`, color: `var(--tone-${tone}-fg, var(--tone-slate-fg))` });
 
-function Pill({ tone = "slate", children, dot = false }) {
+function Pill({ tone = "slate", children, dot = false, title }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full text-xs font-medium px-2 py-1 whitespace-nowrap" style={TONE_STYLE(tone)}>
+    <span title={title} className="inline-flex items-center gap-1.5 rounded-full text-xs font-medium px-2 py-1 whitespace-nowrap" style={TONE_STYLE(tone)}>
       {dot && <span className="w-1.5 h-1.5 rounded-full" style={{ background: `var(--tone-${tone}-fg)` }} />}
       {children}
     </span>
@@ -1363,7 +1678,7 @@ function PriorityMark({ priority }) {
   );
 }
 
-function Button({ children, variant = "primary", size = "md", icon: Icon, onClick, type = "button", disabled, className = "" }) {
+function Button({ children, variant = "primary", size = "md", icon: Icon, onClick, type = "button", disabled, className = "", title }) {
   const base = "inline-flex items-center justify-center gap-1.5 font-medium rounded-lg transition-colors gc-focus disabled:opacity-40 disabled:cursor-not-allowed";
   const sizes = { md: "text-sm px-3.5 py-2", sm: "text-xs px-2.5 py-1.5", lg: "text-sm px-4 py-2.5" };
   const styles = {
@@ -1373,7 +1688,7 @@ function Button({ children, variant = "primary", size = "md", icon: Icon, onClic
     danger: { background: "var(--danger-bg)", color: "var(--danger)" },
   };
   return (
-    <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${sizes[size]} ${className}`} style={styles[variant]}>
+    <button type={type} onClick={onClick} disabled={disabled} title={title} className={`${base} ${sizes[size]} ${className}`} style={styles[variant]}>
       {Icon && <Icon size={size === "sm" ? 14 : 16} />}
       {children}
     </button>
@@ -1594,13 +1909,41 @@ function telLink(phone) { return phone ? `tel:${phone.replace(/\D/g, "")}` : nul
 function igLink(instagram) { return instagram ? `https://instagram.com/${instagram.replace("@", "")}` : null; }
 function siteLink(site) { return site ? `https://${site.replace(/^https?:\/\//, "")}` : null; }
 
-/* Copia texto para a área de transferência e mostra um toast de confirmação. */
-async function copyToClipboard(text, label, notify) {
+/* Copia texto para a área de transferência e mostra um toast de confirmação.
+   `feminino` só muda a concordância do aviso ("Cidade copiada!" em vez de
+   "Endereço copiado!"), porque o rótulo vem pronto de quem chama. */
+async function copyToClipboard(text, label, notify, feminino = false) {
+  const rotulo = label || "Texto";
+  const participa = feminino ? "copiada" : "copiado";
+  const artigo = feminino ? "a" : "o";
+  const aviso = () => { if (notify) notify(`${rotulo} ${participa}!`, "success"); };
+  /* 1) API oficial da área de transferência. */
   try {
-    await navigator.clipboard.writeText(text);
-    if (notify) notify(`${label || "Texto"} copiado!`, "success");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      aviso();
+      return;
+    }
+  } catch (_) { /* cai no caminho antigo */ }
+  /* 2) Fallback com caixa escondida: é o que funciona quando o CRM é aberto pelo
+     arquivo (file://) ou quando o navegador nega a API. Sem isto o botão fica
+     mudo e ele acha que o endereço não foi copiado. */
+  try {
+    const caixa = document.createElement("textarea");
+    caixa.value = text;
+    caixa.setAttribute("readonly", "");
+    caixa.style.position = "fixed";
+    caixa.style.top = "-1000px";
+    caixa.style.opacity = "0";
+    document.body.appendChild(caixa);
+    caixa.select();
+    caixa.setSelectionRange(0, String(text).length);
+    const copiou = document.execCommand("copy");
+    document.body.removeChild(caixa);
+    if (!copiou) throw new Error("o navegador recusou a cópia");
+    aviso();
   } catch (_) {
-    if (notify) notify("Não foi possível copiar.", "error");
+    if (notify) notify(`Não foi possível copiar ${artigo} ${rotulo.toLowerCase()}. Selecione o texto e use Ctrl+C.`, "error");
   }
 }
 
@@ -1902,12 +2245,13 @@ const NAV_ITEMS = [
   { id: "demos", label: "Demos", icon: Timer },
   { id: "proposals", label: "Propostas", icon: FileText },
   { id: "clients", label: "Clientes", icon: UserCheck },
+  { id: "finance", label: "Financeiro", icon: Banknote },
   { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
   { id: "enrichment", label: "Captar Leads", icon: Sparkles },
   { id: "reports", label: "Relatórios", icon: TrendingUp },
 ];
 
-function LoginScreen({ onLogin, apiProblem, onTentarAgora, tentando }) {
+function LoginScreen({ onLogin, apiProblem, sessaoExpirada, onTentarAgora, tentando }) {
   const [selectedUser, setSelectedUser] = useState(null);
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -1918,6 +2262,29 @@ function LoginScreen({ onLogin, apiProblem, onTentarAgora, tentando }) {
   const [changingPassword, setChangingPassword] = useState(false);
   const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
   const [manualPasswordChange, setManualPasswordChange] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [registerName, setRegisterName] = useState("");
+  const [registerId, setRegisterId] = useState("");
+  const [adminUserId, setAdminUserId] = useState("fabricio");
+  const [adminPassword, setAdminPassword] = useState("");
+  /* Lista de quem pode entrar. Começa com os dois de sempre e, se o backend
+     responder, recebe também os usuários criados no banco — é assim que uma
+     terceira pessoa da equipe aparece na tela sem mexer em código: um INSERT na
+     tabela users e pronto. Sem backend de pé, a lista antiga continua na tela. */
+  const [pessoas, setPessoas] = useState(() => USERS.map((user) => ({ ...user })));
+
+  useEffect(() => {
+    let vivo = true;
+    crmApi.auth
+      .users()
+      .then((lista) => {
+        if (!vivo || !Array.isArray(lista) || !lista.length) return;
+        lista.forEach((user) => ensureKnownUser(user.id, user.name));
+        setPessoas(USERS.map((user) => ({ ...user })));
+      })
+      .catch(() => { /* sem resposta: mantém a lista local */ });
+    return () => { vivo = false; };
+  }, []);
 
   const chooseUser = async (user) => {
     setSelectedUser(user);
@@ -1963,7 +2330,7 @@ function LoginScreen({ onLogin, apiProblem, onTentarAgora, tentando }) {
           setChangingPassword(true);
           return;
         }
-        writeSessionUserId(selectedUser.id);
+        writeSessionUserId(selectedUser.id, selectedUser.name);
         onLogin(selectedUser.id);
         return;
       }
@@ -1977,11 +2344,42 @@ function LoginScreen({ onLogin, apiProblem, onTentarAgora, tentando }) {
         setChangingPassword(true);
         return;
       }
-      writeSessionUserId(selectedUser.id);
-      onLogin(selectedUser.id);
+      const logado = apiResult.data.user || {};
+      writeSessionUserId(logado.id || selectedUser.id, logado.name || selectedUser.name);
+      onLogin(logado.id || selectedUser.id);
     } catch (err) {
       setError("Não foi possível validar o acesso. Tente novamente.");
       console.error("Erro no login:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async (event) => {
+    event.preventDefault();
+    const id = registerId.trim().toLowerCase().replace(/\s+/g, "-");
+    const name = registerName.trim();
+    if (name.length < 2) { setError("Informe o nome do novo usuário."); return; }
+    if (id.length < 3) { setError("Informe um identificador com pelo menos 3 caracteres."); return; }
+    if (!adminPassword) { setError("Informe a senha do administrador."); return; }
+    setLoading(true);
+    setError("");
+    try {
+      const result = await crmApi.auth.register(id, name, adminUserId, adminPassword);
+      if (!result.ok || !result.data) {
+        setError(result.message || "Não foi possível cadastrar o usuário.");
+        return;
+      }
+      const novo = result.data;
+      ensureKnownUser(novo.id, novo.name);
+      setPessoas(USERS.map((user) => ({ ...user })));
+      setRegistering(false);
+      setRegisterName("");
+      setRegisterId("");
+      setAdminPassword("");
+      setError(`Usuário cadastrado. A senha inicial é ${DEFAULT_PASSWORD}.`);
+    } catch (err) {
+      setError(err.message || "Não foi possível cadastrar o usuário.");
     } finally {
       setLoading(false);
     }
@@ -2017,8 +2415,9 @@ function LoginScreen({ onLogin, apiProblem, onTentarAgora, tentando }) {
         setChangeError(apiResult.message || "Não foi possível alterar a senha.");
         return;
       }
-      writeSessionUserId(selectedUser.id);
-      onLogin(selectedUser.id);
+      const novoLogado = (apiResult && apiResult.data && apiResult.data.user) || {};
+      writeSessionUserId(novoLogado.id || selectedUser.id, novoLogado.name || selectedUser.name);
+      onLogin(novoLogado.id || selectedUser.id);
     } catch (err) {
       setChangeError("Não foi possível salvar a nova senha. Tente novamente.");
       console.error("Erro ao trocar senha:", err);
@@ -2028,14 +2427,32 @@ function LoginScreen({ onLogin, apiProblem, onTentarAgora, tentando }) {
   };
 
   return (
-    <div className="gc-root min-h-screen flex items-center justify-center px-4">
+    <div className="gc-root gc-login-shell min-h-screen flex items-center justify-center px-4 py-8">
       <Tokens />
-      <div className="w-full max-w-sm">
+      <div className="w-full max-w-sm gc-login-card">
+        {sessaoExpirada && (
+          <div className="rounded-xl px-4 py-3 text-sm"
+            style={{ background: "rgba(217,119,6,0.10)", border: "1px solid rgba(217,119,6,0.35)", color: "#8A5A12", marginBottom: "24px" }}>
+            <strong className="block">Precisa entrar de novo</strong>
+            <span className="block mt-1" style={{ color: "var(--ink-soft)" }}>{sessaoExpirada}</span>
+          </div>
+        )}
         {apiProblem && (
           <div className="rounded-xl px-4 py-3 text-sm"
             style={{ background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.35)", color: "var(--danger)", marginBottom: "24px" }}>
-            <strong className="block">O backend não está respondendo</strong>
+            <strong className="block">{/banco/.test(apiProblem.tipo || "") ? "O banco de dados não está respondendo" : "O backend não está respondendo"}</strong>
             <span className="block mt-1" style={{ color: "var(--ink-soft)" }}>{apiProblem.motivo}</span>
+            {apiProblem.tipo === "banco-fora" && (
+              /endereço|DNS/i.test(apiProblem.motivo || "") ? (
+                <span className="block mt-1 text-xs" style={{ color: "var(--slate)" }}>
+                  O run-crm.bat não tem culpa aqui: ele respondeu. Abra dashboard.supabase.com e veja se o projeto está Paused (Restaure) ou se sumiu da lista.
+                </span>
+              ) : (
+                <span className="block mt-1 text-xs" style={{ color: "var(--slate)" }}>
+                  O banco está respondendo, só que vazio: cole o conteúdo de backend\database\banco_novo.sql no SQL Editor do projeto e clique em Run. Depois use "Tentar agora" — não precisa recarregar.
+                </span>
+              )
+            )}
             <span className="block mt-1 text-xs" style={{ color: "var(--slate)" }}>
               Nada aparece na tela enquanto ele não voltar. Nova tentativa a cada 5 s.
             </span>
@@ -2046,20 +2463,20 @@ function LoginScreen({ onLogin, apiProblem, onTentarAgora, tentando }) {
             </button>
           </div>
         )}
-        <div className="mb-8 text-center">
-          <div className="w-11 h-11 rounded-xl mx-auto mb-4 flex items-center justify-center gc-display font-semibold text-white" style={{ background: "var(--accent)" }}>GC</div>
+        <div className="mb-7 text-center">
+          <div className="gc-login-logo w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center gc-display text-lg font-semibold text-white" style={{ background: "var(--accent)" }}>GC</div>
           <h1 className="gc-display text-xl font-semibold">Gestão Comercial</h1>
           <p className="text-sm mt-1" style={{ color: "var(--slate)" }}>
             {changingPassword ? "Altere sua senha" : selectedUser ? "Informe seus dados de acesso" : "Quem está acessando?"}
           </p>
         </div>
 
-        {!selectedUser ? (
+        {!selectedUser && !registering ? (
           <>
             <div className="space-y-2">
-              {USERS.map((user) => (
+              {pessoas.map((user) => (
                 <label key={user.id} onClick={() => chooseUser(user)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl gc-focus text-left transition-colors cursor-pointer"
+                  className="gc-login-user w-full flex items-center gap-3 px-4 py-3.5 rounded-xl gc-focus text-left cursor-pointer"
                   style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
                   <span className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-sm" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
                     {user.name[0]}
@@ -2068,7 +2485,45 @@ function LoginScreen({ onLogin, apiProblem, onTentarAgora, tentando }) {
                 </label>
               ))}
             </div>
+            <div className="gc-login-divider my-5">ou</div>
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" className="flex-1" onClick={() => { setRegistering(true); setError(""); }}>
+                Cadastrar
+              </Button>
+              <Button type="button" className="flex-1" disabled={!pessoas.length} onClick={() => chooseUser(pessoas[0])}>
+                Entrar
+              </Button>
+            </div>
+            {error && <div className="text-sm text-center mt-3" style={{ color: "var(--accent-ink)" }}>{error}</div>}
           </>
+        ) : registering ? (
+          <form onSubmit={handleRegister} className="space-y-4">
+            <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)", border: "1px solid var(--accent-soft-strong)" }}>
+              Cadastro protegido por Fabricio ou Erick.
+            </div>
+            <Field label="Nome do novo usuário" required>
+              <TextInput value={registerName} onChange={(e) => setRegisterName(e.target.value)} autoFocus placeholder="Ex.: Ana Souza" />
+            </Field>
+            <Field label="Identificador de acesso" required hint="Use letras, números ou hífen.">
+              <TextInput value={registerId} onChange={(e) => setRegisterId(e.target.value)} placeholder="Ex.: ana" autoComplete="username" />
+            </Field>
+            <Field label="Administrador" required>
+              <Select value={adminUserId} onChange={(e) => setAdminUserId(e.target.value)}>
+                <option value="fabricio">Fabricio</option>
+                <option value="erick">Erick</option>
+              </Select>
+            </Field>
+            <Field label="Senha do administrador" required>
+              <TextInput type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="Senha de Fabricio ou Erick" autoComplete="current-password" />
+            </Field>
+            {error && <div className="text-sm text-center" style={{ color: "var(--danger)" }}>{error}</div>}
+            <Button type="submit" className="w-full" disabled={loading || !registerName || !registerId || !adminPassword}>
+              {loading ? "Cadastrando..." : "Cadastrar"}
+            </Button>
+            <button type="button" onClick={() => { setRegistering(false); setError(""); }} className="w-full text-center text-sm gc-focus rounded py-1" style={{ color: "var(--slate)" }}>
+              Entrar
+            </button>
+          </form>
         ) : !changingPassword ? (
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)", border: "1px solid var(--accent-soft-strong)" }}>
@@ -2080,7 +2535,7 @@ function LoginScreen({ onLogin, apiProblem, onTentarAgora, tentando }) {
             </Field>
             {error && <div className="text-sm text-center" style={{ color: "var(--danger)" }}>{error}</div>}
             <Button type="submit" className="w-full" disabled={loading || !password}>
-              {loading ? "Validando..." : "Acessar"}
+              {loading ? "Validando..." : "Entrar"}
             </Button>
             <button type="button" onClick={() => chooseUser(null)} className="w-full text-center text-sm gc-focus rounded py-1" style={{ color: "var(--slate)" }}>
               Escolher outro usuário
@@ -2130,7 +2585,7 @@ function LoginScreen({ onLogin, apiProblem, onTentarAgora, tentando }) {
         )}
 
         <p className="text-xs text-center mt-6" style={{ color: "var(--slate)" }}>
-          Não há cadastro nesta tela. O acesso é liberado apenas para usuários existentes.
+          O cadastro de novos usuários exige a senha de Fabricio ou Erick.
         </p>
       </div>
     </div>
@@ -2242,6 +2697,18 @@ function ThemePicker() {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState(() => (window.GCTheme ? window.GCTheme.getState() : { id: "petroleo", accent: null }));
 
+  /* Esc fecha o painel do tema — é o que ele pediu. O clique de fora já tinha o
+     véu fixed logo abaixo do botão, mas teclado precisa de listener no window:
+     preso no painel, o Esc só fecharia se o foco estivesse dentro dele, e quem
+     abre com o mouse nunca coloca foco lá. Mesmo desenho do menu de filtro e do
+     menu de status. */
+  useEffect(() => {
+    if (!open) return undefined;
+    const tecla = event => { if (event.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [open]);
+
   const current = themes.find(t => t.id === state.id) || themes[0];
   const accentColor = state.accent || (current && current.tokens["--accent"]) || "#2C5F72";
   const sync = () => setState(window.GCTheme.getState());
@@ -2290,8 +2757,181 @@ function ThemePicker() {
   );
 }
 
-function Topbar({ db, currentUser, setCurrentUser, onSearch, search, attention, onOpenLead, onMenu, onLogout, searchInputRef, apiStatus, onSeedDemo }) {
+/* =========================================================================
+   TROCA DE SENHA DEPOIS DE ENTRAR
+   O formulário existe uma vez só e é usado em dois lugares: no painel que abre
+   embaixo do nome no topo (qualquer tela) e na faixa do topo de quem ainda está
+   com a senha inicial. Ele nunca abre janela por cima da tela que a pessoa está
+   usando — os campos aparecem ali mesmo, embaixo do botão.
+   Quem troca a senha continua logado: /auth/change-password devolve uma sessão
+   nova, e a changePasswordThroughApi() já guarda essa sessão no lugar da antiga.
+   ========================================================================= */
+function PasswordChangeForm({ userId, onSuccess, onCancel, autoFocus }) {
+  const [atual, setAtual] = useState("");
+  const [nova, setNova] = useState("");
+  const [confirmar, setConfirmar] = useState("");
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  const enviar = async (event) => {
+    event.preventDefault();
+    if (salvando) return;
+    if (!atual) { setErro("Informe sua senha atual."); return; }
+    if (nova.length < 8) { setErro("A nova senha deve ter pelo menos 8 caracteres."); return; }
+    if (nova !== confirmar) { setErro("A confirmação da senha não coincide."); return; }
+    setErro("");
+    setSalvando(true);
+    try {
+      const apiResult = await changePasswordThroughApi(userId, atual, nova);
+      if (apiResult === null) {
+        /* Backend em silêncio (modo local sem API): neste modo a senha mora no
+           próprio navegador, então é aqui também que ela é trocada. */
+        const conferido = await verifyPassword(userId, atual);
+        if (!conferido.matches) {
+          setErro("Senha atual incorreta.");
+          return;
+        }
+        await savePermanentPassword(userId, nova);
+      } else if (!apiResult.ok) {
+        setErro(apiResult.message || "Não foi possível alterar a senha.");
+        return;
+      }
+      /* Limpa as três caixas antes de avisar: nada fica digitado na tela. */
+      setAtual(""); setNova(""); setConfirmar("");
+      onSuccess();
+    } catch (err) {
+      console.error("Erro ao trocar senha:", err);
+      setErro("Não foi possível salvar a nova senha. Tente novamente.");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <form onSubmit={enviar} className="space-y-2.5">
+      <Field label="Senha atual" required>
+        <TextInput type="password" value={atual} onChange={(e) => setAtual(e.target.value)} autoFocus={autoFocus} placeholder="Digite sua senha atual" autoComplete="current-password" />
+      </Field>
+      <Field label="Nova senha" required hint="Mínimo de 8 caracteres.">
+        <TextInput type="password" value={nova} onChange={(e) => setNova(e.target.value)} placeholder="Digite a nova senha" autoComplete="new-password" />
+      </Field>
+      <Field label="Confirmar nova senha" required>
+        <TextInput type="password" value={confirmar} onChange={(e) => setConfirmar(e.target.value)} placeholder="Repita a nova senha" autoComplete="new-password" />
+      </Field>
+      {erro && <div className="text-xs" style={{ color: "var(--danger)" }}>{erro}</div>}
+      <div className="flex items-center gap-2">
+        <Button type="submit" className="flex-1" disabled={salvando || !atual || !nova || !confirmar}>
+          {salvando ? "Salvando..." : "Salvar nova senha"}
+        </Button>
+        {onCancel && (
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>Cancelar</Button>
+        )}
+      </div>
+    </form>
+  );
+}
+
+/* Painel embaixo do nome: os dois botões têm rótulo escrito, porque ícone
+   sozinho neste tamanho a pessoa não enxerga. */
+function UserMenuPanel({ currentUser, onLogout, onPasswordChanged, onClose }) {
+  const [abrindoSenha, setAbrindoSenha] = useState(false);
+  /* Esc, como no painel do tema: se o formulário de senha estiver aberto ele
+     volta para os dois botões; se já está nos botões, fecha o painel. O ouvinte
+     mora aqui (e não no Topbar) porque só este componente sabe qual dos dois
+     estados está na tela. */
+  useEffect(() => {
+    const tecla = event => {
+      if (event.key !== "Escape") return;
+      if (abrindoSenha) setAbrindoSenha(false); else onClose();
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [abrindoSenha, onClose]);
+  return (
+    <div className="absolute right-0 top-11 rounded-xl z-30 gc-pop-in overflow-y-auto" style={{ width: "min(20rem, calc(100vw - 1.5rem))", maxHeight: 460, background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 12px 32px rgba(23,25,28,0.12)" }}>
+      <div className="px-4 py-3 flex items-center gap-2.5" style={{ borderBottom: "1px solid var(--line)" }}>
+        <span className="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs shrink-0" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
+          {userName(currentUser)[0]}
+        </span>
+        <span className="min-w-0">
+          <span className="block text-sm font-medium truncate">{userName(currentUser)}</span>
+          <span className="block text-xs" style={{ color: "var(--slate)" }}>Sua conta neste CRM</span>
+        </span>
+        <button type="button" onClick={onClose} aria-label="Fechar" className="ml-auto w-7 h-7 rounded-lg flex items-center justify-center gc-focus shrink-0" style={{ color: "var(--slate)" }}>
+          <X size={14} />
+        </button>
+      </div>
+      {abrindoSenha ? (
+        <div className="p-4">
+          <div className="text-sm font-medium mb-3">Trocar senha</div>
+          <PasswordChangeForm
+            userId={currentUser}
+            autoFocus
+            onCancel={() => setAbrindoSenha(false)}
+            onSuccess={() => { onPasswordChanged(); onClose(); }}
+          />
+        </div>
+      ) : (
+        <div className="p-1.5">
+          <button type="button" onClick={() => setAbrindoSenha(true)}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium text-left gc-focus gc-row-hover"
+            style={{ color: "var(--ink)", background: "transparent", border: "none" }}>
+            <LockIcon size={15} style={{ color: "var(--slate)" }} />
+            <span className="flex-1">Trocar senha</span>
+            <span className="text-xs" style={{ color: "var(--slate)" }}>Criar a minha</span>
+          </button>
+          <button type="button" onClick={onLogout}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium text-left gc-focus gc-row-hover"
+            style={{ color: "var(--ink-soft)", background: "transparent", border: "none" }}>
+            <LogOut size={15} style={{ color: "var(--slate)" }} />
+            <span className="flex-1">Sair</span>
+            <span className="text-xs" style={{ color: "var(--slate)" }}>Escolher outro</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* A faixa do topo: aparece em TODAS as telas enquanto a pessoa estiver com a
+   senha inicial compartilhada, e some quando a senha é trocada. É aviso, não
+   portão — ninguém é bloqueado de usar o CRM por causa dela. */
+function AvisoSenhaInicial({ currentUser, onDismissed, onPasswordChanged }) {
+  const [editando, setEditando] = useState(false);
+  return (
+    <div className="rounded-xl px-4 py-3 mb-3 flex flex-wrap items-center gap-3 gc-no-print"
+      style={{ background: "var(--warn-bg)", border: "1px solid rgba(217,119,6,0.35)" }}>
+      <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(217,119,6,0.16)", color: "var(--warn)" }}>
+        <LockIcon size={15} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium" style={{ color: "var(--warn)" }}>Você ainda está com a senha inicial</span>
+        <span className="block text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>
+          Crie uma senha só sua para {userName(currentUser)}. Enquanto não trocar, este aviso aparece em toda tela.
+        </span>
+      </span>
+      {editando ? (
+        <div className="mt-1" style={{ width: "min(20rem, 100%)" }}>
+          <PasswordChangeForm
+            userId={currentUser}
+            autoFocus
+            onCancel={() => setEditando(false)}
+            onSuccess={() => { setEditando(false); onPasswordChanged(); }}
+          />
+        </div>
+      ) : (
+        <span className="flex items-center gap-2 shrink-0">
+          <Button type="button" size="sm" onClick={() => setEditando(true)}>Trocar minha senha</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={onDismissed}>Agora não</Button>
+        </span>
+      )}
+    </div>
+  );
+}
+
+function Topbar({ db, currentUser, setCurrentUser, onSearch, search, attention, onOpenLead, onMenu, onLogout, searchInputRef, apiStatus, onSeedDemo, onPasswordChanged }) {
   const [notifOpen, setNotifOpen] = useState(false);
+  const [userOpen, setUserOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const results = useMemo(() => globalSearch(search, db), [db, search]);
 
@@ -2373,16 +3013,14 @@ function Topbar({ db, currentUser, setCurrentUser, onSearch, search, attention, 
         <IconButton icon={Bell} label="Notificações" active={notifOpen} badge={attention.length} onClick={() => setNotifOpen(v => !v)} />
         {notifOpen && <NotificationPanel items={attention} onClose={() => setNotifOpen(false)} onOpenLead={onOpenLead} />}
       </div>
-      <div className="flex items-center gap-1 sm:gap-2 pl-1 sm:pl-2 ml-0 sm:ml-1" style={{ borderLeft: "1px solid var(--line)" }}>
-        <button onClick={onLogout} className="flex items-center gap-2 gc-focus rounded-lg px-1 py-1 min-w-0" style={{ background: "transparent", border: "none" }} aria-label="Sair e escolher outro usuário">
+      <div className="relative flex items-center gap-1 sm:gap-2 pl-1 sm:pl-2 ml-0 sm:ml-1" style={{ borderLeft: "1px solid var(--line)" }}>
+        <button onClick={() => setUserOpen(v => !v)} className="flex items-center gap-2 gc-focus rounded-lg px-1 py-1 min-w-0" style={{ background: userOpen ? "var(--accent-soft)" : "transparent", border: "none" }} aria-label="Abrir menu do usuário: trocar senha ou sair">
           <span className="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs shrink-0" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>
             {userName(currentUser)[0]}
           </span>
           <span className="text-sm font-medium hidden sm:block">{userName(currentUser)}</span>
         </button>
-        <button onClick={onLogout} className="w-8 h-8 rounded-lg flex items-center justify-center gc-focus" style={{ color: "var(--slate)" }} aria-label="Trocar usuário">
-          <LogOut size={15} />
-        </button>
+        {userOpen && <UserMenuPanel currentUser={currentUser} onLogout={onLogout} onPasswordChanged={onPasswordChanged} onClose={() => setUserOpen(false)} />}
       </div>
     </div>
   );
@@ -2393,9 +3031,9 @@ function Topbar({ db, currentUser, setCurrentUser, onSearch, search, attention, 
    what needs attention now → today's actions & pipeline shape → indicators.
    ========================================================================= */
 
-function StatTile({ label, value, sub, tone, onClick, icon: Icon }) {
+function StatTile({ label, value, sub, tone, onClick, icon: Icon, title }) {
   return (
-    <button onClick={onClick} className="text-left rounded-xl px-4 py-3.5 gc-focus gc-card gc-card-hover gc-pressable" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+    <button onClick={onClick} title={title} className="text-left rounded-xl px-4 py-3.5 gc-focus gc-card gc-card-hover gc-pressable" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
       <div className="flex items-center justify-between">
         <div className="gc-mono text-2xl font-medium leading-none" style={{ color: tone ? `var(--${tone})` : "var(--ink)" }}>{value}</div>
         {Icon && <Icon size={15} style={{ color: tone ? `var(--${tone})` : "var(--slate)" }} />}
@@ -2656,7 +3294,6 @@ function TooltipText({ value, className = "", style = {}, children, nativeToolti
 }
 
 function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, onOpenHistory, history, onCellMouseEnter, onCellMouseMove, onCellMouseLeave, onCellFocus, onCellBlur, gridTemplateColumns, waStatus, onChangeWaStatus }) {
-  const bucket = actionBucket(lead.nextAction?.date);
   const [waSaving, setWaSaving] = useState(false);
   const cellTooltipProps = {
     nativeTooltip: false,
@@ -2754,13 +3391,6 @@ function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, onOpenHistory, 
             <TooltipText {...cellTooltipProps} value={history ? timelineEventText(history) : "Sem histórico"} className="text-xs truncate" style={{ color: "var(--slate)" }} />
           </button>
         </div>
-        {lead.nextAction && (
-          <div className="flex items-center gap-1.5 text-xs">
-            {bucket === "atrasado" && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--danger)" }} />}
-            <span className="gc-mono shrink-0" style={{ color: bucket === "atrasado" ? "var(--danger)" : "var(--slate)" }}>{fmtDate(lead.nextAction.date)}</span>
-            <TooltipText {...cellTooltipProps} value={lead.nextAction.note} className="truncate" style={{ color: "var(--ink-soft)" }} />
-          </div>
-        )}
       </div>
       {/* Desktop: grid row */}
       <div className="hidden md:grid items-center gap-3 min-w-0" style={{ gridTemplateColumns }}>
@@ -2787,16 +3417,6 @@ function LeadRow({ lead, onEdit, onDelete, deleting, onWhatsApp, onOpenHistory, 
             </>
           ) : <span className="text-sm" style={{ color: "var(--slate)" }}>—</span>}
         </button>
-        <span className="min-w-0">
-          {lead.nextAction ? (
-            <span className="flex items-center gap-1.5 text-sm truncate">
-              {bucket === "atrasado" && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--danger)" }} />}
-              {bucket === "hoje" && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--warn)" }} />}
-              <span className="gc-mono text-xs shrink-0" style={{ color: bucket === "atrasado" ? "var(--danger)" : "var(--slate)" }}>{fmtDate(lead.nextAction.date)}</span>
-              <TooltipText {...cellTooltipProps} value={lead.nextAction.note} className="truncate" style={{ color: "var(--ink-soft)" }} />
-            </span>
-          ) : <span className="text-sm" style={{ color: "var(--slate)" }}>—</span>}
-        </span>
         <TooltipText
           {...cellTooltipProps}
           value={lead.lastContactAt ? fmtDateTime(lead.lastContactAt) : "Sem contato"}
@@ -2923,7 +3543,7 @@ function SortableHeader({ label, sortKey, sortBy, sortDirection, onSort }) {
   );
 }
 
-function ResizableHeader({ label, sortKey, sortBy, sortDirection, onSort, columnIndex, onResizeStart, onResizeKeyDown, children }) {
+function ResizableHeader({ label, sortKey, sortBy, sortDirection, onSort, columnIndex, onResizeStart, onResizeKeyDown, onResizeReset, children }) {
   return (
     <div className="relative min-w-0 flex items-center justify-center gap-2">
       {children || <SortableHeader label={label} sortKey={sortKey} sortBy={sortBy} sortDirection={sortDirection} onSort={onSort} />}
@@ -2932,10 +3552,11 @@ function ResizableHeader({ label, sortKey, sortBy, sortDirection, onSort, column
         role="separator"
         aria-orientation="vertical"
         aria-label={`Redimensionar coluna ${label}`}
-        title="Arraste para redimensionar"
+        title={`Arraste para afinar ou alargar "${label}" · duplo clique volta ao tamanho original`}
         tabIndex={0}
         onPointerDown={(event) => onResizeStart(event, columnIndex)}
         onKeyDown={(event) => onResizeKeyDown(event, columnIndex)}
+        onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); if (onResizeReset) onResizeReset(); }}
       />
     </div>
   );
@@ -3071,22 +3692,81 @@ function FilterMenu({ label, title, options, selected, onToggle, onClear }) {
   );
 }
 
+/* Sem a coluna "Próxima ação": spacer, Empresa, Status, Histórico,
+   Último contato, Ação. Quem ordena por "Próxima ação" no menu "Ordenar:"
+   continua ordenando — o que saiu foi a coluna, não o dado.
+
+   Estas seis larguras são o padrão medido no print que ele mandou como "página
+   padronizada" (2026-10-18, à noite). A janela do print tem 1274px e a escala é
+   1:1 — confirmado pela coluna Ação, que é a única sem alça e fechou em 128px,
+   exatamente o valor do código. Bordas direitas das células, lidas das marcas "||"
+   do cabeçalho: Empresa 441,5 · Status 629,5 · Histórico 941,5 · Último contato
+   1108,5 · fim da tabela 1249. Com gap de 12px entre colunas isso dá
+   Empresa 338 · Status 176 · Histórico 300 · Último contato 155 · Ação 128.
+   Empresa é a coluna que estica (min 240): no print ela tem 338 porque come a
+   sobra da janela, e é assim que ela se comporta em qualquer tela maior.
+
+   Estes números são o PONTO DE PARTIDA e também o que o duplo clique na alça
+   devolve. O que ele arrastar depois disso fica salvo no navegador
+   (CHAVE_LARGURAS_LEADS) e volta na próxima abertura da página. */
+const LARGURAS_PADRAO_LEADS = [52, 240, 176, 300, 155, 128];
+const COLUNAS_ESTICAM_PADRAO = [1];
+const CHAVE_LARGURAS_LEADS = "crm:largura-colunas-leads";
+
+/* O que estiver salvo tem que ser uma tabela de 6 números positivos e uma lista
+   de índices — senão (chave antiga, edição manual, JSON quebrado) o app abre no
+   padrão em vez de montar uma tabela torta. */
+function lerLargurasSalvas() {
+  try {
+    const bruto = localStorage.getItem(CHAVE_LARGURAS_LEADS);
+    if (!bruto) return null;
+    const salvo = JSON.parse(bruto);
+    if (!salvo || !Array.isArray(salvo.larguras) || !Array.isArray(salvo.esticaveis)) return null;
+    if (salvo.larguras.length !== LARGURAS_PADRAO_LEADS.length) return null;
+    if (!salvo.larguras.every(n => Number.isFinite(n) && n >= 32 && n <= 2000)) return null;
+    return {
+      larguras: salvo.larguras.map(n => Math.round(n)),
+      esticaveis: salvo.esticaveis.filter(i => Number.isInteger(i) && i >= 0 && i < LARGURAS_PADRAO_LEADS.length),
+    };
+  } catch (err) { return null; }
+}
+
 function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead, onDeleteLead, deletingLeadId, onCreateLead, onImportLeads, currentUser, viewMode, setViewMode, dispatch, waStatusByLead, onChangeWaStatus }) {
   const [sortBy, setSortBy] = useState("next_action");
   const [sortDirection, setSortDirection] = useState("asc");
   const [cellTooltip, setCellTooltip] = useState(null);
   const [historyLead, setHistoryLead] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(true);
-  const [columnWidths, setColumnWidths] = useState([52, 240, 176, 200, 220, 160, 150]);
+  /* Lido uma vez, na montagem da tela: é isto que faz a página "já carregar
+     padronizada" depois que ele ajustou as colunas uma vez. */
+  const [salvas] = useState(lerLargurasSalvas);
+  const [columnWidths, setColumnWidths] = useState(() => (salvas ? salvas.larguras : [...LARGURAS_PADRAO_LEADS]));
   const clinicaMessageText = "Olá, bom dia/boa tarde!!\nConsigo falar com a {{nome}} por esse número?";
 
-  const columnWidthsRef = useRef([52, 240, 176, 200, 220, 160, 150]);
-  const minColumnWidth = 90;
-  const maxColumnWidth = 600;
-  const gridTemplateColumns = useMemo(() => {
-    const fixedColumns = columnWidths.slice(0, -1).map(width => `${width}px`);
-    return [...fixedColumns, `minmax(${columnWidths[columnWidths.length - 1]}px, 1fr)`].join(" ");
-  }, [columnWidths]);
+  const columnWidthsRef = useRef(columnWidths);
+  const minColumnWidth = 64;
+  const maxColumnWidth = 900;
+  /* O problema do minmax(largura, 1fr) usado nas elásticas é que ele engole o
+     arraste para a esquerda: a coluna pode estar ocupando 460px na tela enquanto
+     o número guardado é 200 — afinar de 200 para 150 não muda nada no que ele vê,
+     e a alça parece morta. Por isso, no momento em que a alça é pega, a largura
+     REAL da célula é medida (getBoundingClientRect) e a coluna sai desta lista:
+     a partir daí o número guardado volta a mandar e os dois lados do arraste
+     funcionam. Duplo clique na alça devolve tudo ao tamanho original. */
+  const [esticaveis, setEsticaveis] = useState(() => (salvas ? salvas.esticaveis : [...COLUNAS_ESTICAM_PADRAO]));
+  const esticaveisRef = useRef(esticaveis);
+  const gridTemplateColumns = useMemo(() => columnWidths
+    .map((width, index) => (esticaveis.includes(index) ? `minmax(${width}px, 1fr)` : `${width}px`))
+    .join(" "), [columnWidths, esticaveis]);
+  /* Toda mudança de largura vai para o navegador. Assim a página carrega do jeito
+     que ele deixou na última vez, em vez de voltar ao padrão a cada F5. Se o
+     localStorage estiver bloqueado (modo privado cheio), a tabela funciona do mesmo
+     jeito — só não lembra na próxima abertura. */
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAVE_LARGURAS_LEADS, JSON.stringify({ larguras: columnWidths, esticaveis }));
+    } catch (err) { /* sem memória local: segue sem travar a tela */ }
+  }, [columnWidths, esticaveis]);
   const setColumnWidth = useCallback((columnIndex, width) => {
     setColumnWidths(previous => {
       if (columnIndex >= previous.length - 1) return previous;
@@ -3097,12 +3777,35 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
       return next;
     });
   }, []);
+  /* A alça é filha direta da célula do cabeçalho, então o pai dela tem exatamente
+     a largura que a coluna ocupa na tela — é esse número que o arraste precisa
+     respeitar, senão ele parte de um valor que não é o que está sendo visto. */
+  const larguraNaTela = (event) => {
+    const celula = event.currentTarget && event.currentTarget.parentElement;
+    const medida = celula ? Math.round(celula.getBoundingClientRect().width) : 0;
+    return medida > 0 ? medida : null;
+  };
+  const fixarColuna = useCallback((columnIndex, width) => {
+    if (esticaveisRef.current.includes(columnIndex)) {
+      esticaveisRef.current = esticaveisRef.current.filter(index => index !== columnIndex);
+      setEsticaveis(esticaveisRef.current);
+    }
+    setColumnWidth(columnIndex, width);
+  }, [setColumnWidth]);
+  const restaurarColunas = useCallback(() => {
+    columnWidthsRef.current = [...LARGURAS_PADRAO_LEADS];
+    esticaveisRef.current = [...COLUNAS_ESTICAM_PADRAO];
+    setColumnWidths([...LARGURAS_PADRAO_LEADS]);
+    setEsticaveis([...COLUNAS_ESTICAM_PADRAO]);
+  }, []);
   const startColumnResize = useCallback((event, columnIndex) => {
     if (event.button !== 0 || columnIndex >= columnWidthsRef.current.length - 1) return;
     event.preventDefault();
     event.stopPropagation();
     const startX = event.clientX;
-    const startWidth = columnWidthsRef.current[columnIndex];
+    const medida = larguraNaTela(event);
+    const startWidth = medida === null ? columnWidthsRef.current[columnIndex] : medida;
+    fixarColuna(columnIndex, startWidth);
     const target = event.currentTarget;
     const handleMove = (moveEvent) => {
       setColumnWidth(columnIndex, startWidth + moveEvent.clientX - startX);
@@ -3118,13 +3821,15 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
     if (target.setPointerCapture) {
       try { target.setPointerCapture(event.pointerId); } catch (err) { /* pointer sintético/sem captura disponível */ }
     }
-  }, [setColumnWidth]);
+  }, [setColumnWidth, fixarColuna]);
   const handleResizeKeyDown = useCallback((event, columnIndex) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
     event.stopPropagation();
-    setColumnWidth(columnIndex, columnWidthsRef.current[columnIndex] + (event.key === "ArrowRight" ? 16 : -16));
-  }, [setColumnWidth]);
+    const medida = larguraNaTela(event);
+    const atual = medida === null ? columnWidthsRef.current[columnIndex] : medida;
+    fixarColuna(columnIndex, atual + (event.key === "ArrowRight" ? 16 : -16));
+  }, [fixarColuna]);
   const bucketRank = { atrasado: 0, hoje: 1, proximo: 2 };
 
   /* Mesmo conjunto de eventos da aba Histórico do drawer — a coluna "Histórico"
@@ -3385,11 +4090,10 @@ function LeadsView({ db, sel, search, filter, setFilter, onOpenLead, onEditLead,
           <div className="gc-table-scroll">
             <div className="hidden md:grid gap-3 px-5 py-2.5 text-xs font-medium" style={{ gridTemplateColumns, color: "var(--slate)", borderBottom: "1px solid var(--line)" }}>
               <span className="min-w-0" />
-              <ResizableHeader label="Empresa" sortKey="company" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={1} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <ResizableHeader label="Status" sortKey="status" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={2} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <ResizableHeader label="Histórico" sortKey="history" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={3} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <ResizableHeader label="Próxima ação" sortKey="next_action" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={4} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
-              <ResizableHeader label="Último contato" sortKey="last_contact" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={5} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} />
+              <ResizableHeader label="Empresa" sortKey="company" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={1} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} onResizeReset={restaurarColunas} />
+              <ResizableHeader label="Status" sortKey="status" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={2} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} onResizeReset={restaurarColunas} />
+              <ResizableHeader label="Histórico" sortKey="history" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={3} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} onResizeReset={restaurarColunas} />
+              <ResizableHeader label="Último contato" sortKey="last_contact" sortBy={sortBy} sortDirection={sortDirection} onSort={handleSort} columnIndex={4} onResizeStart={startColumnResize} onResizeKeyDown={handleResizeKeyDown} onResizeReset={restaurarColunas} />
               <span className="min-w-0 text-center">Ação</span>
             </div>
             {filtered.length === 0 ? (
@@ -4420,6 +5124,27 @@ function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initia
   const [showLoss, setShowLoss] = useState(false);
   const [showConvert, setShowConvert] = useState(false);
   const [waSaving, setWaSaving] = useState(false);
+
+  /* Ctrl+Delete apaga o lead desta ficha aberta. Vai pelo mesmo caminho do botão
+     "Excluir" — inclusive a janela de confirmação, então o atalho nunca apaga
+     sozinho. Dentro de campo de texto o Ctrl+Delete é edição (apaga a palavra à
+     frente da posição), por isso ali ele não mexe no lead. */
+  useEffect(() => {
+    if (!onDeleteLead) return undefined;
+    const atalho = (eventObject) => {
+      if (!(eventObject.ctrlKey || eventObject.metaKey) || eventObject.altKey || eventObject.shiftKey) return;
+      if (eventObject.key !== "Delete") return;
+      const alvo = eventObject.target;
+      const tag = String(alvo && alvo.tagName ? alvo.tagName : "").toLowerCase();
+      if (["input", "textarea", "select"].includes(tag) || (alvo && alvo.isContentEditable)) return;
+      eventObject.preventDefault();
+      const leadAberto = db.leads.find((l) => l.id === leadId);
+      if (leadAberto) onDeleteLead(leadAberto);
+    };
+    window.addEventListener("keydown", atalho);
+    return () => window.removeEventListener("keydown", atalho);
+  }, [db, leadId, onDeleteLead]);
+
   const lead = db.leads.find(l => l.id === leadId);
   if (!lead) return null;
 
@@ -4492,8 +5217,8 @@ function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initia
       headerRight={
         <div className="flex items-center gap-2">
           {onDeleteLead && (
-            <Button size="sm" variant="danger" icon={Trash2} onClick={() => onDeleteLead(lead)}>
-              Excluir
+            <Button size="sm" variant="danger" icon={Trash2} onClick={() => onDeleteLead(lead)} title="Excluir este lead — atalho: Ctrl+Delete">
+              Excluir <Kbd>Ctrl+Del</Kbd>
             </Button>
           )}
           {lead.status === "Fechado" && !client ? <Button size="sm" onClick={() => setShowConvert(true)}>Converter em cliente</Button> : null}
@@ -5099,20 +5824,21 @@ function ProposalsView({ db, sel, onOpenLead, dispatch, notify }) {
    CLIENTS VIEW
    ========================================================================= */
 
-function ClientsView({ db, onOpenLead }) {
+function ClientsView({ db, onOpenLead, dispatch, notify }) {
+  const clientesAtivos = db.clients.filter(c => c.status === "Ativo");
   return (
     <div className="space-y-5">
       <div>
         <h1 className="gc-display text-xl font-semibold">Clientes</h1>
-        <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>{db.clients.length} clientes ativos</p>
+        <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>{clientesAtivos.length} clientes ativos</p>
       </div>
       {db.clients.length === 0 ? <EmptyState icon={UserCheck} title="Nenhum cliente ainda" hint="Quando um lead for fechado, converta-o em cliente pela ficha do lead." /> : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {db.clients.map(c => (
-            <button key={c.id} onClick={() => onOpenLead(c.leadId)} className="text-left rounded-xl p-4 gc-focus gc-card gc-card-hover space-y-2.5" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+            <div key={c.id} role="button" tabIndex={0} onClick={() => onOpenLead(c.leadId)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onOpenLead(c.leadId); }} className="text-left rounded-xl p-4 gc-focus gc-card gc-card-hover space-y-2.5" style={{ background: "var(--surface)", border: "1px solid var(--line)", opacity: c.status === "Ativo" ? 1 : 0.72 }}>
               <div className="flex items-center justify-between">
                 <span className="font-medium text-sm">{c.company}</span>
-                <Pill tone="green" dot>Ativo</Pill>
+                <Pill tone={c.status === "Ativo" ? "green" : "slate"} dot>{c.status || "Ativo"}</Pill>
               </div>
               <div className="text-xs" style={{ color: "var(--slate)" }}>{c.plan} · Responsável: {userName(c.owner)}</div>
               <div className="flex gap-4 text-sm gc-mono">
@@ -5123,10 +5849,1233 @@ function ClientsView({ db, onOpenLead }) {
                 <span>Fechado em {fmtDateFull(c.closingDate)}</span>
                 {c.domain && <span className="flex items-center gap-1"><Globe size={11} />{c.domain}</span>}
               </div>
-            </button>
+              {c.status === "Ativo" && (
+                <div className="flex justify-end pt-1">
+                  <Button size="sm" variant="secondary" icon={Ban} onClick={(e) => {
+                    e.stopPropagation();
+                    dispatch({ type: "UPDATE_CLIENT", id: c.id, patch: { status: "Inativo" } });
+                    notify(`${c.company} foi marcado como inativo.`);
+                  }}>Desfazer ativo</Button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   FINANCEIRO VIEW — vendas, recebimentos e comissões.
+
+   Nada do resto do CRM é copiado para aqui de propósito: a venda que nasce de
+   um Cliente fechado é lida do próprio db.clients na hora (valor contratado +
+   mensalidade), e só as vendas avulsas moram em finance_sales. Assim o número
+   só tem um dono. Enquanto as tabelas novas não existem no Supabase, a tela
+   continua mostrando o que dá para ver (as vendas herdadas dos clientes) e o
+   aviso diz exatamente qual SQL colar, em vez de sumir com tudo.
+   ========================================================================= */
+
+const FINANCE_KINDS_UI = ["Implementação", "Mensalidade", "Serviço avulso", "Outro"];
+const FINANCE_METHODS_UI = ["PIX", "Boleto", "Cartão", "Dinheiro", "Transferência"];
+const FINANCE_MESES_UI = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+/* As três guias dos recebimentos, uma por tipo de cobrança: mensalidade é a
+   rotina do mês, implantação é o valor único do projeto e "avulsos" agrega
+   serviço avulso + outro. O tipo gravado no lançamento decide a guia, e um
+   lançamento sem tipo cai em Avulsos de propósito: ele aparece na tela em vez
+   de ficar invisível. */
+const ABAS_RECEBIMENTO = [["mensalidades", "Mensalidades"], ["implantacao", "Implantação"], ["avulsos", "Avulsos"]];
+function ehImplementacao(kind) {
+  const normalizado = String(kind || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return normalizado.includes("implement") || normalizado.includes("implant");
+}
+function abaDoTipo(kind) {
+  const k = String(kind || "").trim();
+  if (k === "Mensalidade") return "mensalidades";
+  if (k === "Implementação") return "implantacao";
+  return "avulsos";
+}
+function rotuloAba(aba) {
+  const a = ABAS_RECEBIMENTO.find(x => x[0] === aba);
+  return a ? a[1] : "Avulsos";
+}
+/* Caminho inverso, para o formulário já abrir com o tipo da guia em que ele está. */
+function tipoDaAba(aba) {
+  if (aba === "implantacao") return "Implementação";
+  if (aba === "avulsos") return "Serviço avulso";
+  return "Mensalidade";
+}
+/* O que dizer quando a guia está vazia — cada guia tem um jeito próprio de encher. */
+const HINT_ABA_RECEBIMENTO = {
+  mensalidades: "Use “Gerar mensalidades” para lançar a parcela do mês de cada cliente ativo, ou “Novo recebimento” com tipo Mensalidade.",
+  implantacao: "Nada de implantação com este filtro. Lance pelo “Novo recebimento” com tipo Implementação — a linha cai nesta guia.",
+  avulsos: "Nada de serviço avulso nem “Outro” com este filtro. Lance pelo “Novo recebimento” escolhendo um destes tipos.",
+};
+
+/* 'YYYY-MM' / 'YYYY-MM-DD' locais, sem depender de locale nem de UTC. */
+function currentMonthKey() { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; }
+function todayKey() { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+function shiftMonthKey(key, delta) {
+  const m = /^(\d{4})-(\d{2})/.exec(String(key || ""));
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1 + delta, 1) : new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+}
+function monthLabelUi(key) {
+  const m = /^(\d{4})-(\d{2})/.exec(String(key || ""));
+  if (!m) return "—";
+  return `${FINANCE_MESES_UI[Number(m[2]) - 1] || m[2]}/${m[1]}`;
+}
+/* Coluna `date` do banco volta como 'YYYY-MM-DD' e tem que ser lida como dia:
+   se virar Date, o fuso empurra a parcela do dia 1 para o mês anterior. */
+function dayKeyOf(value) {
+  if (!value) return "";
+  const texto = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto;
+  const d = new Date(texto);
+  if (isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+function monthKeyOf(value) { const k = dayKeyOf(value); return k ? k.slice(0, 7) : ""; }
+function somaLista(lista, pega) { return (lista || []).reduce((acc, item) => acc + (Number(pega(item)) || 0), 0); }
+/* Quantos dias o lançamento está atrasado, contando por dia de calendário e não
+   por objeto Date: "2026-10-18" vence em 18/10 e no dia 18 ainda não é atraso.
+   Comparar Date() com new Date("YYYY-MM-DD") mistura UTC com o fuso de Ipatinga
+   e o dia de vencimento aparecia como "Atrasado 1d" no próprio dia. */
+function diasAtraso(vencimento, hoje) {
+  if (!vencimento || !hoje || vencimento >= hoje) return 0;
+  const [a1, m1, d1] = String(vencimento).split("-").map(Number);
+  const [a2, m2, d2] = String(hoje).split("-").map(Number);
+  const dias = Math.round((Date.UTC(a2, m2 - 1, d2) - Date.UTC(a1, m1 - 1, d1)) / 86400000);
+  return dias > 0 ? dias : 0;
+}
+
+/* Uma peça da faixa de soma da guia: o rótulo, o valor e quantos lançamentos
+   formam aquele valor — para o número nunca aparecer sozinho sem saber de onde
+   ele veio. */
+function ItemSomaGuia({ label, valor, qtd, cor }) {
+  return (
+    <span className="flex items-center gap-1.5 whitespace-nowrap">
+      <span>{label}</span>
+      <span className="gc-mono font-medium" style={{ color: cor || "var(--ink)" }}>{fmtMoney(valor)}</span>
+      <span style={{ color: "var(--slate)" }}>({qtd} {qtd === 1 ? "lançamento" : "lançamentos"})</span>
+    </span>
+  );
+}
+
+/* Janelas de período da guia Vendas do Financeiro. "todas" devolve null (sem
+   filtro) e a janela é SEMPRE contada a partir do mês escolhido no topo, nunca de
+   hoje — voltar para Setembro/2026 e clicar "Este ano" tem que mostrar 2026. */
+const JANELAS_VENDAS_UI = [["mes", "Deste mês"], ["trimestre", "Últimos 3 meses"], ["ano", "Este ano"], ["todas", "Todas as vendas"]];
+const CHAVE_FILTRO_VENDAS = "crm:filtro-periodo-vendas";
+
+function mesesDaJanelaVendas(filtro, mes) {
+  if (filtro === "todas") return null;
+  if (filtro === "trimestre") return [shiftMonthKey(mes, -2), shiftMonthKey(mes, -1), mes];
+  if (filtro === "ano") {
+    const ano = String(mes).slice(0, 4);
+    return Array.from({ length: 12 }, (_, i) => `${ano}-${pad(i + 1)}`);
+  }
+  return [mes];
+}
+
+/* A última janela escolhida fica no navegador (mesma ideia do ajuste das colunas
+   dos Leads): ele abre o Financeiro amanhã e continua no período que deixou. Um
+   valor salvo que não é uma das janelas conhecidas volta para "Deste mês", em vez
+   de deixar a lista vazia por um filtro fantasma. */
+function lerFiltroVendasSalvo() {
+  try {
+    const salvo = localStorage.getItem(CHAVE_FILTRO_VENDAS);
+    return JANELAS_VENDAS_UI.some(janela => janela[0] === salvo) ? salvo : "mes";
+  } catch (err) { return "mes"; }
+}
+function salvarFiltroVendasEscolhido(filtro) {
+  try { localStorage.setItem(CHAVE_FILTRO_VENDAS, filtro); } catch (err) { /* sem memória local: segue sem travar a tela */ }
+}
+
+/* O campo de confirmação com senha, igual dentro da linha do recebimento e
+   dentro da linha da venda: nome, valor, o que vai acontecer, a senha escrita na
+   própria linha e "Voltar". Ele não aceita janela no meio da tela, e a senha é
+   conferida no servidor. */
+function CampoConfirmacaoSenha({ pedido, senha, onSenha, onConfirmar, onVoltar, ocupado }) {
+  return (
+    <div className="mt-1 rounded-lg px-3 py-2.5 space-y-2 gc-fade-in" style={{ background: "var(--surface-sunken)", border: "1px solid var(--line-strong)" }}>
+      <p className="text-xs leading-relaxed" style={{ color: "var(--ink-soft)" }}>{pedido.texto}</p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <TextInput type="password" autoFocus autoComplete="new-password" value={senha} placeholder="Sua senha do CRM"
+          onChange={(e) => onSenha(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") onConfirmar(); }}
+          style={{ width: 220, padding: "6px 8px", fontSize: 13 }} />
+        <Button size="sm" variant={pedido.acao === "desfazer" ? "secondary" : "danger"} icon={LockIcon}
+          disabled={!senha || ocupado} onClick={onConfirmar}>
+          {ocupado ? "Conferindo senha…" : ROTULO_ACACO_SENHA[pedido.acao]}
+        </Button>
+        <Button size="sm" variant="ghost" icon={X} disabled={ocupado} onClick={onVoltar}>Voltar</Button>
+      </div>
+      <p className="text-[11px]" style={{ color: "var(--slate)" }}>
+        {pedido.acao === "excluir"
+          ? "A senha é conferida no servidor antes de apagar. Errar não mexe em nada, e ela não fica salva no navegador."
+          : "A senha é conferida no servidor antes de mudar o valor. Errar não mexe em nada, e ela não fica salva no navegador."}
+      </p>
+    </div>
+  );
+}
+
+/* Uma linha de recebimento. Cancelar guarda o histórico (vira 'Cancelado' e sai
+   das somas); Excluir apaga mesmo, e só serve para lançamento digitado errado.
+   Os dois atos sem volta (Excluir e Desfazer, e Cancelar de um lançamento que já
+   entrou) abrem o campo de senha NA LINHA — sem janela por cima da tela, e sem
+   pedir a senha de novo para ajustar vencimento ou método. */
+const ROTULO_ACACO_SENHA = {
+  excluir: "Confirmar exclusão",
+  desfazer: "Confirmar desfazer",
+  cancelar: "Confirmar cancelamento",
+};
+function RecebimentoRow({ p, hoje, onPatch, onAbrirFicha, onEdit, onPedir, pedido, senha, onSenha, onConfirmar, onVoltar, ocupado, foco }) {
+  const pago = p.status === "Pago";
+  const cancelado = p.status === "Cancelado";
+  const vencimento = dayKeyOf(p.dueDate);
+  const tone = cancelado ? "slate" : "amber";
+  const rotulo = cancelado ? "Cancelado" : "A receber";
+
+  return (
+    <div data-lancamento={p.id} className="px-5 py-3 space-y-2" style={{ borderBottom: "1px solid var(--line)", background: foco ? "var(--tone-blue-bg)" : undefined }}>
+      <div className="flex items-start gap-3 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium truncate">{p.company || "—"}</span>
+            {!pago && <Pill tone={tone} dot>{rotulo}</Pill>}
+            {p.kind && <Pill tone="slate">{p.kind}</Pill>}
+          </div>
+          <div className="text-xs mt-1" style={{ color: "var(--slate)" }}>
+            {p.description || "Sem descrição"}
+            {p.method ? ` · ${p.method}` : ""}
+            {p.period ? ` · parcela de ${monthLabelUi(dayKeyOf(p.period).slice(0, 7))}` : ""}
+            {p.paidAt ? ` · entrou em ${fmtDateFull(p.paidAt)}` : ""}
+          </div>
+        </div>
+        <span className="gc-mono text-sm font-medium" style={{ color: pago ? "var(--success)" : cancelado ? "var(--slate)" : "var(--ink)" }}>
+          {fmtMoney(p.amount)}
+        </span>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs" style={{ color: "var(--slate)" }}>Vence</span>
+        <TextInput type="date" value={vencimento} onChange={(e) => onEdit(p, "dueDate", e.target.value)} style={{ width: 148, padding: "5px 8px", fontSize: 12 }} />
+        <Select value={p.method || ""} onChange={(e) => onEdit(p, "method", e.target.value)} style={{ width: "auto", padding: "5px 8px", fontSize: 12 }}>
+          {!p.method && <option value="" disabled>Sem método</option>}
+          {FINANCE_METHODS_UI.map(m => <option key={m} value={m}>{m}</option>)}
+        </Select>
+        {p.clientId && onAbrirFicha && (
+          <Button size="sm" variant="ghost" icon={Building2} onClick={() => onAbrirFicha(p.clientId)}>Ver cliente</Button>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          {!pago && !cancelado && <Button size="sm" icon={CheckCircle2} onClick={() => onPatch(p, { status: "Pago", paidAt: new Date().toISOString() }, "Recebimento marcado como pago.")}>Marcar pago</Button>}
+          {pago && <Button size="sm" variant="secondary" icon={RotateCcw} disabled={!!pedido} onClick={() => onPedir(p, "desfazer")}>Desfazer</Button>}
+          {!cancelado && (pago
+            ? <Button size="sm" variant="ghost" icon={Ban} disabled={!!pedido} onClick={() => onPedir(p, "cancelar")}>Cancelar</Button>
+            : <Button size="sm" variant="ghost" icon={Ban} onClick={() => onPatch(p, { status: "Cancelado" }, "Lançamento cancelado — sai das somas, mas continua aqui.")}>Cancelar</Button>)}
+          {cancelado && <Button size="sm" variant="ghost" icon={RotateCcw} onClick={() => onPatch(p, { status: "Pendente" }, "Lançamento reativado.")}>Reativar</Button>}
+          <Button size="sm" variant="danger" icon={Trash2} disabled={!!pedido}
+            title="Serve só para lançamento digitado errado: pede a sua senha e apaga do banco, sem volta"
+            onClick={() => onPedir(p, "excluir")}>Excluir</Button>
+        </div>
+      </div>
+
+      {/* A confirmação acontece aqui, dentro da linha que ele escolheu, com o nome
+          e o valor à vista — é por isso que não existe mais janela no meio da tela. */}
+      {pedido && (
+        <CampoConfirmacaoSenha pedido={pedido} senha={senha} onSenha={onSenha}
+          onConfirmar={onConfirmar} onVoltar={onVoltar} ocupado={ocupado} />
+      )}
+    </div>
+  );
+}
+
+function FinanceiroView({ db, dispatch, notify, currentUser, onOpenLead, onRetry, tentandoDeNovo }) {
+  const [mes, setMes] = useState(currentMonthKey());
+  const [filtro, setFiltro] = useState("mes");
+  /* Guia ativa dos recebimentos: foi a forma de parar de misturar a mensalidade
+     do mês com a implantação do projeto no mesmo bolo. */
+  const [aba, setAba] = useState("mensalidades");
+  /* Segunda camada, pedida depois: Vendas, Recebimentos e Comissões cada um na sua
+     guia. Com os três empilhados ele dizia que a tela "estava confusa" — agora abre
+     numa coisa por vez e os quatro números do topo continuam valendo para todas. */
+  const [sec, setSec] = useState("recebimentos");
+  const [showVenda, setShowVenda] = useState(false);
+  const [showReceb, setShowReceb] = useState(false);
+  const [gerando, setGerando] = useState(false);
+  const gerandoRef = useRef(false);
+  const [pedindo, setPedindo] = useState(null);
+  const [senha, setSenha] = useState("");
+  const enviandoRef = useRef(false);
+  const [enviando, setEnviando] = useState(false);
+  const [percentDraft, setPercentDraft] = useState("");
+  /* Período da guia Vendas: "mes" = o mês escolhido no topo, e os chips ampliam a
+     janela até "todas". É estado de tela, não banco: nada é filtrado no Supabase
+     por causa disto. A última janela que ele escolheu volta no dia seguinte —
+     lembrada no navegador, como as larguras das colunas dos Leads. */
+  const [filtroVendas, setFiltroVendas] = useState(lerFiltroVendasSalvo);
+  /* Linha de recebimento a destacar: é para onde a tela salta quando a implantação
+     do mês já existe e ele precisa cancelar aquela, em vez de lançar outra. */
+  const [focoLancamento, setFocoLancamento] = useState(null);
+  const [venda, setVenda] = useState({ company: "", description: "", value: "", kind: "Serviço avulso", saleDate: todayKey(), owner: currentUser, notes: "" });
+  const [receb, setReceb] = useState({ alvo: "", description: "", amount: "", kind: "Mensalidade", dueDate: todayKey(), method: "", pago: false, notes: "" });
+
+  const clientes = db.clients || [];
+  const clientesAtivos = clientes
+    .filter(c => c.status === "Ativo")
+    .sort((a, b) => String(a.company || "").localeCompare(String(b.company || ""), "pt-BR"));
+  const avulsas = db.financeSales || [];
+  const recebimentos = db.financePayments || [];
+  const settings = db.financeSettings;
+  const percent = Number(settings && settings.commissionPercent != null ? settings.commissionPercent : 10);
+  const hoje = todayKey();
+
+  /* Vendas: clientes fechados (lidos da própria ficha) + avulsas lançadas aqui. */
+  const deClientes = clientes.filter(c => c.status === "Ativo").map(c => ({
+    id: `cliente:${c.id}`,
+    origem: "Cliente",
+    clientId: c.id,
+    company: c.company,
+    description: `${c.plan || "Projeto"} — fechamento`,
+    value: Number(c.contractedValue) || 0,
+    kind: "Implementação",
+    saleDate: c.closingDate,
+    owner: c.owner,
+    status: "Ativa",
+    monthlyValue: Number(c.monthlyValue) || 0,
+  }));
+  const vendas = [...avulsas.map(s => ({ ...s, origem: "Avulsa", value: Number(s.value) || 0, monthlyValue: 0 })), ...deClientes]
+    .sort((a, b) => String(b.saleDate || "").localeCompare(String(a.saleDate || "")));
+  const vendasAtivas = vendas.filter(s => s.status !== "Cancelada");
+  const vendasMes = vendasAtivas.filter(s => monthKeyOf(s.saleDate) === mes);
+
+  /* Período da guia Vendas. Antes a lista mostrava tudo e o mês do topo só mexia
+     nos números; agora ela obedece ao período, com quatro janelas de mês. A
+     janela é sempre contada a partir do mês escolhido no topo, nunca de hoje,
+     para que ele possa voltar em Setembro/2026 e ver Setembro/2026.
+
+     Regra que ele escolheu: venda fechada FORA da janela, mas que tem dinheiro
+     nela DENTRO da janela, continua aparecendo — marcada com um aviso do mês do
+     recebimento. Assim fechar um cliente em Setembro não faz a venda sumir da
+     tela de Outubro quando a implantação dele cai em Outubro.
+
+     Melhoria que ele pediu depois: cada chip diz quantas vendas ele traz (para
+     ele escolher pelo número, não no escuro) e a última janela escolhida fica
+     salva no navegador — abrir o CRM no dia seguinte volta no período que ele
+     deixou, do mesmo jeito que as larguras das colunas dos Leads. */
+  const mesDoLancamento = p => monthKeyOf(p.period || p.dueDate || p.paidAt);
+  const linhasDaJanela = (filtro) => {
+    const janela = mesesDaJanelaVendas(filtro, mes);
+    const dentro = chave => !janela || (!!chave && janela.includes(chave));
+    return vendas
+      .map(s => {
+        const fechadaNoPeriodo = dentro(monthKeyOf(s.saleDate));
+        return { sale: s, fechadaNoPeriodo, recebimentosNoPeriodo: [] };
+      })
+      .filter(x => x.fechadaNoPeriodo);
+  };
+  const vendasDoPeriodo = linhasDaJanela(filtroVendas);
+  const noPeriodo = chave => {
+    const janela = mesesDaJanelaVendas(filtroVendas, mes);
+    return !janela || (!!chave && janela.includes(chave));
+  };
+  const rotuloPeriodoVendas = filtroVendas === "todas"
+    ? "todas as vendas"
+    : filtroVendas === "ano" ? `ano de ${String(mes).slice(0, 4)}`
+    : filtroVendas === "trimestre" ? `${monthLabelUi(shiftMonthKey(mes, -2))} a ${monthLabelUi(mes)}`
+    : monthLabelUi(mes);
+
+  /* Mensalidade pertence ao mÃªs da parcela, mesmo quando foi paga antes do
+     vencimento. Assim a parcela de Novembro paga em Outubro aparece em Novembro. */
+  const pagasNoMes = recebimentos.filter(p => p.status === "Pago" && monthKeyOf(p.period || p.dueDate || p.paidAt) === mes);
+  const emAberto = recebimentos.filter(p => p.status === "Pendente");
+  const atrasadas = emAberto.filter(p => dayKeyOf(p.dueDate) && dayKeyOf(p.dueDate) < hoje);
+  const canceladas = recebimentos.filter(p => p.status === "Cancelado");
+  const doMes = recebimentos.filter(p => p.status !== "Cancelado" && monthKeyOf(p.period || p.dueDate || p.paidAt) === mes);
+
+  const vendidoMes = somaLista(vendasMes, s => s.value);
+  const recebidoMes = somaLista(pagasNoMes, p => p.amount);
+  const aReceber = somaLista(emAberto, p => p.amount);
+  const comissaoMes = (recebidoMes * percent) / 100;
+
+  const COFRE = {
+    mes: p => p.status !== "Cancelado" && monthKeyOf(p.period || p.dueDate || p.paidAt) === mes,
+    aberto: p => p.status === "Pendente",
+    atrasado: p => p.status === "Pendente" && dayKeyOf(p.dueDate) && dayKeyOf(p.dueDate) < hoje,
+    pago: p => p.status === "Pago" && monthKeyOf(p.period || p.dueDate || p.paidAt) === mes,
+    cancelado: p => p.status === "Cancelado",
+    tudo: () => true,
+  };
+  const FILTROS_UI = [["mes", "Deste mês"], ["aberto", "A receber"], ["atrasado", "Atrasadas"], ["pago", "Pagas"], ["cancelado", "Canceladas"], ["tudo", "Todos"]];
+  /* Guia (tipo) e chip (situação) filtram a mesma lista, cada um pelo seu critério.
+     O número em cada guia é quantos lançamentos dela aparecem com o filtro atual,
+     e o número em cada chip vale só dentro da guia aberta — assim os dois contam
+     sempre o que está na tela, em vez de somar o histórico inteiro. */
+  const noFiltro = recebimentos.filter(COFRE[filtro] || COFRE.mes);
+  const naAba = recebimentos.filter(p => abaDoTipo(p.kind) === aba);
+  const lista = naAba.filter(COFRE[filtro] || COFRE.mes)
+    .sort((a, b) => (dayKeyOf(a.dueDate || a.period) || "9999-99-99").localeCompare(dayKeyOf(b.dueDate || b.period) || "9999-99-99"));
+
+  /* A soma que ele pediu separada: os três números de cima somam tudo, e esta
+     faixa conta só o que está na guia aberta, com as MESMAS regras dos chips
+     (Recebido = pago no mês escolhido, A receber = pendente que ainda não
+     venceu, Atrasado = pendente vencida). Assim o valor da implantação aparece
+     apenas na guia Implantação, em vez de entrar no bolo da mensalidade. */
+  const guiaAtrasado = naAba.filter(COFRE.atrasado);
+  const somaGuia = {
+    recebido: somaLista(naAba.filter(COFRE.pago), p => p.amount),
+    pagas: naAba.filter(COFRE.pago).length,
+    aReceber: somaLista(naAba.filter(p => COFRE.aberto(p) && !COFRE.atrasado(p)), p => p.amount),
+    emAberto: naAba.filter(p => COFRE.aberto(p) && !COFRE.atrasado(p)).length,
+    atrasado: somaLista(guiaAtrasado, p => p.amount),
+    atrasadas: guiaAtrasado.length,
+  };
+
+  /* Responsável do lançamento: de quem é o cliente (ou a venda avulsa) apontada. */
+  const ownerDoLancamento = (p) => {
+    if (p.clientId) return (clientes.find(c => c.id === p.clientId) || {}).owner || "";
+    if (p.saleId) return (avulsas.find(s => s.id === p.saleId) || {}).owner || "";
+    return "";
+  };
+  const porResponsavel = {};
+  const linha = (owner) => {
+    const chave = owner || "sem";
+    if (!porResponsavel[chave]) porResponsavel[chave] = { owner: chave, vendido: 0, recebido: 0 };
+    return porResponsavel[chave];
+  };
+  vendasMes.forEach(s => { linha(s.owner).vendido += Number(s.value) || 0; });
+  pagasNoMes.forEach(p => { linha(ownerDoLancamento(p)).recebido += Number(p.amount) || 0; });
+  const linhasComissao = Object.keys(porResponsavel)
+    .map(k => { const l = porResponsavel[k]; return { ...l, comissao: (l.recebido * percent) / 100 }; })
+    .sort((a, b) => b.recebido - a.recebido);
+
+  /* As três guias grandes. Cada número é o que existe DENTRO daquela guia, na
+     mesma lógica das guias de tipo: guia = o grupo recortado, nunca o histórico
+     inteiro. Recebimentos conta o mês aberto; Vendas conta a lista que a guia
+     mostra AGORA, ou seja, o período escolhido na fila dela (fechadas dos
+     clientes + avulsas, mais quem tem recebimento no período); Comissões conta
+     os responsáveis que têm venda ou recebimento no mês. */
+  const SECOES_UI = [
+    ["vendas", "Vendas", vendasDoPeriodo.length, `Vendas de ${rotuloPeriodoVendas} — a fila de período está dentro da guia`],
+    ["recebimentos", "Recebimentos", doMes.length, `Parcelas e cobranças de ${monthLabelUi(mes)}`],
+    ["comissoes", "Comissões", linhasComissao.length, "Quem vendeu, quanto entrou e a comissão de cada um"],
+  ];
+
+  const semTabelas = (acao) => {
+    if (!db.financeIndisponivel) return false;
+    notify("As tabelas do Financeiro ainda não estão no Supabase — " + acao + " só depois de colar a migration 014.", "error");
+    return true;
+  };
+
+  const patchPagamento = (p, patch, msg) => {
+    if (semTabelas("registrar o recebimento")) return;
+    dispatch({ type: "UPDATE_FINANCE_PAYMENT", id: p.id, patch });
+    if (msg) notify(msg);
+  };
+  const editarPagamento = (p, campo, valor) => {
+    if (!valor) { notify(campo === "dueDate" ? "Escolha o dia do vencimento." : "Escolha um método (PIX, Boleto, Cartão…)."); return; }
+    patchPagamento(p, { [campo]: valor }, campo === "dueDate" ? `Vencimento ajustado para ${fmtDateFull(valor)}.` : `Método: ${valor}.`);
+  };
+
+  /* Os três atos que mexem em dinheiro que já entrou — Excluir, Desfazer e
+     Cancelar de um lançamento pago — abrem o campo de senha na própria linha e
+     só chamam a API depois que ele confirma. A senha vai no cabeçalho e o
+     backend confere com o serviço do login ANTES de fazer qualquer coisa: sem
+     ela o botão seria só um clique a mais na tela. Nada é aplicado na tabela
+     local enquanto a API não responde, e a mensagem de erro mostrada é a que o
+     servidor mandou (inclusive "Senha não confere"), nunca um texto nosso. */
+  const ACAO_SENHA = {
+    excluir: { patch: null, tipo: "excluir o lançamento", fallback: "Não foi possível excluir o recebimento — nada foi apagado." },
+    desfazer: { patch: { status: "Pendente", paidAt: null }, tipo: "desfazer o recebimento", fallback: "Não foi possível desfazer o pagamento — nada foi alterado." },
+    cancelar: { patch: { status: "Cancelado" }, tipo: "cancelar o lançamento", fallback: "Não foi possível cancelar o recebimento — nada foi alterado." },
+  };
+
+  const pedirAcao = (p, acao) => {
+    if (pedindo && pedindo.id === p.id && pedindo.acao === acao) { setPedindo(null); setSenha(""); return; }
+    const nome = p.company || "cliente sem nome";
+    const vencimento = dayKeyOf(p.dueDate);
+    const valor = fmtMoney(p.amount);
+    const textos = {
+      excluir: `Apagar o recebimento de ${nome} — ${valor}${vencimento ? `, vencendo em ${fmtDateFull(vencimento)}` : ""}. ` +
+        "Ele sai da lista, das somas e das comissões e não tem como recuperar. Se o que você quer é guardar o erro para conferir depois, use “Cancelar”.",
+      desfazer: `Desfazer o pagamento de ${nome} — ${valor} volta para “A receber” e para de contar no recebido do mês. O lançamento continua aqui.`,
+      cancelar: `Cancelar o recebimento pago de ${nome} — ${valor} sai das somas do mês. A linha fica na tela marcada como “Cancelado”.`,
+    };
+    const avisos = {
+      excluir: `Recebimento de ${nome} excluído.`,
+      desfazer: `Pagamento desfeito — ${valor} voltou para a receber.`,
+      cancelar: `Lançamento cancelado — ${valor} saiu das somas, mas continua aqui.`,
+    };
+    setSenha("");
+    setPedindo({ id: p.id, acao, texto: textos[acao], msg: avisos[acao] });
+  };
+
+  const voltarPedido = () => { setPedindo(null); setSenha(""); };
+
+  const confirmarPedido = async () => {
+    const pedido = pedindo;
+    if (!pedido || enviandoRef.current) return;
+    const plano = ACAO_SENHA[pedido.acao];
+    if (!senha) { notify(`Digite a sua senha do CRM para ${plano.tipo}.`, "error"); return; }
+    if (semTabelas(plano.tipo)) return;
+    enviandoRef.current = true;
+    setEnviando(true);
+    const credenciais = { senha, usuario: currentUser };
+    try {
+      const res = pedido.acao === "excluir"
+        ? await crmApi.finance.payments.remove(pedido.id, credenciais)
+        : await crmApi.finance.payments.update(pedido.id, plano.patch, credenciais);
+      if (!res || !res.success) {
+        throw new Error((res && (res.message || (res.error && res.error.message))) || plano.fallback);
+      }
+      if (pedido.acao === "excluir") dispatch({ type: "DELETE_FINANCE_PAYMENT", id: pedido.id });
+      else dispatch({ type: "FINANCE_PAYMENT_SECURED", id: pedido.id, patch: plano.patch });
+      notify(pedido.msg);
+      setPedindo(null);
+    } catch (error) {
+      const bruto = (error && error.message) || "";
+      /* O servidor já diz "nada foi feito" na mensagem da senha; repetir o aviso
+         aqui faria a frase ficar cortada em dois lugares. */
+      notify(/nada foi/i.test(bruto) ? bruto : `${bruto || plano.fallback}`, "error");
+    } finally {
+      /* A senha nunca fica guardada: errada ou certa, ela some do campo quando o
+         pedido termina. */
+      setSenha("");
+      enviandoRef.current = false;
+      setEnviando(false);
+    }
+  };
+
+  /* Trocar de guia fecha o pedido de senha que estiver aberto: a linha que ele
+     pediu para apagar não está mais na tela, e a senha digitada não pode ficar
+     esperando para a próxima linha que aparecer naquele lugar. */
+  const trocarAba = (id) => { setAba(id); setPedindo(null); setSenha(""); };
+  const trocarMes = (valor) => {
+    setMes(valor);
+    setFiltroVendas("mes");
+    salvarFiltroVendasEscolhido("mes");
+    setPedindo(null);
+    setSenha("");
+  };
+  const atualizarDadosDoMes = () => {
+    setFiltroVendas("mes");
+    salvarFiltroVendasEscolhido("mes");
+    onRetry();
+  };
+  /* Trocar de guia grande também fecha o pedido de senha aberto: o campo vive na
+     linha do recebimento, e deixá-lo pendurado para depois, em outra guia, viraria
+     um "Confirmar exclusão" fora de contexto. */
+  const trocarSecao = (id) => { setSec(id); setPedindo(null); setSenha(""); };
+
+  /* Novo recebimento abre já com o tipo da guia ativa, para o lançamento cair na
+     lista que ele está olhando. */
+  const alternarFormRecebimento = () => {
+    const novo = !showReceb;
+    if (novo) setReceb(f => ({ ...f, kind: tipoDaAba(aba) }));
+    setShowReceb(novo);
+  };
+  const abrirFichaDoCliente = (clientId) => {
+    const c = clientes.find(x => x.id === clientId);
+    if (!c) { notify("Este lançamento aponta para um cliente que não está mais na lista."); return; }
+    /* Cliente pode ter sido cadastrado direto na guia Clientes, sem Lead: aí não
+       há ficha para abrir e o aviso tem que dizer o nome dele, não "sumiu". */
+    if (!c.leadId) { notify(`${c.company} foi cadastrado sem Lead — não há ficha para abrir.`); return; }
+    onOpenLead(c.leadId);
+  };
+
+  const gerarMensalidades = async () => {
+    if (gerandoRef.current) return;
+    if (semTabelas("gerar as mensalidades")) return;
+    const mesAtual = currentMonthKey();
+    if (mes > mesAtual) {
+      notify("Parcela anterior ainda não foi fechada.", "error");
+      return;
+    }
+    const mesAnterior = shiftMonthKey(mes, -1);
+    const parcelaAnteriorEmAberto = recebimentos.some(p => (
+      p.kind === "Mensalidade" &&
+      monthKeyOf(p.period || p.dueDate || p.paidAt) === mesAnterior &&
+      p.status !== "Pago" &&
+      p.status !== "Cancelado"
+    ));
+    if (parcelaAnteriorEmAberto) {
+      notify("Parcela anterior ainda não foi fechada.", "error");
+      return;
+    }
+    gerandoRef.current = true;
+    setGerando(true);
+    try {
+      const res = await crmApi.finance.payments.recorrentes(`${mes}-01`);
+      if (!res || !res.success) {
+        notify(res && res.message ? res.message : "Não foi possível gerar as mensalidades — o backend não respondeu.", "error");
+        return;
+      }
+      const criadas = (res.data && res.data.created) || [];
+      const puladas = (res.data && res.data.skipped) || 0;
+      if (criadas.length) dispatch({ type: "ADD_FINANCE_PAYMENTS", payments: criadas });
+      const rotuloPuladas = puladas ? `${puladas} cliente${puladas > 1 ? "s" : ""} com lançamento deste mês` : "nenhum cliente ativo com mensalidade";
+      /* Plural escrito por extenso nos dois lados: "tinhaam"/"lançamentoes" é o que
+         sai quando o +s vem depois de uma palavra que já termina em vogal. */
+      notify(criadas.length
+        ? `${criadas.length} mensalidade${criadas.length > 1 ? "s" : ""} de ${monthLabelUi(mes)} lançada${criadas.length > 1 ? "s" : ""} (${fmtMoney(somaLista(criadas, p => p.amount))})${puladas ? ` · ${puladas === 1 ? "1 cliente já tinha" : `${puladas} clientes já tinham`} lançamento deste mês` : ""}.`
+        : `Nada para gerar em ${monthLabelUi(mes)} — ${rotuloPuladas}.`);
+      setFiltro("aberto");
+      /* Mensalidade gerada é mensalidade: garante que ele vê as linhas novas. */
+      setAba("mensalidades");
+    } catch (error) {
+      notify("Não foi possível gerar as mensalidades: " + ((error && error.message) || "sem resposta do backend"), "error");
+    } finally {
+      gerandoRef.current = false;
+      setGerando(false);
+    }
+  };
+
+  const salvarVenda = () => {
+    if (semTabelas("lance a venda avulsa")) return;
+    const valor = Number(String(venda.value).replace(",", "."));
+    if (!String(venda.company).trim()) { notify("Informe o nome de quem comprou esta venda."); return; }
+    if (!Number.isFinite(valor) || valor <= 0) { notify("Informe o valor da venda em reais."); return; }
+    const mesVenda = monthKeyOf(venda.saleDate || hoje);
+    const empresaVenda = String(venda.company).trim().toLowerCase();
+    const implementacaoDuplicada = ehImplementacao(venda.kind) && (
+      vendas.some(s => (
+        s.status !== "Cancelada" &&
+        ehImplementacao(s.kind) &&
+        monthKeyOf(s.saleDate) === mesVenda &&
+        String(s.company || "").trim().toLowerCase() === empresaVenda
+      )) ||
+      recebimentos.some(p => (
+        ehImplementacao(p.kind) &&
+        p.status !== "Cancelado" &&
+        monthKeyOf(p.period || p.dueDate || p.paidAt) === mesVenda &&
+        String(p.company || "").trim().toLowerCase() === empresaVenda
+      ))
+    );
+    if (implementacaoDuplicada) {
+      notify(`A implantação de ${monthLabelUi(mesVenda)} já foi lançada para ${venda.company}. Cancele a existente antes de lançar outra.`, "error");
+      return;
+    }
+    const dataVenda = new Date(`${dayKeyOf(venda.saleDate) || hoje}T12:00:00`).toISOString();
+    const idVenda = `fs_${Date.now()}`;
+    /* Implementação lançada na guia Vendas já nasce como recebimento em aberto.
+       Assim, depois da remoção do botão "Receber", o valor não fica solto na
+       venda e aparece automaticamente na guia Recebimentos. */
+    dispatch({
+      type: "ADD_FINANCE_SALE_WITH_PAYMENT",
+      sale: {
+        id: idVenda,
+        company: String(venda.company).trim(),
+        description: venda.description,
+        value: valor,
+        kind: venda.kind,
+        saleDate: dataVenda,
+        owner: venda.owner,
+        status: "Ativa",
+        notes: venda.notes,
+      },
+      payment: {
+        id: `rc_${Date.now()}_sale`,
+        saleId: idVenda,
+        company: String(venda.company).trim(),
+        description: venda.description || venda.kind,
+        amount: valor,
+        kind: venda.kind,
+        dueDate: dayKeyOf(venda.saleDate) || hoje,
+        status: "Pendente",
+        notes: venda.notes,
+      },
+    });
+    /* A guia Vendas agora obedece ao período — se a venda lançada cai num mês de
+       fora da janela, ela não apareceria e o botão pareceria quebrado. Então o
+       mês do topo vai junto para o mês da venda, e o aviso diz isso. */
+    const mesVendaLancada = monthKeyOf(dataVenda);
+    const fora = !noPeriodo(mesVendaLancada);
+    if (fora) trocarMes(mesVendaLancada);
+    /* A venda jÃ¡ cria o recebimento pendente; abre exatamente a guia e o filtro
+       onde ele acabou de entrar, sem depender do filtro que estava selecionado. */
+    setSec("recebimentos");
+    setAba(abaDoTipo(venda.kind));
+    setFiltro("aberto");
+    notify(fora
+      ? `Venda lançada com recebimento em aberto — mostrando ${monthLabelUi(mesVendaLancada)}.`
+      : "Venda lançada com recebimento em aberto.");
+    setShowVenda(false);
+    setVenda({ company: "", description: "", value: "", kind: "Serviço avulso", saleDate: hoje, owner: currentUser, notes: "" });
+  };
+
+  const salvarRecebimento = () => {
+    if (semTabelas("lance o recebimento")) return;
+    const alvo = String(receb.alvo || "");
+    const tipo = alvo.split(":")[0];
+    const id = alvo.split(":")[1];
+    if (!id || (tipo !== "client" && tipo !== "sale")) { notify("Escolha o cliente ou a venda avulsa deste recebimento."); return; }
+    const valor = Number(String(receb.amount).replace(",", "."));
+    if (!Number.isFinite(valor) || valor <= 0) { notify("Informe o valor recebido em reais."); return; }
+    /* O nome vai junto no lançamento (snapshot), igual ao backend grava: sem ele
+       a linha otimista nasceria com "—" e só corrigiria depois do F5. */
+    const dono = tipo === "client"
+      ? clientes.find(c => c.id === id)
+      : avulsas.find(s => s.id === id);
+    if (!dono) { notify(tipo === "client" ? "Este cliente não está mais na lista." : "Esta venda avulsa não está mais na lista."); return; }
+    /* Cinto de segurança: o botão já fica desabilitado e a linha aparece na tela,
+       mas se algum caminho chegar aqui sem passar pelo aviso, nada é duplicado. */
+    if (duplicadoReceb) {
+      setFocoLancamento(duplicadoReceb.id);
+      notify(`A implantação de ${monthLabelUi(mesDoNovoLancamento)} de ${dono.company || "este cliente"} já foi lançada (${fmtMoney(duplicadoReceb.amount)}). Cancele a existente para poder lançar outra.`, "error");
+      return;
+    }
+    const pagamento = {
+      id: `rc_${Date.now()}`,
+      clientId: tipo === "client" ? id : undefined,
+      saleId: tipo === "sale" ? id : undefined,
+      company: dono.company || "",
+      description: receb.description,
+      amount: valor,
+      kind: receb.kind,
+      dueDate: receb.dueDate || undefined,
+      /* O mês só trava duplicidade para mensalidade: assim dá para lançar uma
+         cobrança extra no mesmo mês do mesmo cliente sem esbarra no índice único. */
+      period: receb.kind === "Mensalidade" ? `${mes}-01` : undefined,
+      status: receb.pago ? "Pago" : "Pendente",
+      paidAt: receb.pago ? new Date().toISOString() : undefined,
+      method: receb.method || undefined,
+      notes: receb.notes,
+    };
+    dispatch({ type: "ADD_FINANCE_PAYMENT", payment: pagamento });
+    /* Troca para a guia do tipo lançado, senão a linha some de vista e parece
+       que o botão não fez nada. */
+    setAba(abaDoTipo(receb.kind));
+    notify(receb.pago ? "Recebimento lançado como pago." : "Recebimento lançado como a receber.");
+    setShowReceb(false);
+    setReceb({ alvo: "", description: "", amount: "", kind: "Mensalidade", dueDate: hoje, method: "", pago: false, notes: "" });
+  };
+
+  /* O botão "Receber" está na guia Vendas, mas o formulário de lançamento vive na
+     guia Recebimentos — então ele troca de guia antes de abrir o formulário, na
+     guia de tipo certa (mensalidade ou implantação), senão parece que o botão não
+     fez nada. */
+  const lancarRecebimentoDe = (alvo, valor, kind) => {
+    setReceb(f => ({ ...f, alvo, amount: valor ? String(valor) : "", kind: kind || "Mensalidade", dueDate: hoje }));
+    setSec("recebimentos");
+    setAba(abaDoTipo(kind));
+    setPedindo(null);
+    setSenha("");
+    setShowReceb(true);
+  };
+
+  /* Uma venda avulsa se cobra uma vez só: quando já existe um recebimento dela
+     — pago ou a receber — o botão "Receber" sai da linha e dá lugar à pílula do
+     que foi lançado, para não duplicar a mesma cobrança. Quem precisar cobrar de
+     novo continua podendo: a venda avulsa segue listada no "Novo recebimento" da
+     guia Recebimentos. Linha de Cliente fica igual, porque mensalidade se repete. */
+  const recebimentosDaAvulsa = saleId => recebimentos.filter(p => p.saleId === saleId && p.status !== "Cancelado");
+
+  /* Implantação se recebe uma vez por mês. Foi a escolha dele: em vez de deixar
+     lançar a segunda cobrança e depois conferir a conta, a tela barra e mostra a
+     linha que já existe, com o botão "Cancelar implantação" na própria linha da
+     guia Vendas — cancelada, o botão "Receber" volta. Vale para o formulário
+     também (aviso antes de salvar) e para o servidor (409 na segunda), senão quem
+     entra pelo link da equipe duplicaria pela API. Mensalidade fica como estava:
+     ela se repete todo mês e o banco já tem índice único por cliente e mês. */
+  const implantacaoDoMes = (tipo, id, chave, empresa) => recebimentos.find(p => (
+    ehImplementacao(p.kind) && p.status !== "Cancelado" &&
+    mesDoLancamento(p) === chave &&
+    (tipo === "client"
+      ? p.clientId === id
+      : p.saleId === id || (empresa && String(p.company || "").trim().toLowerCase() === String(empresa).trim().toLowerCase()))
+  ));
+
+  /* Para onde a tela salta quando ele precisa cancelar a implantação que já
+     existe: fecha o formulário, vai para Recebimentos, abre a guia do tipo, põe
+     "Todos" no filtro (a linha pode estar paga, atrasada ou fora do recorte) e
+     acende a linha. */
+  const mostrarLancamento = (p) => {
+    setShowReceb(false);
+    setPedindo(null);
+    setSenha("");
+    setSec("recebimentos");
+    setAba(abaDoTipo(p.kind));
+    setFiltro("tudo");
+    setFocoLancamento(p.id);
+    notify(`Mostrando o lançamento de ${p.company || "este cliente"} — cancele aqui para poder lançar de novo.`);
+  };
+
+  const alvoReceb = { tipo: String(receb.alvo || "").split(":")[0], id: String(receb.alvo || "").split(":")[1] };
+  /* O mês em que este lançamento vai cair é o mês que a tela e o banco usam para
+     contar: mensalidade trava no mês do topo, o resto segue o vencimento. */
+  const mesDoNovoLancamento = receb.kind === "Mensalidade" ? mes : monthKeyOf(receb.dueDate || hoje);
+  const vendaAlvoReceb = alvoReceb.tipo === "sale" ? avulsas.find(s => s.id === alvoReceb.id) : null;
+  const duplicadoReceb = (alvoReceb.tipo === "client" || alvoReceb.tipo === "sale") && ehImplementacao(receb.kind)
+    ? implantacaoDoMes(alvoReceb.tipo, alvoReceb.id, mesDoNovoLancamento, vendaAlvoReceb?.company)
+    : null;
+
+  /* A linha destacada entra na vista sozinha: senão ele cliqaria em "ver a
+     linha", a guia trocaria, e o lançamento continuaria lá embaixo, fora da tela
+     — o mesmo tipo de "botão que não faz nada" que ele já reclamou. */
+  useEffect(() => {
+    if (!focoLancamento) return undefined;
+    const timer = setTimeout(() => {
+      const el = document.querySelector(`[data-lancamento="${focoLancamento}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [focoLancamento, sec, aba, filtro]);
+
+  const salvarComissao = () => {
+    if (semTabelas("ajuste o percentual de comissão")) return;
+    const n = Number(String(percentDraft).replace(",", "."));
+    if (!Number.isFinite(n) || n < 0 || n > 100) { notify("Informe um percentual entre 0 e 100."); return; }
+    dispatch({ type: "SET_FINANCE_SETTINGS", settings: { id: "padrao", commissionPercent: n } });
+    setPercentDraft("");
+    notify(`Comissão ajustada para ${n}% sobre o recebido.`);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="gc-display text-xl font-semibold">Financeiro</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--slate)" }}>Vendas, recebimentos e comissões de {monthLabelUi(mes)}.</p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button variant="secondary" size="sm" icon={ChevronsLeft} onClick={() => trocarMes(shiftMonthKey(mes, -1))} title="Mês anterior" />
+          <div className="relative" style={{ width: 188 }}>
+            <TextInput
+              type="text"
+              value={monthLabelUi(mes).replace("/", " de ")}
+              readOnly
+              aria-label={`Período selecionado: ${monthLabelUi(mes).replace("/", " de ")}`}
+              style={{ width: "100%", textAlign: "center", fontWeight: 600, paddingLeft: 10, paddingRight: 10 }}
+            />
+            <input
+              type="month"
+              value={mes}
+              onChange={(e) => trocarMes(e.target.value || currentMonthKey())}
+              aria-label="Escolher mês e ano"
+              title="Escolher mês e ano"
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer" }}
+            />
+          </div>
+          <Button variant="secondary" size="sm" icon={ChevronsRight} onClick={() => trocarMes(shiftMonthKey(mes, 1))} title="Próximo mês" />
+          <Button variant="secondary" size="sm" icon={RefreshCw} onClick={atualizarDadosDoMes} disabled={tentandoDeNovo}
+            title="Atualizar os dados do mês selecionado">
+            {tentandoDeNovo ? "Atualizando…" : "Atualizar"}
+          </Button>
+        </div>
+      </div>
+
+      {db.financeIndisponivel && (
+        <div className="rounded-xl px-4 py-3 space-y-2" style={{ background: "rgba(217,119,6,0.10)", color: "#8A5A12", border: "1px solid rgba(217,119,6,0.28)" }}>
+          <div className="flex items-start gap-2 text-sm">
+            <AlertTriangle size={16} style={{ marginTop: 3, flexShrink: 0 }} />
+            <div>
+              <div className="font-semibold">As tabelas do Financeiro ainda não existem no Supabase</div>
+              <div className="mt-1">
+                Abra o <strong>SQL Editor</strong> do projeto e cole o conteúdo do arquivo{" "}
+                <span className="gc-mono">backend/database/migrations/014_financeiro.sql</span>, depois execute e feche e reabra o{" "}
+                <span className="gc-mono">run-crm.bat</span>. As vendas dos clientes já aparecem aqui; só o lançamento de recebimento precisa das tabelas.
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button size="sm" variant="secondary" icon={RefreshCw} onClick={onRetry} disabled={tentandoDeNovo}>Tentar de novo</Button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatTile label="Vendido no mês" value={fmtMoney(vendidoMes)} sub={`${vendasMes.length} venda${vendasMes.length === 1 ? "" : "s"}`} icon={TrendingUp}
+          title="Abrir a guia Vendas" onClick={() => trocarSecao("vendas")} />
+        <StatTile label="Recebido no mês" value={fmtMoney(recebidoMes)} sub={`${pagasNoMes.length} ${pagasNoMes.length === 1 ? "lançamento" : "lançamentos"}`} tone="success" icon={CheckCircle2}
+          title="Abrir a guia Recebimentos já nas pagas do mês" onClick={() => { trocarSecao("recebimentos"); setFiltro("pago"); }} />
+        <StatTile
+          label="A receber"
+          value={fmtMoney(aReceber)}
+          sub={atrasadas.length ? `${atrasadas.length} atrasada${atrasadas.length === 1 ? "" : "s"}` : `${emAberto.length} em aberto`}
+          tone={atrasadas.length ? "danger" : undefined}
+          title="Abrir a guia Recebimentos nos lançamentos em aberto"
+          onClick={() => { trocarSecao("recebimentos"); setFiltro("aberto"); }}
+          icon={Clock}
+        />
+        <StatTile label="Comissão do mês" value={fmtMoney(comissaoMes)} sub={`${percent}% do recebido`} icon={Banknote}
+          title="Abrir a guia Comissões" onClick={() => trocarSecao("comissoes")} />
+      </div>
+
+      {/* As três guias grandes, logo abaixo dos números: uma coisa na tela por vez.
+          Os números do topo continuam somando o mês inteiro, em qualquer guia. */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {SECOES_UI.map(([id, label, qtd, hint]) => {
+          const ativa = sec === id;
+          return (
+            <button key={id} onClick={() => trocarSecao(id)} title={hint}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap gc-focus"
+              style={{ background: ativa ? "var(--accent)" : "var(--surface)", color: ativa ? "#fff" : "var(--ink-soft)", border: ativa ? "none" : "1px solid var(--line-strong)" }}>
+              {label}
+              <span style={{ color: ativa ? "rgba(255,255,255,0.82)" : "var(--slate)" }}>{qtd}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* GUIA 1 de 3 — Recebimentos. As guias de tipo (Mensalidades / Implantação /
+          Avulsos) continuam dentro dela, então a separação por cobrança não se perdeu. */}
+      {sec === "recebimentos" && (
+      <SectionCard
+        title={`Recebimentos de ${monthLabelUi(mes)} · ${rotuloAba(aba)}`}
+        action={
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <Button size="sm" variant="secondary" icon={RefreshCw} onClick={gerarMensalidades} disabled={gerando} title="Lança a mensalidade pendente de cada cliente ativo que ainda não tem parcela neste mês">
+              {gerando ? "Gerando…" : `Gerar mensalidades`}
+            </Button>
+            <Button size="sm" icon={Plus} onClick={alternarFormRecebimento}>Novo recebimento</Button>
+          </div>
+        }
+      >
+        {/* Primeira linha = o tipo da cobrança (a guia), segunda = a situação
+            dentro daquela guia. Foi assim que parou de misturar mensalidade do
+            mês com implantação de projeto na mesma lista. */}
+        <div className="px-5 pt-3 pb-2 flex items-center gap-1.5 flex-wrap">
+          {ABAS_RECEBIMENTO.map(([id, label]) => {
+            const itensDaAba = noFiltro.filter(p => abaDoTipo(p.kind) === id);
+            const qtd = itensDaAba.length;
+            const subtotal = somaLista(itensDaAba, p => p.amount);
+            const ativa = aba === id;
+            return (
+              <button key={id} onClick={() => trocarAba(id)} title={`Lançamentos do tipo ${label}`}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap gc-focus"
+                style={{ background: ativa ? "var(--accent)" : "var(--surface)", color: ativa ? "#fff" : "var(--ink-soft)", border: ativa ? "none" : "1px solid var(--line-strong)" }}>
+                {label}
+                <span style={{ color: ativa ? "rgba(255,255,255,0.82)" : "var(--slate)" }}>{qtd}</span>
+                <span className="gc-mono" style={{ color: ativa ? "rgba(255,255,255,0.9)" : "var(--accent-ink)" }}>{fmtMoney(subtotal)}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="px-5 py-3 flex items-center gap-2 overflow-x-auto gc-scroll" style={{ borderBottom: "1px solid var(--line)" }}>
+          {FILTROS_UI.map(([id, label]) => (
+            <FilterChip key={id} label={`${label} (${naAba.filter(COFRE[id]).length})`} active={filtro === id} onClick={() => setFiltro(id)} />
+          ))}
+        </div>
+
+        {/* A faixa de soma da guia, logo abaixo dos filtros, porque é ela que diz
+            quanto daquele tipo de cobrança existe — e muda junto com a guia. */}
+        {naAba.length > 0 && (
+          <div className="px-5 py-2.5 flex items-center gap-3 flex-wrap text-xs gc-fade-in"
+            style={{ borderBottom: "1px solid var(--line)", background: "var(--surface-sunken)", color: "var(--ink-soft)" }}>
+            <span className="font-medium" style={{ color: "var(--ink)" }}>{`Somas de ${rotuloAba(aba)}`}</span>
+            <ItemSomaGuia label={`Recebido em ${monthLabelUi(mes)}`} valor={somaGuia.recebido} qtd={somaGuia.pagas} cor="var(--success)" />
+            <ItemSomaGuia label="A receber" valor={somaGuia.aReceber} qtd={somaGuia.emAberto} />
+            <ItemSomaGuia label="Atrasado" valor={somaGuia.atrasado} qtd={somaGuia.atrasadas} cor={somaGuia.atrasadas ? "var(--danger)" : undefined} />
+          </div>
+        )}
+
+        {showReceb && (
+          <div className="px-5 py-4 space-y-3 gc-fade-in" style={{ borderBottom: "1px solid var(--line)", background: "var(--surface-sunken)" }}>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <Field label="Cliente ou venda" required>
+                <Select value={receb.alvo} onChange={(e) => setReceb(f => ({ ...f, alvo: e.target.value }))}>
+                  <option value="" disabled>Escolher…</option>
+                  <optgroup label="Clientes">
+                    {clientes.map(c => <option key={c.id} value={`client:${c.id}`}>{c.company}</option>)}
+                  </optgroup>
+                  <optgroup label="Vendas avulsas">
+                    {avulsas.filter(s => s.status !== "Cancelada").map(s => <option key={s.id} value={`sale:${s.id}`}>{s.company}{s.description ? ` — ${s.description}` : ""}</option>)}
+                  </optgroup>
+                </Select>
+              </Field>
+              <Field label="Valor (R$)" required>
+                <TextInput type="number" min="0" step="1" value={receb.amount} onChange={(e) => setReceb(f => ({ ...f, amount: e.target.value }))} placeholder="Ex.: 497" />
+              </Field>
+              <Field label="Tipo">
+                <Select value={receb.kind} onChange={(e) => setReceb(f => ({ ...f, kind: e.target.value }))}>
+                  {FINANCE_KINDS_UI.map(k => <option key={k} value={k}>{k}</option>)}
+                </Select>
+              </Field>
+              <Field label="Vence em">
+                <TextInput type="date" value={receb.dueDate} onChange={(e) => setReceb(f => ({ ...f, dueDate: e.target.value }))} />
+              </Field>
+              <Field label="Método" hint="Dá para ajustar depois, na própria linha.">
+                <Select value={receb.method} onChange={(e) => setReceb(f => ({ ...f, method: e.target.value }))}>
+                  <option value="" disabled>Escolher…</option>
+                  {FINANCE_METHODS_UI.map(m => <option key={m} value={m}>{m}</option>)}
+                </Select>
+              </Field>
+              <Field label="Situação" hint={receb.kind === "Mensalidade" ? `Parcela de ${monthLabelUi(mes)} — o mesmo cliente não repete o mês.` : "Se o dinheiro já caiu, lance como pago."}>
+                <div className="flex gap-2">
+                  <FilterChip label="A receber" active={!receb.pago} onClick={() => setReceb(f => ({ ...f, pago: false }))} />
+                  <FilterChip label="Já recebido" active={receb.pago} onClick={() => setReceb(f => ({ ...f, pago: true }))} />
+                </div>
+              </Field>
+            </div>
+            <Field label="Descrição"><TextInput value={receb.description} onChange={(e) => setReceb(f => ({ ...f, description: e.target.value }))} placeholder="Ex.: Mensalidade de Outubro" /></Field>
+            <Field label="Observação"><TextArea value={receb.notes} onChange={(e) => setReceb(f => ({ ...f, notes: e.target.value }))} placeholder="Ex.: boleto emitido no dia 5" /></Field>
+
+            {/* A implantação do mês já existe: o aviso aparece antes de ele salvar,
+                diz o valor e a situação da linha que está no caminho, e abre ela.
+                "Cancelar implantação" é o caminho que ele escolheu para corrigir. */}
+            {duplicadoReceb && (
+              <div className="rounded-lg px-3 py-2.5 flex items-start gap-2 text-xs"
+                style={{ background: "rgba(217,119,6,0.10)", color: "#8A5A12", border: "1px solid rgba(217,119,6,0.28)" }}>
+                <AlertTriangle size={14} style={{ marginTop: 2, flexShrink: 0 }} />
+                <div className="space-y-2">
+                  <div className="font-medium">
+                    {`A implantação de ${monthLabelUi(mesDoNovoLancamento)} já foi lançada: ${fmtMoney(duplicadoReceb.amount)} em ${duplicadoReceb.company || "este cliente"} — ` +
+                      `${duplicadoReceb.status === "Pago" ? "recebida" : "a receber"}${dayKeyOf(duplicadoReceb.dueDate) ? `, vencendo em ${fmtDateFull(dayKeyOf(duplicadoReceb.dueDate))}` : ""}.`}
+                  </div>
+                  <div>Implantação não se cobra duas vezes no mesmo mês. Se o valor ou a data estão errados, cancele este lançamento e lance o certo.</div>
+                  <div>
+                    <Button size="sm" variant="secondary" icon={ArrowRight} onClick={() => mostrarLancamento(duplicadoReceb)}>Ver a linha para cancelar</Button>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-2">
+              <Button size="sm" variant="ghost" icon={X} onClick={() => setShowReceb(false)}>Fechar</Button>
+              <Button size="sm" icon={Plus} onClick={salvarRecebimento} disabled={!!duplicadoReceb}
+                title={duplicadoReceb ? "Cancele a implantação já lançada neste mês para poder lançar outra." : undefined}>Lançar recebimento</Button>
+            </div>
+          </div>
+        )}
+
+        {lista.length === 0 ? (
+          <EmptyState icon={Banknote} title="Nenhum recebimento nesta guia" hint={HINT_ABA_RECEBIMENTO[aba]} />
+        ) : lista.map(p => (
+          <RecebimentoRow key={p.id} p={p} hoje={hoje} onPatch={patchPagamento} onEdit={editarPagamento} onAbrirFicha={abrirFichaDoCliente}
+            onPedir={pedirAcao} pedido={pedindo && pedindo.id === p.id ? pedindo : null}
+            senha={senha} onSenha={setSenha} onConfirmar={confirmarPedido} onVoltar={voltarPedido}
+            ocupado={enviando && !!pedindo && pedindo.id === p.id}
+            foco={focoLancamento === p.id} />
+        ))}
+      </SectionCard>
+      )}
+
+      {/* GUIA 2 de 3 — Vendas: os clientes fechados (lidos da ficha, sem copiar
+          valor para tabela nenhuma) mais as avulsas lançadas aqui. */}
+      {sec === "vendas" && (
+      <SectionCard
+        title={`Vendas (${vendasDoPeriodo.length})`}
+        action={<Button size="sm" icon={Plus} onClick={() => setShowVenda(v => !v)}>Lançar venda avulsa</Button>}
+      >
+        {/* Fila de período da própria guia. O padrão é o mês do topo; os outros
+            chips ampliam a janela a partir DO mês escolhido, então voltar para
+            Setembro/2026 e clicar "Este ano" mostra o ano de 2026, não o atual. */}
+        <div className="px-5 py-3 flex items-center gap-2 flex-wrap" style={{ borderBottom: "1px solid var(--line)" }}>
+          <span className="text-xs font-medium whitespace-nowrap" style={{ color: "var(--ink)" }}>Período:</span>
+          {JANELAS_VENDAS_UI.map(([id, label]) => {
+            const qtd = linhasDaJanela(id).length;
+            return (
+              <FilterChip key={id} label={`${label} (${qtd})`} active={filtroVendas === id}
+                title={`Mostra ${qtd} ${qtd === 1 ? "venda" : "vendas"} neste período. A última janela escolhida fica salva para a próxima vez que abrir o Financeiro.`}
+                onClick={() => { setFiltroVendas(id); salvarFiltroVendasEscolhido(id); }} />
+            );
+          })}
+          <span className="text-xs whitespace-nowrap" style={{ color: "var(--slate)" }}>
+            {vendasDoPeriodo.length} de {vendas.length} vendas · {rotuloPeriodoVendas}
+          </span>
+        </div>
+
+        {showVenda && (
+          <div className="px-5 py-4 space-y-3 gc-fade-in" style={{ borderBottom: "1px solid var(--line)", background: "var(--surface-sunken)" }}>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <Field label="Quem comprou" required>
+                <Select value={venda.company} onChange={(e) => setVenda(f => ({ ...f, company: e.target.value }))}>
+                  <option value="">{clientesAtivos.length ? "Selecione um cliente ativo" : "Nenhum cliente ativo cadastrado"}</option>
+                  {clientesAtivos.map(c => (
+                    <option key={c.id} value={c.company}>{c.company}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Valor (R$)" required>
+                <TextInput type="number" min="0" step="1" value={venda.value} onChange={(e) => setVenda(f => ({ ...f, value: e.target.value }))} placeholder="Ex.: 1200" />
+              </Field>
+              <Field label="Tipo">
+                <Select value={venda.kind} onChange={(e) => setVenda(f => ({ ...f, kind: e.target.value }))}>
+                  {FINANCE_KINDS_UI.map(k => <option key={k} value={k}>{k}</option>)}
+                </Select>
+              </Field>
+              <Field label="Data da venda">
+                <TextInput type="date" value={venda.saleDate} onChange={(e) => setVenda(f => ({ ...f, saleDate: e.target.value }))} />
+              </Field>
+              <Field label="Responsável" hint="Só quem tem cadastro no CRM entra na comissão.">
+                <Select value={venda.owner} onChange={(e) => setVenda(f => ({ ...f, owner: e.target.value }))}>
+                  {USERS.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </Select>
+              </Field>
+            </div>
+            <Field label="Descrição"><TextInput value={venda.description} onChange={(e) => setVenda(f => ({ ...f, description: e.target.value }))} placeholder="Ex.: Cartão de visitas digital" /></Field>
+            <Field label="Observação"><TextArea value={venda.notes} onChange={(e) => setVenda(f => ({ ...f, notes: e.target.value }))} /></Field>
+            <div className="flex items-center justify-end gap-2">
+              <Button size="sm" variant="ghost" icon={X} onClick={() => setShowVenda(false)}>Fechar</Button>
+              <Button size="sm" icon={Plus} onClick={salvarVenda}>Lançar venda</Button>
+            </div>
+          </div>
+        )}
+
+        {vendasDoPeriodo.length === 0 ? (
+          <EmptyState icon={UserCheck} title={`Nenhuma venda em ${rotuloPeriodoVendas}`}
+            hint={filtroVendas === "mes"
+              ? "Troque o período na fila acima, ou use as setas do mês no topo para ver outro mês. Fechar um lead e convertê-lo em cliente também cria a venda aqui."
+              : "Feche um lead e converta em cliente, ou lance uma venda avulsa aqui."} />
+        ) : vendasDoPeriodo.map(({ sale: s, fechadaNoPeriodo, recebimentosNoPeriodo }) => {
+          const cancelada = s.status === "Cancelada";
+          const lancados = s.origem === "Avulsa" ? recebimentosDaAvulsa(s.id) : [];
+          const tudoPago = lancados.length > 0 && lancados.every(p => p.status === "Pago");
+          const totalLancado = somaLista(lancados, p => Number(p.amount) || 0);
+          /* Bloqueia nova cobrança de Implementação quando qualquer recebimento
+             de implementação desta venda já foi pago, mesmo se for de outro mês. */
+          const recebimentosDaVenda = recebimentos.filter(p => (
+            s.origem === "Cliente" ? p.clientId && p.clientId === s.clientId : p.saleId === s.id
+          ));
+          const implantacoesPagas = recebimentosDaVenda.filter(p => (
+            p.kind === "Implementação" && p.status === "Pago"
+          ));
+          const temImplementacaoPaga = s.kind === "Implementação" && implantacoesPagas.length > 0;
+          const mesRec = recebimentosNoPeriodo.length ? mesDoLancamento(recebimentosNoPeriodo[0]) : "";
+          const totalNoPeriodo = somaLista(recebimentosNoPeriodo, p => Number(p.amount) || 0);
+          /* O botão "Receber" de um cliente sem mensalidade lança implantação com
+             vencimento em hoje — então é neste mês que a duplicata barra. */
+          const implantacao = !cancelada && s.origem === "Cliente" && !s.monthlyValue
+            ? implantacaoDoMes("client", s.clientId, monthKeyOf(hoje))
+            : null;
+          const implantacaoPaga = !!implantacao && implantacao.status === "Pago";
+          const pedidoDaLinha = implantacao && pedindo && pedindo.id === implantacao.id ? pedindo : null;
+          return (
+            <React.Fragment key={s.id}>
+            <div className="px-5 py-3 flex items-start gap-3 flex-wrap" style={{ borderBottom: "1px solid var(--line)" }}>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium truncate">{s.company}</span>
+                  <Pill tone={s.origem === "Cliente" ? "blue" : "violet"}>{s.origem}</Pill>
+                  {s.kind && <Pill tone="slate">{s.kind}</Pill>}
+                  {cancelada && <Pill tone="slate" dot>Cancelada</Pill>}
+                  {/* A venda é de outro mês, mas tem dinheiro dela neste período:
+                      ela aparece marcada, e não escondida, para ele entender por
+                      que ela está na tela. */}
+                  {!fechadaNoPeriodo && recebimentosNoPeriodo.length > 0 && (
+                    <Pill tone="teal" dot title={`Venda fechada em ${fmtDateFull(s.saleDate)}, fora de ${rotuloPeriodoVendas}. Está aqui porque tem ${recebimentosNoPeriodo.length} recebimento${recebimentosNoPeriodo.length > 1 ? "s" : ""} de ${fmtMoney(totalNoPeriodo)} em ${monthLabelUi(mesRec)}.`}>
+                      {`Recebimento em ${monthLabelUi(mesRec)}`}
+                    </Pill>
+                  )}
+                  {implantacao && (
+                    <Pill tone={implantacaoPaga ? "green" : "amber"} dot
+                      title={`A implantação de ${monthLabelUi(monthKeyOf(hoje))} já está lançada: ${fmtMoney(implantacao.amount)}, ${implantacaoPaga ? "recebida" : "a receber"}${dayKeyOf(implantacao.dueDate) ? `, vencendo em ${fmtDateFull(dayKeyOf(implantacao.dueDate))}` : ""}. Cancele essa linha para poder cobrar de novo.`}>
+                      {implantacaoPaga ? "Já recebida" : `Implantação de ${monthLabelUi(monthKeyOf(hoje))} lançada`}
+                    </Pill>
+                  )}
+                </div>
+                <div className="text-xs mt-1" style={{ color: "var(--slate)" }}>
+                  {s.description || "Sem descrição"} · {fmtDateFull(s.saleDate)} · {s.owner ? userName(s.owner) : "Sem responsável"}
+                  {s.monthlyValue ? ` · ${fmtMoney(s.monthlyValue)}/mês` : ""}
+                </div>
+              </div>
+              <span className="gc-mono text-sm font-medium" style={{ color: cancelada ? "var(--slate)" : "var(--ink)" }}>{fmtMoney(s.value)}</span>
+              <div className="flex items-center gap-2">
+                {s.origem === "Cliente" && s.clientId && (
+                  <Button size="sm" variant="ghost" icon={Building2} onClick={() => abrirFichaDoCliente(s.clientId)}>Ver ficha</Button>
+                )}
+                {!cancelada && lancados.length > 0 && (
+                  <Pill tone={tudoPago ? "green" : "amber"} dot title={`${lancados.length} recebimento${lancados.length > 1 ? "s" : ""} de ${fmtMoney(totalLancado)} já lançado${lancados.length > 1 ? "s" : ""} desta venda. Para cobrar de novo, use "Novo recebimento" na guia Recebimentos.`}>{tudoPago ? "Já recebida" : "A receber"}</Pill>
+                )}
+                {!cancelada && temImplementacaoPaga && lancados.length === 0 && !implantacao && (
+                  <Pill tone="green" dot title="Esta venda de Implementação já possui um recebimento com status Pago. Não é possível cobrar novamente.">
+                    Já recebida
+                  </Pill>
+                )}
+                {/* A implantação já existe no mês: em vez de um botão que ia dar
+                    erro, a linha mostra o caminho — ver o lançamento e cancelar
+                    aqui mesmo. Cancelada, o "Receber" volta. */}
+                {implantacao && (
+                  <Button size="sm" variant="ghost" icon={ArrowRight} onClick={() => mostrarLancamento(implantacao)}>Ver lançamento</Button>
+                )}
+                {implantacao && implantacaoPaga && (
+                  <Button size="sm" variant="ghost" icon={Ban} disabled={!!(pedindo && pedindo.id === implantacao.id)}
+                    onClick={() => pedirAcao(implantacao, "cancelar")}>Cancelar implantação</Button>
+                )}
+                {implantacao && !implantacaoPaga && (
+                  <Button size="sm" variant="ghost" icon={Ban}
+                    onClick={() => patchPagamento(implantacao, { status: "Cancelado" }, "Implantação cancelada — o botão “Receber” volta para você lançar a certa.")}>Cancelar implantação</Button>
+                )}
+                {s.origem === "Avulsa" && !cancelada && (
+                  <Button size="sm" variant="ghost" icon={Ban} onClick={() => { dispatch({ type: "UPDATE_FINANCE_SALE", id: s.id, patch: { status: "Cancelada" } }); notify("Venda cancelada — sai das somas, mas continua aqui."); }}>Cancelar</Button>
+                )}
+                {s.origem === "Avulsa" && cancelada && (
+                  <Button size="sm" variant="ghost" icon={RotateCcw} onClick={() => { dispatch({ type: "UPDATE_FINANCE_SALE", id: s.id, patch: { status: "Ativa" } }); notify("Venda reativada."); }}>Reativar</Button>
+                )}
+              </div>
+            </div>
+            {/* Cancelar uma implantação já recebida é ato mexe em dinheiro que
+                entrou: o campo de senha abre aqui, embaixo da linha, sem janela
+                por cima da tela. */}
+            {pedidoDaLinha && (
+              <div className="px-5 pb-3" style={{ borderBottom: "1px solid var(--line)" }}>
+                <CampoConfirmacaoSenha pedido={pedidoDaLinha} senha={senha} onSenha={setSenha}
+                  onConfirmar={confirmarPedido} onVoltar={voltarPedido}
+                  ocupado={enviando && pedindo && pedindo.id === pedidoDaLinha.id} />
+              </div>
+            )}
+            </React.Fragment>
+          );
+        })}
+      </SectionCard>
+      )}
+
+      {/* GUIA 3 de 3 — Comissões: uma linha por responsável, e o percentual
+          editável fica aqui, porque é daqui que sai o número do mês. */}
+      {sec === "comissoes" && (
+      <SectionCard
+        title="Comissões"
+        action={
+          <div className="flex items-center gap-2">
+            <span className="text-xs" style={{ color: "var(--slate)" }}>% sobre o recebido</span>
+            <TextInput type="number" min="0" max="100" step="0.5" value={percentDraft === "" ? percent : percentDraft} onChange={(e) => setPercentDraft(e.target.value)} style={{ width: 84, padding: "6px 8px", fontSize: 13 }} />
+            <Button size="sm" variant="secondary" onClick={salvarComissao} disabled={percentDraft === ""}>Salvar</Button>
+          </div>
+        }
+      >
+        <div className="px-5 py-4 space-y-2.5">
+          <p className="text-xs" style={{ color: "var(--slate)" }}>
+            Comissão de {monthLabelUi(mes)}: {percent}% do que efetivamente entrou ({fmtMoney(recebidoMes)}) = <strong style={{ color: "var(--ink-soft)" }}>{fmtMoney(comissaoMes)}</strong>. Venda ainda não recebida não gera comissão.
+          </p>
+          {linhasComissao.length === 0 ? (
+            <div className="text-sm" style={{ color: "var(--slate)" }}>Sem venda nem recebimento em {monthLabelUi(mes)}.</div>
+          ) : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-4 gap-3 text-[11px]" style={{ color: "var(--slate)" }}>
+                <span>Responsável</span>
+                <span className="text-right">Vendido no mês</span>
+                <span className="text-right">Recebido no mês</span>
+                <span className="text-right">Comissão</span>
+              </div>
+              {linhasComissao.map(l => (
+                <div key={l.owner} className="grid grid-cols-4 gap-3 text-sm items-center">
+                  <span className="truncate">{l.owner === "sem" ? "Sem responsável" : userName(l.owner)}</span>
+                  <span className="text-right gc-mono">{fmtMoney(l.vendido)}</span>
+                  <span className="text-right gc-mono">{fmtMoney(l.recebido)}</span>
+                  <span className="text-right gc-mono font-medium" style={{ color: "var(--success)" }}>{fmtMoney(l.comissao)}</span>
+                </div>
+              ))}
+              <div className="grid grid-cols-4 gap-3 text-sm items-center pt-2" style={{ borderTop: "1px solid var(--line)" }}>
+                <span className="font-medium">Total</span>
+                <span className="text-right gc-mono">{fmtMoney(vendidoMes)}</span>
+                <span className="text-right gc-mono">{fmtMoney(recebidoMes)}</span>
+                <span className="text-right gc-mono font-medium" style={{ color: "var(--success)" }}>{fmtMoney(comissaoMes)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </SectionCard>
+      )}
+
+      <p className="text-[11px]" style={{ color: "var(--slate)" }}>
+        O Financeiro abre em <strong>uma guia por vez</strong>: <strong>Vendas</strong> (os clientes fechados e as avulsas), <strong>Recebimentos</strong> (as parcelas e cobranças) e <strong>Comissões</strong> (uma linha por responsável). Os quatro números de cima somam o mês inteiro e valem para qualquer guia — clicar neles leva direto à guia correspondente. Dentro de Recebimentos continuam as guias de tipo: <strong>Mensalidades</strong>, <strong>Implantação</strong> e <strong>Avulsos</strong>, com a faixa de soma contando <strong>só a guia aberta</strong>, então o valor da implantação não se mistura com o da mensalidade.
+        No botão <strong>Receber</strong> de uma venda, a tela pula para Recebimentos já na guia do tipo certo.
+        Lançamento digitado errado pode ser <strong>Excluído</strong> de vez: a linha pede a <strong>sua senha</strong>, mostra o nome e o valor, e o backend confere antes de apagar — depois não tem como recuperar.
+        <strong>Desfazer</strong> um pagamento (e “Cancelar” de um que já entrou) também pede a senha, pelo mesmo motivo: tira dinheiro do mês.
+        Ajustar vencimento, método e marcar como pago continuam sem senha. Se preferir guardar o erro para conferir, use “Cancelar”: a linha continua em “Canceladas”. Venda avulsa errada não é excluída, vira “Cancelada”.
+      </p>
     </div>
   );
 }
@@ -6169,7 +8118,27 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
                               <Copy size={13} />
                             </button>
                           </div>
-                          {item.endereco && <div className="text-xs" style={{ color: "var(--slate)" }}>{item.endereco}</div>}
+                          {item.endereco && (
+                            <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--slate)" }}>
+                              <span className="min-w-0">{item.endereco}</span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  copyToClipboard(item.endereco, "Endereço", notify);
+                                }}
+                                className="inline-flex items-center justify-center gap-1 px-1.5 py-0.5 rounded text-[10px] shrink-0 gc-focus"
+                                title="Copiar endereço"
+                                style={{
+                                  color: "var(--ink-soft)",
+                                  background: "var(--surface-sunken)",
+                                  border: "1px solid var(--line-strong)"
+                                }}
+                              >
+                                <Copy size={11} /> Copiar
+                              </button>
+                            </div>
+                          )}
                         </td>
                         <td className="text-xs" style={{ color: "var(--ink-soft)" }}>{item.categoria || "—"}</td>
                         <td>
@@ -6225,7 +8194,27 @@ function EnrichmentView({ currentUser, onImportRecords, onCreateLead, notify }) 
                             {!item.telefone && !item.whatsapp && !item.instagram && !item.email && !item.site && <span style={{ color: "var(--slate)" }}>sem contato</span>}
                           </div>
                         </td>
-                        <td className="text-xs">{item.cidade || city}</td>
+                        <td className="text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <span className="min-w-0">{item.cidade || city}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyToClipboard(item.cidade || city, "Cidade", notify, true);
+                              }}
+                              className="inline-flex items-center justify-center gap-1 px-1.5 py-0.5 rounded text-[10px] shrink-0 gc-focus"
+                              title="Copiar cidade"
+                              style={{
+                                color: "var(--ink-soft)",
+                                background: "var(--surface-sunken)",
+                                border: "1px solid var(--line-strong)"
+                              }}
+                            >
+                              <Copy size={11} /> Copiar
+                            </button>
+                          </div>
+                        </td>
                         <td>
                           <div className="flex items-center gap-1.5">
                             {!item.instagram && !isGooglePlaces && (
@@ -7692,6 +9681,10 @@ function WhatsAppView({ currentUser }) {
    responder (a tentativa é a cada 5 s, e também quando ele traz a aba de volta). */
 function BackendProblemScreen({ problema, onTentarAgora, tentando }) {
   const semSupabase = problema.tipo === "sem-supabase";
+  /* Banco configurado no .env, mas o endereço dele não responde: é outro
+     problema, com outra solução, e as instruções de "abra o run-crm.bat"
+     levariam a pessoa a reiniciar um servidor que está perfeito. */
+  const bancoFora = problema.tipo === "banco-fora";
   const hora = problema.em ? problema.em.toLocaleTimeString("pt-BR") : "--:--:--";
   return (
     <div className="gc-root min-h-screen flex items-center justify-center px-4">
@@ -7699,12 +9692,14 @@ function BackendProblemScreen({ problema, onTentarAgora, tentando }) {
       <div className="w-full" style={{ maxWidth: "620px" }} role="alert" aria-live="assertive">
         <div className="rounded-2xl" style={{ background: "var(--surface)", border: `1px solid var(--line)`, boxShadow: "0 12px 32px rgba(23,25,28,0.12)", padding: "28px" }}>
           <div className="flex items-start" style={{ gap: "12px" }}>
-            <span className="shrink-0 rounded-full" style={{ width: "34px", height: "34px", background: semSupabase ? "var(--warn-bg)" : "var(--danger-bg)", display: "flex", alignItems: "center", justifyContent: "center", color: semSupabase ? "var(--warn)" : "var(--danger)", fontWeight: 700 }}>
+            <span className="shrink-0 rounded-full" style={{ width: "34px", height: "34px", background: (semSupabase || bancoFora) ? "var(--warn-bg)" : "var(--danger-bg)", display: "flex", alignItems: "center", justifyContent: "center", color: (semSupabase || bancoFora) ? "var(--warn)" : "var(--danger)", fontWeight: 700 }}>
               !
             </span>
             <div className="min-w-0">
               <h1 className="gc-display" style={{ fontSize: "20px", fontWeight: 600, color: "var(--ink)" }}>
-                {semSupabase ? "O backend está de pé, mas o banco não está configurado" : "O backend não está rodando"}
+                {semSupabase ? "O backend está de pé, mas o banco não está configurado"
+                  : bancoFora ? "O backend está de pé, mas o banco não responde"
+                  : "O backend não está rodando"}
               </h1>
               <p style={{ marginTop: "10px", fontSize: "15px", lineHeight: 1.5, color: "var(--ink-soft)", wordBreak: "break-word" }}>
                 {problema.motivo}
@@ -7714,11 +9709,29 @@ function BackendProblemScreen({ problema, onTentarAgora, tentando }) {
 
           <div style={{ marginTop: "20px", padding: "14px 16px", borderRadius: "12px", background: "var(--surface-sunken)", border: "1px solid var(--line)" }}>
             <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--slate)", letterSpacing: "0.02em" }}>O QUE FAZER</p>
-            <ol className="space-y-1" style={{ marginTop: "8px", fontSize: "14px", lineHeight: 1.55, color: "var(--ink-soft)", paddingLeft: "18px", listStyleType: "decimal" }}>
-              <li>Procure a janela preta <strong>“Backend CRM - API”</strong>. Se ela estiver fechada, é isso: o servidor foi desligado.</li>
-              <li>Abre o <strong>run-crm.bat</strong> de novo e deixe a janela aberta.</li>
-              <li>Não precisa recarregar esta página. Assim que o backend responder, os seus dados aparecem sozinhos.</li>
-            </ol>
+            {bancoFora ? (
+              /endereço|DNS/i.test(problema.motivo || "") ? (
+              <ol className="space-y-1" style={{ marginTop: "8px", fontSize: "14px", lineHeight: 1.55, color: "var(--ink-soft)", paddingLeft: "18px", listStyleType: "decimal" }}>
+                <li>O <strong>run-crm.bat está certo</strong> — ele respondeu ao teste. Não precisa reiniciar nada.</li>
+                <li>Abra <strong>dashboard.supabase.com</strong> e veja o projeto do banco: se estiver <strong>Paused</strong>, clique em <strong>Restore/Resume</strong>; se não estiver mais na lista, ele foi apagado ou arquivado.</li>
+                <li>Copie a <strong>Project URL</strong> atual do painel e confira se é a mesma linha <strong>SUPABASE_URL</strong> do arquivo <strong>backend\\.env</strong>. Se mudou, cole a nova, feche e abra o run-crm.bat de novo.</li>
+                <li>Se o projeto for outro (novo), rode <strong>backend/database/banco_novo.sql</strong> no SQL Editor dele para criar as tabelas antes de entrar.</li>
+              </ol>
+              ) : (
+              <ol className="space-y-1" style={{ marginTop: "8px", fontSize: "14px", lineHeight: 1.55, color: "var(--ink-soft)", paddingLeft: "18px", listStyleType: "decimal" }}>
+                <li>O backend e o banco estão falando um com o outro. O que falta é a <strong>estrutura</strong>: este projeto do Supabase ainda não tem as tabelas do CRM.</li>
+                <li>Abra <strong>dashboard.supabase.com</strong> → projeto atual → <strong>SQL Editor</strong>.</li>
+                <li>Cole o conteúdo inteiro de <strong>backend\database\banco_novo.sql</strong> e clique em <strong>Run</strong>. No fim ele mostra quantas tabelas e usuários existem.</li>
+                <li>Clique em <strong>Tentar agora</strong> aqui nesta tela (não precisa recarregar a página) e entre com a senha inicial.</li>
+              </ol>
+              )
+            ) : (
+              <ol className="space-y-1" style={{ marginTop: "8px", fontSize: "14px", lineHeight: 1.55, color: "var(--ink-soft)", paddingLeft: "18px", listStyleType: "decimal" }}>
+                <li>Procure a janela preta <strong>“Backend CRM - API”</strong>. Se ela estiver fechada, é isso: o servidor foi desligado.</li>
+                <li>Abre o <strong>run-crm.bat</strong> de novo e deixe a janela aberta.</li>
+                <li>Não precisa recarregar esta página. Assim que o backend responder, os seus dados aparecem sozinhos.</li>
+              </ol>
+            )}
           </div>
 
           <div className="flex items-center justify-between flex-wrap" style={{ gap: "12px", marginTop: "20px" }}>
@@ -7760,7 +9773,13 @@ function BackendProblemScreen({ problema, onTentarAgora, tentando }) {
    ========================================================================= */
 
 function App() {
-  const [currentUser, setCurrentUser] = useState(() => readSessionUserId());
+  const [currentUser, setCurrentUser] = useState(() => {
+    const id = readSessionUserId();
+    /* Readota o nome guardado no login anterior, para quem entrou pelo link da
+       equipe continuar com o rótulo certo depois de recarregar a página. */
+    if (id) ensureKnownUser(id, readSessionName(id));
+    return id;
+  });
   const [db, rawDispatch] = useReducer(dbReducer, initialDb);
   const [apiStatus, setApiStatus] = useState("checking");
   /* O problema real com o backend (desligado, HTTP 500, timeout, Supabase sem
@@ -7806,10 +9825,77 @@ function App() {
   const searchInputRef = useRef(null);
   const { toasts, notify } = useToastStack();
 
+  /* Aviso na tela de entrada quando o backend devolve 401 numa chamada de dados:
+       sessão vencida, ou navegador que ainda não digitou a senha. */
+  const [sessaoExpirada, setSessaoExpirada] = useState("");
+  const logadoRef = useRef(Boolean(currentUser));
+  useEffect(() => {
+    logadoRef.current = Boolean(currentUser);
+  }, [currentUser]);
+
   const handleLogout = () => {
+    /* Sai de verdade: apaga o token guardado e pede para o backend limpar o
+       cookie. Assim o mesmo computador, depois de sair, exige a senha de novo. */
+    if (window.CrmSession) window.CrmSession.clear();
+    crmApi.auth.logout();
     clearSessionUserId();
+    setSessaoExpirada("");
+    setSenhaInicialPendente(false);
+    setAvisoSenhaDispensado(false);
     setCurrentUser(null);
   };
+
+  /* Quem ainda está com a SENHA INICIAL compartilhada vê uma faixa no topo de
+     todas as telas, com botão para criar a senha própria. A fonte do "ainda
+     está com a senha inicial" é o backend (must_change_password do usuário);
+     sem backend — modo local — é o registro que o navegador guarda.
+     A faixa é aviso, não portão: ninguém é bloqueado de usar o CRM, e "Agora
+     não" só esconde ela até a próxima vez que a pessoa entrar. */
+  const [senhaInicialPendente, setSenhaInicialPendente] = useState(false);
+  const [avisoSenhaDispensado, setAvisoSenhaDispensado] = useState(false);
+
+  const conferirSenhaInicial = useCallback(async (userId) => {
+    if (!userId) return false;
+    const status = await authStatusThroughApi(userId);
+    if (status && typeof status.mustChangePassword === "boolean") return status.mustChangePassword;
+    const registro = readAuthRecord(userId);
+    return Boolean(registro && registro.mustChangePassword !== false);
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setSenhaInicialPendente(false);
+      return undefined;
+    }
+    let vivo = true;
+    conferirSenhaInicial(currentUser)
+      .then((pendente) => { if (vivo) setSenhaInicialPendente(pendente); })
+      .catch(() => { if (vivo) setSenhaInicialPendente(false); });
+    return () => { vivo = false; };
+  }, [currentUser, conferirSenhaInicial]);
+
+  /* Usado pelo painel do nome e pela faixa: a senha mudou, então o aviso sai e
+     a pessoa continua na mesma tela, logada com a sessão nova que o backend
+     devolveu junto com a resposta. */
+  const senhaTrocada = () => {
+    setSenhaInicialPendente(false);
+    setAvisoSenhaDispensado(false);
+    notify("Senha alterada. Você continua usando o CRM.");
+  };
+
+  /* Quando o portão de sessão fecha, o fetch global (js/session.js) emite este
+     evento. O app devolve a pessoa para a tela de entrada com a explicação, em vez
+     de deixar uma tela de dados vazia ou um aviso vermelho de "backend offline". */
+  useEffect(() => {
+    if (!window.CrmSession || typeof window.CrmSession.onUnauthorized !== "function") return undefined;
+    return window.CrmSession.onUnauthorized(() => {
+      if (!logadoRef.current) return;
+      if (window.CrmSession) window.CrmSession.clear();
+      clearSessionUserId();
+      setSessaoExpirada("Sua sessão do CRM terminou. Digite a senha de novo para voltar aos dados.");
+      setCurrentUser(null);
+    });
+  }, []);
 
   /* Uma rodada com o backend: pergunta o /health, só pede os dados se ele
      respondeu, e guarda o MOTIVO quando não respondeu (conexão recusada, HTTP
@@ -7833,6 +9919,23 @@ function App() {
     if (health.database !== "configurado") {
       return falha("sem-supabase", "O backend está de pé, mas o banco dele não está configurado. Abra o arquivo backend\\.env e confira SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY; depois feche e abra o run-crm.bat de novo.");
     }
+    /* O backend está de pé e o .env tem as duas linhas, mas a consulta de
+       teste do /health não passou no banco. É aqui que a tela para de mandar
+       reiniciar o run-crm.bat: o servidor estava ótimo, quem caiu foi o
+       projeto do Supabase (pausado, apagado, ou URL de outro projeto). */
+    if (health.dbCheck && health.dbCheck.ok === false) {
+      return falha("banco-fora", `O backend consultou o banco e não conseguiu falar com ele: ${health.dbCheck.motivo}`);
+    }
+    /* Ainda não entrou? Então não há dados para pedir: o portão de sessão devolve
+       401 em tudo, e chamar loadAll() aqui produziria o aviso vermelho "o backend
+       não está respondendo" na tela de entrada — mentira. O backend está de pé,
+       quem falta é a senha. A partir daqui a tela só mostra o formulário. */
+    if (!logadoRef.current) {
+      setApiStatus("connected");
+      setApiProblem(null);
+      tentativasRef.current = 0;
+      return true;
+    }
     try {
       const remoteDb = await crmApi.loadAll();
       rawDispatch({ type: "SET_DB", db: remoteDb || { ...initialDb } });
@@ -7841,8 +9944,29 @@ function App() {
       tentativasRef.current = 0;
       return true;
     } catch (error) {
+      if (error && error.sessionExpired) {
+        /* A sessão venceu no meio do uso (ou o link foi aberto sem senha): volta
+           para a entrada com o aviso de senha, e não com o "backend não
+           responde", que seria mentira — ele está respondendo muito bem. */
+        if (window.CrmSession) window.CrmSession.clear();
+        clearSessionUserId();
+        rawDispatch({ type: "SET_DB", db: { ...initialDb } });
+        setApiStatus("connected");
+        setApiProblem(null);
+        tentativasRef.current = 0;
+        setCurrentUser(null);
+        setSessaoExpirada("Sua sessão do CRM terminou. Digite a senha de novo para voltar aos dados.");
+        return false;
+      }
       console.error("Falha ao carregar dados do Supabase:", error);
-      return falha("offline", `O backend respondeu ao /health, mas não devolveu os leads (${error?.message || "falha inesperada"}).`);
+      /* Se a mensagem carrega o motivo do banco (ver falhaBanco no backend), a
+         tela é de banco, não de servidor: as instruções deixam de falar em
+         run-crm.bat, que neste caso não tem culpa nenhuma. */
+      const msg = error?.message || "falha inesperada";
+      const eBanco = /motivo:|no banco|banco de dados/i.test(msg);
+      return falha(eBanco ? "banco-fora" : "offline", eBanco
+        ? `O backend está de pé, mas o banco dele não respondeu: ${msg}`
+        : `O backend respondeu ao /health, mas não devolveu os leads (${msg}).`);
     } finally {
       if (!silencioso) setBootLoading(false);
     }
@@ -8065,9 +10189,50 @@ function App() {
             if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao salvar cliente");
             break;
           }
+          case "UPDATE_CLIENT": {
+            const res = await crmApi.clients.update(action.id, action.patch);
+            if (!res || !res.success) throw new Error(res?.error?.message || res?.message || "Falha ao atualizar cliente");
+            break;
+          }
           case "ADD_CLIENT_UPDATE": {
             const res = await crmApi.clientUpdates.create(action.update);
             if (!res || !res.success) throw new Error(res?.error?.message || "Falha ao salvar alteração do cliente");
+            break;
+          }
+          case "ADD_FINANCE_SALE": {
+            const res = await crmApi.finance.sales.create(action.sale);
+            if (!res || !res.success) throw new Error(res?.message || res?.error?.message || "Falha ao lançar a venda avulsa");
+            break;
+          }
+          case "ADD_FINANCE_SALE_WITH_PAYMENT": {
+            const saleRes = await crmApi.finance.sales.create(action.sale);
+            if (!saleRes || !saleRes.success) throw new Error(saleRes?.message || saleRes?.error?.message || "Falha ao lançar a venda avulsa");
+            const paymentRes = await crmApi.finance.payments.create(action.payment);
+            if (!paymentRes || !paymentRes.success) throw new Error(paymentRes?.message || paymentRes?.error?.message || "Falha ao lançar o recebimento");
+            break;
+          }
+          case "UPDATE_FINANCE_SALE": {
+            const res = await crmApi.finance.sales.update(action.id, action.patch);
+            if (!res || !res.success) throw new Error(res?.message || res?.error?.message || "Falha ao atualizar a venda avulsa");
+            break;
+          }
+          case "ADD_FINANCE_PAYMENT": {
+            const res = await crmApi.finance.payments.create(action.payment);
+            if (!res || !res.success) throw new Error(res?.message || res?.error?.message || "Falha ao lançar o recebimento");
+            break;
+          }
+          /* ADD_FINANCE_PAYMENTS (as mensalidades do mês) fica fora desta lista de
+             propósito: quem chama a API é o botão da tela, que recebe do servidor
+             exatamente as linhas criadas e as entrega prontas para o reducer.
+             Passar por aqui gravaria cada mensalidade duas vezes. */
+          case "UPDATE_FINANCE_PAYMENT": {
+            const res = await crmApi.finance.payments.update(action.id, action.patch);
+            if (!res || !res.success) throw new Error(res?.message || res?.error?.message || "Falha ao atualizar o recebimento");
+            break;
+          }
+          case "SET_FINANCE_SETTINGS": {
+            const res = await crmApi.finance.settings.save(action.settings.commissionPercent);
+            if (!res || !res.success) throw new Error(res?.message || res?.error?.message || "Falha ao salvar o percentual de comissão");
             break;
           }
           default:
@@ -8113,7 +10278,7 @@ function App() {
 
   const sel = useSelectors(db);
 
-  if (!currentUser) return <LoginScreen onLogin={setCurrentUser} apiProblem={apiProblem} onTentarAgora={retryNow} tentando={tentandoAgora} />;
+  if (!currentUser) return <LoginScreen onLogin={(id) => { setSessaoExpirada(""); setCurrentUser(id); }} apiProblem={apiProblem} sessaoExpirada={sessaoExpirada} onTentarAgora={retryNow} tentando={tentandoAgora} />;
 
   if (bootLoading) {
     return (
@@ -8237,7 +10402,11 @@ function App() {
       if (!res?.success) throw new Error(res?.message || "Não foi possível excluir o lead.");
       rawDispatch({ type: "DELETE_LEAD", id: lead.id });
       setSelectedLeadId(id => id === lead.id ? null : id);
-      setEditingLead(current => current?.id === lead.id ? null : current);
+      /* Não existe estado separado de "lead em edição": a edição é a própria
+         ficha, que acabamos de fechar acima. (Aqui havia um
+         setEditingLead(...) herdado de outra versão do app — sem estado
+         correspondente, ele dava ReferenceError e o aviso de sucesso nunca
+         aparecia, só "setEditingLead is not defined".) */
       notify("Lead excluído definitivamente.");
     } catch (err) {
       notify(err.message || "Não foi possível excluir o lead.", "error");
@@ -8276,7 +10445,9 @@ function App() {
   } else if (view === "proposals") {
     body = <ProposalsView db={db} sel={sel} onOpenLead={openLead} dispatch={dispatch} notify={notify} />;
   } else if (view === "clients") {
-    body = <ClientsView db={db} onOpenLead={openLead} />;
+    body = <ClientsView db={db} onOpenLead={openLead} dispatch={dispatch} notify={notify} />;
+  } else if (view === "finance") {
+    body = <FinanceiroView db={db} dispatch={dispatch} notify={notify} currentUser={currentUser} onOpenLead={openLead} onRetry={retryNow} tentandoDeNovo={tentandoAgora} />;
   } else if (view === "whatsapp") {
     body = <WhatsAppView currentUser={currentUser} />;
   } else if (view === "enrichment") {
@@ -8311,7 +10482,17 @@ function App() {
           searchInputRef={searchInputRef}
           apiStatus={apiStatus}
           onSeedDemo={handleSeedDemo}
+          onPasswordChanged={senhaTrocada}
         />
+        {senhaInicialPendente && !avisoSenhaDispensado && (
+          <div className={`pt-3 ${(view === "leads" || view === "enrichment") ? "px-3 sm:px-4 md:px-4 max-w-none" : "px-3 sm:px-4 md:px-6 max-w-[1200px] mx-auto"}`}>
+            <AvisoSenhaInicial
+              currentUser={currentUser}
+              onDismissed={() => setAvisoSenhaDispensado(true)}
+              onPasswordChanged={senhaTrocada}
+            />
+          </div>
+        )}
         <main className={`py-4 sm:py-5 ${(view === "leads" || view === "enrichment") ? "px-3 sm:px-4 md:px-4 max-w-none" : "px-3 sm:px-4 md:px-6 max-w-[1200px] mx-auto"}`}>{body}</main>
       </div>
 

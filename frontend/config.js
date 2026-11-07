@@ -1,31 +1,24 @@
 // ============================================================================
 //  Configuração da API do CRM
 // ============================================================================
-//  Arquitetura atual (INTERINA, sem VPS):
+//  Arquitetura atual (Railway/Vercel/VPS):
 //
-//    - DADOS (leads, auth, propostas, enriquecimento...): API serverless da
-//      Vercel, na MESMA ORIGEM ("/api").
+//    - DADOS (leads, auth, propostas, enriquecimento...): API do Railway em
+//      https://crm-comercial-production-e707.up.railway.app/api.
+//    - WHATSAPP/Baileys: mesmo backend persistente do Railway, pois exige um
+//      processo Node conectado e armazenamento durável.
 //    - WHATSAPP (Baileys): NÃO roda na Vercel (exige processo Node persistente
 //      + disco durável). Roda no backend LOCAL em http://localhost:3001/api.
 //
-//  Por isso o frontend hospedado na Vercel chama:
-//    window.CRM_API_URL          -> "/api"                     (dados, Vercel)
-//    window.CRM_WHATSAPP_API_URL -> "http://localhost:3001/api" (WhatsApp, local)
+//  Por isso o frontend hospedado na Vercel chama diretamente o Railway:
+//    window.CRM_API_URL          -> domínio Railway/api
+//    window.CRM_WHATSAPP_API_URL -> domínio Railway/api
 //
-//  O servidor local (porta 3001) precisa estar no ar com o Baileys CONNECTED.
-//  O backend já libera CORS para *.vercel.app e envia
-//  Access-Control-Allow-Private-Network: true no preflight (PNA), permitindo
-//  que a página https da Vercel chame http://localhost:3001.
-//
-//    Local (localhost/file://) -> variáveis vazias; getApiBaseUrl()/
-//                                 getWhatsAppApiBaseUrl() já usam localhost:3001
-//    Produção (Vercel)         -> dados "/api" / WhatsApp localhost:3001
-//
-//  Quando a VPS estiver pronta, troque CRM_PROD_WHATSAPP_URL para
-//  "https://api.crm-comercial.com/api".
+//  Localmente (localhost/file://), a configuração continua vazia e os helpers
+//  usam http://localhost:3001/api.
 // ============================================================================
-const CRM_PROD_API_URL = "/api";
-const CRM_PROD_WHATSAPP_URL = "http://localhost:3001/api";
+const CRM_PROD_API_URL = "https://crm-comercial-production-e707.up.railway.app/api";
+const CRM_PROD_WHATSAPP_URL = "https://crm-comercial-production-e707.up.railway.app/api";
 
 const CRM_IS_LOCAL =
   typeof window !== "undefined" &&
@@ -37,6 +30,15 @@ const CRM_IS_LOCAL =
 // Base da API de DADOS (leads, auth, propostas, enriquecimento...)
 window.CRM_API_URL = CRM_IS_LOCAL ? "" : CRM_PROD_API_URL;
 
-// Base específica do WhatsApp (Baileys). Em produção aponta para o backend
-// LOCAL na porta 3001, pois o Baileys não roda na Vercel serverless.
-window.CRM_WHATSAPP_API_URL = CRM_IS_LOCAL ? "" : CRM_PROD_WHATSAPP_URL;
+// Domínio do túnel que você abre com o ABRIR_PARA_A_EQUIPE.bat.
+const CRM_IS_TUNEL =
+  typeof window !== "undefined" &&
+  /(^|\.)ngrok(-free)?\.(app|com|dev|io)$/i.test(String(window.location.hostname || ""));
+
+// Base específica do WhatsApp (Baileys). Fora do notebook e do túnel, ela usa
+// o backend persistente do Railway. Pelo ngrok, o domínio público já entrega
+// tudo em /api; apontar para localhost dentro do navegador estaria errado, pois
+// localhost seria o computador de quem abriu o link.
+window.CRM_WHATSAPP_API_URL = CRM_IS_TUNEL
+  ? CRM_PROD_API_URL
+  : (CRM_IS_LOCAL ? "" : CRM_PROD_WHATSAPP_URL);

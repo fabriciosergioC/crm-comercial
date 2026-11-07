@@ -1,6 +1,10 @@
 # Backups locais
 /_backup_original/
 
+# Cópias do banco feitas pelo BACKUP_BANCO.bat: são os dados dos clientes,
+# então ficam no disco (e no OneDrive), nunca no GitHub.
+/backups/
+
 # Arquivos de sistema
 Thumbs.db
 .DS_Store
@@ -17,6 +21,14 @@ backend/.env*
 # Sessões locais do WhatsApp (incluindo sessões rejeitadas arquivadas)
 /data/whatsapp-auth*/
 /backend/data/whatsapp-auth*/
+
+# Assinatura dos tokens de sessão do CRM (se ele não definir SESSION_SECRET no
+# .env, o backend gera esta chave no notebook — o repositório é público)
+/backend/data/session-secret.key
+*.key
+
+# Endereço reservado do túnel ngrok (link da equipe: não vai para o GitHub)
+/NGROK_URL.txt
 
 # Estado dos lembretes do Windows e backups de status (contêm dados dos clientes)
 /data/agenda-notifier-state.json

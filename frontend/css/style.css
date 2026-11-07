@@ -91,3 +91,23 @@
 .opacity-80{opacity:.8}
 .hover\:opacity-80:hover{opacity:.8}
 .space-y-1>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.25rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.25rem*var(--tw-space-y-reverse))}
+
+/* Fundo levemente escuro quando o cursor passa nos botãozinhos de copiar da
+   tela Captar Leads (nome, endereço, telefone). Sem esta linha o hover era
+   muda: o botão não dava nenhum sinal de que era clicável. */
+.hover\:bg-black\/5:hover{background-color:rgba(0,0,0,.05)}
+.ml-0\.5{margin-left:.125rem}
+
+/* Utilitários que o Tailwind congelado não gerou e a tela Financeiro usa:
+   a tabela de comissões em quatro colunas e os formulários de lançamento em
+   três colunas na tela larga. Sem estas duas linhas o grid ficaria mudo
+   (tudo empilhado), sem nenhum erro na tela. */
+.grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (min-width:1024px){
+  .lg\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+/* Mesmo motivo da linha de cima: a pré-geração do Tailwind não acompanhou o
+   fonte único, e a guia Vendas do Financeiro passou a usar — é o respiro embaixo
+   do campo de senha que abre na própria linha, quando a implantação do mês já
+   existe. Sem esta linha o bloco encostaria na borda, sem erro nenhum na tela. */
+.pb-3{padding-bottom:.75rem}

@@ -1,5 +1,6 @@
 const { supabase, isConfigured } = require('../config/supabase');
 const { ApiError } = require('../middleware/errorHandler');
+const { motivoFalhaDoBanco } = require('./modelHelpers');
 const { TEMPERATURES, TEMP_RANK, HOT_RESULTS, WARM_RESULTS } = require('../models/enums');
 
 /* ------------------------------------------------------------------
@@ -60,17 +61,25 @@ function assertReady() {
   }
 }
 
+/* 502 com o motivo real da falha (DNS, chave recusada, tabela ausente, timeout) —
+   ver motivoFalhaDoBanco em modelHelpers. Antes era só "Falha ao consultar leads
+   no banco", e a tela mandava a pessoa reiniciar o run-crm.bat, que estava
+   perfeito: o problema era o projeto do Supabase que tinha saído do ar. */
+function falhaBanco(mensagem, error) {
+  return new ApiError(502, `${mensagem} — motivo: ${motivoFalhaDoBanco(error)}`);
+}
+
 async function list() {
   assertReady();
   const { data, error } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
-  if (error) throw new ApiError(502, 'Falha ao consultar leads no banco.');
+  if (error) throw falhaBanco('Falha ao consultar leads no banco', error);
   return (data || []).map(fromRow);
 }
 
 async function getById(id) {
   assertReady();
   const { data, error } = await supabase.from('leads').select('*').eq('id', id).maybeSingle();
-  if (error) throw new ApiError(502, 'Falha ao consultar o lead no banco.');
+  if (error) throw falhaBanco('Falha ao consultar o lead no banco', error);
   if (!data) throw new ApiError(404, 'Lead não encontrado.');
   return fromRow(data);
 }
@@ -80,7 +89,7 @@ async function create(payload) {
   const row = toRow(payload);
   row.temperature = TEMPERATURES.includes(row.temperature) ? row.temperature : 'Frio';
   const { data, error } = await supabase.from('leads').insert(row).select().single();
-  if (error) throw new ApiError(502, 'Falha ao criar o lead no banco.');
+  if (error) throw falhaBanco('Falha ao criar o lead no banco', error);
   return fromRow(data);
 }
 
@@ -90,7 +99,7 @@ async function update(id, patch) {
   const row = toRow(patch);
   if (Object.keys(row).length === 0) return getById(id);
   const { data, error } = await supabase.from('leads').update(row).eq('id', id).select().single();
-  if (error) throw new ApiError(502, 'Falha ao atualizar o lead no banco.');
+  if (error) throw falhaBanco('Falha ao atualizar o lead no banco', error);
 
   // Sincroniza somente dados cadastrais. Contrato e status do cliente são independentes.
   if (['company', 'contact_name', 'owner'].some(field => row[field] !== undefined)) {
@@ -100,7 +109,7 @@ async function update(id, patch) {
       owner: data.owner,
     }).eq('lead_id', id);
     if (clientError) {
-      throw new ApiError(502, 'Lead salvo, mas não foi possível atualizar o cliente vinculado. Tente salvar novamente.');
+      throw falhaBanco('Lead salvo, mas não foi possível atualizar o cliente vinculado. Tente salvar novamente', clientError);
     }
   }
   return fromRow(data);
@@ -116,7 +125,7 @@ async function changeStatus(id, status, user) {
     p_to: status,
     p_user: user || null,
   });
-  if (error) throw new ApiError(502, 'Falha ao alterar o status do lead.');
+  if (error) throw falhaBanco('Falha ao alterar o status do lead', error);
   const entry = data && data.entry
     ? {
         id: data.entry.id,
@@ -143,7 +152,7 @@ async function addInteraction(leadId, interaction) {
     p_result: interaction.result,
     p_note: interaction.note || '',
   });
-  if (error) throw new ApiError(502, 'Falha ao registrar a interação.');
+  if (error) throw falhaBanco('Falha ao registrar a interação', error);
   const created = data && data.interaction
     ? {
         id: data.interaction.id,
@@ -163,11 +172,11 @@ async function remove(id) {
   await getById(id);
   const { data: client, error: clientError } = await supabase.from('clients')
     .select('id').eq('lead_id', id).maybeSingle();
-  if (clientError) throw new ApiError(502, 'Não foi possível verificar o cliente vinculado.');
+  if (clientError) throw falhaBanco('Não foi possível verificar o cliente vinculado', clientError);
   if (client) throw new ApiError(409, 'Este lead possui um cliente vinculado e não pode ser excluído.');
   const { data, error } = await supabase.from('leads').delete().eq('id', id).select('id').maybeSingle();
   if (error && error.code === '23503') throw new ApiError(409, 'Este lead possui registros protegidos e não pode ser excluído.');
-  if (error) throw new ApiError(502, 'Não foi possível excluir o lead.');
+  if (error) throw falhaBanco('Não foi possível excluir o lead', error);
   if (!data) throw new ApiError(404, 'Lead não encontrado.');
   return { id: data.id };
 }

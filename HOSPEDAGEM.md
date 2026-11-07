@@ -69,3 +69,91 @@ então o desenvolvimento local continua batendo em `http://localhost:3001` com o
 `run-crm.bat`. A sessão Baileys fica em `/opt/crm/data/whatsapp-auth` na VPS,
 sobrevivendo a reboot e servindo qualquer navegador/aparelho (nada mais de
 `localhost` preso ao computador de quem roda o `run-crm.bat`).
+
+---
+
+# Abrir o CRM para a equipe pelo ngrok (sem publicar nada)
+
+Isto é o caminho mais rápido para 1 a 3 pessoas da equipe usarem o CRM enquanto
+ele roda no seu notebook. Não publica nada na Vercel nem no GitHub: o túnel é um
+atalho temporário da internet até o seu `http://localhost:3001`.
+
+## Como abrir (3 cliques)
+
+1. Abra o **`run-crm.bat`** e deixe a janela dele aberta (é o backend).
+2. Dê dois cliques em **`ABRIR_PARA_A_EQUIPE.bat`**.
+3. Na janela do ngrok, copie a linha que começa com `Forwarding`, o endereço
+   `https://....ngrok-free.app`, e mande para a equipe **junto com a senha do
+   CRM**. Nada mais: ninguém precisa instalar nada nem copiar token.
+
+Para fechar o acesso: feche a janela do ngrok (ou desligue o notebook). O
+`run-crm.bat` continua rodando normalmente; ele não é afetado.
+
+## O que mudou no sistema para isso ser seguro
+
+Antes, a tela de senha era só enfeite: quem descobrisse o endereço podia chamar
+`/api/leads` direto e baixar todos os clientes, sem senha. Agora:
+
+- **`backend/middleware/sessionGate.js`** fecha os endpoints de dados (`leads`,
+  `whatsapp`, `enrichment`, `agenda`, `demos`, `proposals`, `clients`...). Da
+  internet, sem sessão válida a resposta é 401 com a mensagem
+  *"Faça login para ver os dados do CRM"*.
+- **`backend/services/sessionTokens.js`** assina a sessão com HMAC-SHA256
+  (biblioteca nativa do Node, nada instalado). O token vai no cookie
+  `crm_session` **httpOnly** — o navegador envia sozinho, o JavaScript da página
+  não lê — e expira em 7 dias (ou `SESSION_TTL_HOURS` no `backend\.env`).
+- O segredo de assinatura fica em `backend\data\session-secret.key` (criado
+  sozinho na primeira vez, já está no `.gitignore`) ou em `SESSION_SECRET` no
+  `backend\.env`. Defina `SESSION_SECRET` lá se quiser poder trocá-lo.
+- **`frontend/js/session.js`** manda o token no cabeçalho `x-crm-session` quando
+  o cookie não vale (página aberta do disco) e, se o backend responder 401,
+  devolve a pessoa para a tela de entrada com o aviso certo — em vez do aviso
+  vermelho de "backend não responde", que seria mentira.
+- **`/api/auth/status` não devolve mais a senha padrão** para pedidos vindos da
+  internet; ela só aparece no seu notebook.
+- Seu notebook continua **isento**: pedido com endereço `localhost` /
+  `127.0.0.1` passa sem token. Você nunca fica trancado fora do seu próprio CRM,
+  mesmo se o token expirar.
+
+## Endereços no plano grátis
+
+- Cada vez que você abrir a janela, o ngrok sorteia um endereço novo. A equipe
+  teria que receber o link de novo a cada dia.
+- Para um link que nunca muda: no painel do ngrok (Sites → Domains) reserve o
+  seu domínio grátis `xxxx.ngrok-free.app`, cole ele em um arquivo chamado
+  **`NGROK_URL.txt`** na pasta do CRM (só o endereço, uma linha). O atalho lê
+  esse arquivo e usa `--url=` automaticamente. O arquivo fica fora do GitHub.
+- No plano grátis o ngrok mostra uma página de aviso na primeira visita de cada
+  endereço ("You are about to visit..."). A equipe clica em **Visit Site**. Um
+  domínio reservado também elimina essa página em contas com esse recurso ativo.
+
+## Criando o login de cada pessoa da equipe
+
+A tela de entrada lista quem existe na tabela `users` do Supabase. Hoje ela mostra
+os nomes já cadastrados; para entrar uma pessoa nova, rode no SQL Editor do
+Supabase:
+
+```sql
+insert into public.users (id, name, active)
+values ('maria', 'Maria', true)
+on conflict (id) do update set name = excluded.name, active = true;
+```
+
+O id (`maria`) é o que fica gravado como responsável nas fichas; o nome (`Maria`)
+é o que aparece na tela. A pessoa entra com a **senha inicial** que você passar
+para ela e o CRM obriga a criar a senha própria dela no primeiro acesso
+(campo `must_change_password` já existe no banco). Para desativar alguém, use
+`update public.users set active = false where id = 'maria';` — a pessoa some da
+lista e para de conseguir entrar, sem apagar nada.
+
+## Limites que você precisa saber
+
+- O túnel morre quando a janela fecha, o notebook dorme ou fica sem internet.
+- O WhatsApp (Baileys) depende do mesmo processo: a equipe só conversa pelo
+  WhatsApp enquanto o seu `run-crm.bat` estiver aberto na sua máquina.
+- Uma sessão ativa vale para todos os dados — não existe "a Maria só vê os leads
+  dela". Se um dia for preciso separar por responsável, isso é trabalho novo.
+- Para acesso 24 horas sem depender do notebook, o próximo passo é a VPS do
+  `HOSPEDAGEM` acima (`https://api.crm-comercial.com/api`), que já mantém o
+  Baileys ligado.
+

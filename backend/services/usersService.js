@@ -122,6 +122,20 @@ async function changePassword(userId, currentPassword, newPassword) {
   return { user: publicUser(saved), mustChangePassword: false };
 }
 
+/* Quem pode entrar no CRM: id e nome, só dos ativos. É a lista que aparece na
+   tela de entrada quando alguém novo é criado no banco — sem isso a equipe fica
+   restrita aos nomes escritos no arquivo do frontend. */
+async function listUsers() {
+  assertReady();
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, name')
+    .neq('active', false)
+    .order('name');
+  if (error) throw mapDbError(error, 'Falha ao listar os usuários.');
+  return (data || []).map((row) => ({ id: row.id, name: row.name || row.id }));
+}
+
 async function createUser(payload) {
   assertReady();
   const credential = hashPassword(DEFAULT_PASSWORD);
@@ -145,6 +159,7 @@ module.exports = {
   authenticate,
   changePassword,
   createUser,
+  listUsers,
   getUserAuth,
   getAuthStatus,
 };

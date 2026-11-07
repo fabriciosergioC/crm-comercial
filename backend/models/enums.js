@@ -41,6 +41,15 @@ const FOLLOWUP_STATUSES = ['pendente', 'concluido', 'cancelado'];
 const AGENDA_EVENT_TYPES = ['reuniao', 'demonstracao', 'tarefa', 'compromisso'];
 const AGENDA_EVENT_STATUSES = ['agendado', 'concluido', 'cancelado'];
 
+/* Financeiro (migration 014_financeiro.sql). Os mesmos valores aparecem nos
+   CHECK do banco — mudar um sem o outro faz o insert voltar 400.
+   'Atrasado' NÃO é status: atraso é pendente com due_date no passado, calculado
+   na tela, para ninguém ter que marcar atrasado à mão. */
+const FINANCE_KINDS = ['Implementação', 'Mensalidade', 'Serviço avulso', 'Outro'];
+const FINANCE_SALE_STATUSES = ['Ativa', 'Cancelada'];
+const FINANCE_PAYMENT_STATUSES = ['Pendente', 'Pago', 'Cancelado'];
+const FINANCE_METHODS = ['', 'PIX', 'Boleto', 'Cartão', 'Dinheiro', 'Transferência'];
+
 /* Regra do front-end (suggestTemperature): a temperatura só sobe, nunca desce. */
 const TEMP_RANK = { Frio: 0, Morno: 1, Quente: 2 };
 const HOT_RESULTS = ['Demonstrou interesse', 'Pediu preço', 'Pediu proposta'];
@@ -60,6 +69,10 @@ module.exports = {
   FOLLOWUP_STATUSES,
   AGENDA_EVENT_TYPES,
   AGENDA_EVENT_STATUSES,
+  FINANCE_KINDS,
+  FINANCE_SALE_STATUSES,
+  FINANCE_PAYMENT_STATUSES,
+  FINANCE_METHODS,
   TEMP_RANK,
   HOT_RESULTS,
   WARM_RESULTS,
