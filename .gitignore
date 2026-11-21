@@ -22,6 +22,9 @@ backend/.env*
 /data/whatsapp-auth*/
 /backend/data/whatsapp-auth*/
 
+# Logs e estado local do backend (telefones de clientes: nunca no GitHub)
+/backend/data/
+
 # Assinatura dos tokens de sessão do CRM (se ele não definir SESSION_SECRET no
 # .env, o backend gera esta chave no notebook — o repositório é público)
 /backend/data/session-secret.key
@@ -38,6 +41,9 @@ backend/.env*
 node_modules/
 backend/node_modules/
 backend/install.log
+
+# Motores e modelos locais da IA de voz (4 GB: baixados por INSTALAR_IA_VOZ.bat)
+/tools/ai/
 
 # Metadados de ferramentas
 .freebuff/

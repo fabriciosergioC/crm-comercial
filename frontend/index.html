@@ -301,6 +301,10 @@ const Tokens = () => (
     .gc-spin { animation: gc-spin 0.8s linear infinite; }
     @keyframes gc-pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
     .gc-pulse-soft { animation: gc-pulse-soft 1.8s ease-in-out infinite; }
+    /* Indicador de gravação da nota de voz no WhatsApp. */
+    @keyframes ai-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.45); opacity: 0.55; } }
+    .ai-pulse { animation: ai-pulse 1s ease-in-out infinite; }
+    .ai-recording { animation: gc-pulse-soft 1.6s ease-in-out infinite; font-weight: 500; }
     .gc-collapse { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.25s ease; }
     .gc-collapse > * { min-height: 0; overflow: hidden; visibility: visible; transition: visibility 0s; }
     .gc-collapse.collapsed { grid-template-rows: 0fr; }
@@ -348,7 +352,7 @@ const Tokens = () => (
       .gc-login-card { padding: 24px 20px; border-radius: 20px; }
     }
     @media (prefers-reduced-motion: reduce) {
-      .gc-slide-in, .gc-fade-in, .gc-pop-in, .gc-toast-in, .gc-spin, .gc-pulse-soft { animation: none; }
+      .gc-slide-in, .gc-fade-in, .gc-pop-in, .gc-toast-in, .gc-spin, .gc-pulse-soft, .ai-pulse, .ai-recording { animation: none; }
       .gc-card, .gc-pressable, .gc-btn, .gc-collapse, .gc-collapse > *, .gc-sidebar { transition: none; }
     }
 
@@ -938,6 +942,18 @@ function getWhatsAppApiBaseUrl() {
   return CRM_API_BASE;
 }
 
+/* A IA e as ligações passam pelo backend do CRM. O motor local (llama.cpp /
+   whisper.cpp) só existe na máquina que roda o backend; as ligações via LiveKit
+   funcionam também quando o CRM está publicado (Railway). O navegador nunca
+   recebe chave nem caminho de arquivo. */
+function getAiApiBaseUrl() {
+  if (typeof window === "undefined") return "/api";
+  if (window.location.protocol === "file:") return "http://localhost:3001/api";
+  const stored = localStorage.getItem("crm_ai_api_url");
+  if (stored && stored.trim()) return stored.trim().replace(/\/+$/, "");
+  return CRM_API_BASE;
+}
+
 /* Cabeçalhos de senha para os dois atos sem volta do Financeiro (excluir um
    recebimento e desfazer um pagamento que já entrou).
    Por que cabeçalho: a URL fica registrada em log de proxy e de navegador, e o
@@ -955,11 +971,36 @@ function cabecalhosSenha(credenciais) {
   return headers;
 }
 
+/* Pedidos da IA (status, histórico, WhatsApp automático e ligações). A base é a
+   do backend do CRM; erros viram frases em português, nunca "Failed to fetch". */
+async function aiRequest(path, options = {}) {
+  const base = getAiApiBaseUrl();
+  let response;
+  try {
+    response = await fetch(`${base}/ai${path}`, { cache: "no-store", ...options });
+  } catch (error) {
+    const https = typeof window !== "undefined" && window.location.protocol === "https:";
+    if (https && /^http:\/\/localhost/i.test(base)) {
+      throw new Error("Para usar a IA local, abra o CRM pelo run-crm.bat (http://localhost:3001). O navegador não deixa uma página https chamar o backend local.");
+    }
+    throw new Error(`Não foi possível falar com o backend local da IA em ${base}. Confira se o run-crm.bat está aberto (${error.message}).`);
+  }
+  const contentType = response.headers.get("content-type") || "";
+  if (!response.ok) {
+    let data = null;
+    try { data = await response.json(); } catch (_) { data = null; }
+    throw new Error((data && data.message) || `O assistente de IA respondeu HTTP ${response.status}.`);
+  }
+  if (!contentType.includes("application/json")) return response;
+  const json = await response.json();
+  if (!json || !json.success) throw new Error((json && json.message) || "Resposta inválida do assistente de IA.");
+  return json.data;
+}
+
 const crmApi = {
   getBaseUrl() {
     return CRM_API_BASE;
-  },
-  setBaseUrl(url) {
+  },  setBaseUrl(url) {
     if (url && url.trim()) {
       const clean = url.trim().replace(/\/+$/, "");
       CRM_API_BASE = clean;
@@ -1445,6 +1486,52 @@ const crmApi = {
           body: JSON.stringify({ commissionPercent }),
         }).then((r) => r.json()),
     },
+  },
+
+  /* IA do CRM: resposta automática no WhatsApp (motor local) e ligações pelo
+     navegador via LiveKit. O navegador só vê texto e links; nenhuma chave sai
+     do backend. */
+  ai: {
+    baseUrl: () => getAiApiBaseUrl(),
+    status: (refresh) => aiRequest(`/status${refresh ? "?refresh=1" : ""}`, { signal: AbortSignal.timeout(15000) }),
+    sessions: (leadId) => aiRequest(`/sessions?leadId=${encodeURIComponent(leadId)}`, { signal: AbortSignal.timeout(15000) }),
+    transcript: (id) => aiRequest(`/sessions/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(15000) }),
+    /* Cria a sala do LiveKit e devolve o link do lead. `sendWhatsApp` manda o
+       link na conversa do WhatsApp do próprio lead. */
+    createCall: (leadId, { user, sendWhatsApp, message } = {}) => aiRequest(`/calls/${encodeURIComponent(leadId)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user, sendWhatsApp: Boolean(sendWhatsApp), message }),
+      signal: AbortSignal.timeout(45000),
+    }),
+    calls: (leadId) => aiRequest(`/calls/${encodeURIComponent(leadId)}`, { signal: AbortSignal.timeout(15000) }),
+    shareCall: (leadId, callId, { user, message } = {}) => aiRequest(`/calls/${encodeURIComponent(leadId)}/${encodeURIComponent(callId)}/share`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user, message }),
+      signal: AbortSignal.timeout(60000),
+    }),
+    endCall: (leadId, callId) => aiRequest(`/calls/${encodeURIComponent(leadId)}/${encodeURIComponent(callId)}/end`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(20000),
+    }),
+    whatsappAuto: (leadId) => aiRequest(`/whatsapp-auto/${encodeURIComponent(leadId)}`, {
+      signal: AbortSignal.timeout(20000),
+    }),
+    setWhatsappAuto: (leadId, enabled, user) => aiRequest(`/whatsapp-auto/${encodeURIComponent(leadId)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: Boolean(enabled), user }),
+      signal: AbortSignal.timeout(60000),
+    }),
+    startWhatsappAuto: (leadId, user) => aiRequest(`/whatsapp-auto/${encodeURIComponent(leadId)}/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user }),
+      signal: AbortSignal.timeout(180000),
+    }),
   },
 
   async seedDemoData() {
@@ -4503,6 +4590,7 @@ const LEAD_TABS = [
   { id: "followups", label: "Follow-ups" },
   { id: "demo", label: "Demo" },
   { id: "proposta", label: "Proposta" },
+  { id: "ia", label: "IA no WhatsApp" },
 ];
 
 function InfoRow({ icon: Icon, label, value, href }) {
@@ -5109,6 +5197,495 @@ function NextActionBanner({ lead, onOpen }) {
   );
 }
 
+/* =========================================================================
+   IA DO WHATSAPP E LIGAÇÕES
+   -------------------------------------------------------------------------
+   - Resposta automática: llama.cpp local responde só a mensagem RECEBIDA;
+     a IA escreve quando o cliente fala, ou pelo botão "IA iniciar conversa".
+   - Ligações: o backend cria a sala no LiveKit e envia ao lead um link que
+     abre no navegador (sem instalar app). O agente de IA, quando publicado no
+     LiveKit Cloud, entra na sala e atende pela nuvem.
+   ========================================================================= */
+function aiFmtDuration(total) {
+  const s = Math.max(0, Math.round(Number(total) || 0));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function AiStatusFlag({ ok, warn, label, title }) {
+  const color = ok ? "var(--success)" : warn ? "var(--warm, #B7791F)" : "var(--danger)";
+  return (
+    <span className="inline-flex items-center gap-1.5" title={title || label}>
+      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+      <span style={{ color: "var(--ink-soft)" }}>{label}</span>
+    </span>
+  );
+}
+
+function LeadAiPanel({ lead, currentUser, notify }) {
+  const [status, setStatus] = useState(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [sessions, setSessions] = useState([]);
+  const [historyDetail, setHistoryDetail] = useState(null);
+  const [waAuto, setWaAuto] = useState(null);
+  const [waAutoBusy, setWaAutoBusy] = useState(false);
+  const [waConfirm, setWaConfirm] = useState(false);
+  const [waError, setWaError] = useState("");
+  const [waStartBusy, setWaStartBusy] = useState(false);
+  const [waStartConfirm, setWaStartConfirm] = useState(false);
+  const [call, setCall] = useState(null);
+  const [calls, setCalls] = useState([]);
+  const [callBusy, setCallBusy] = useState("");
+  const [callError, setCallError] = useState("");
+  const [callWarnings, setCallWarnings] = useState([]);
+
+  const loadStatus = useCallback(async (refresh) => {
+    setStatusLoading(true);
+    setStatusError("");
+    try {
+      const data = await crmApi.ai.status(Boolean(refresh));
+      setStatus(data);
+    } catch (err) {
+      setStatus(null);
+      setStatusError(err.message || "IA/LiveKit indisponíveis.");
+    } finally {
+      setStatusLoading(false);
+    }
+  }, []);
+
+  const loadSessions = useCallback(async () => {
+    try {
+      const list = await crmApi.ai.sessions(lead.id);
+      setSessions((Array.isArray(list) ? list : []).filter((s) => (s.channel || "") === "whatsapp"));
+    } catch (_) {
+      setSessions([]);
+    }
+  }, [lead.id]);
+
+  const loadCalls = useCallback(async () => {
+    try {
+      const list = await crmApi.ai.calls(lead.id);
+      setCalls(Array.isArray(list) ? list : []);
+    } catch (_) {
+      setCalls([]);
+    }
+  }, [lead.id]);
+
+  useEffect(() => { loadStatus(false); loadSessions(); }, [lead.id, loadStatus, loadSessions]);
+  useEffect(() => { loadCalls(); }, [lead.id, loadCalls]);
+
+  const loadWaAuto = useCallback(async () => {
+    try {
+      const data = await crmApi.ai.whatsappAuto(lead.id);
+      setWaAuto(data || null);
+    } catch (_) {
+      setWaAuto(null);
+    }
+  }, [lead.id]);
+
+  useEffect(() => { loadWaAuto(); }, [loadWaAuto]);
+
+  async function changeWaAuto(ligar) {
+    setWaAutoBusy(true);
+    setWaError("");
+    try {
+      await crmApi.ai.setWhatsappAuto(lead.id, ligar, currentUser);
+      setWaConfirm(false);
+      setNotice(ligar
+        ? "Envio automático ligado: a IA responde sozinha neste WhatsApp."
+        : "Envio automático desligado: a IA não responde mais neste WhatsApp.");
+      await loadWaAuto();
+    } catch (err) {
+      setWaError(err.message || "Não foi possível mudar o envio automático.");
+      setWaConfirm(false);
+      loadWaAuto();
+    } finally {
+      setWaAutoBusy(false);
+    }
+  }
+
+  /* Abordagem inicial: ação explícita do atendente. A IA escreve e envia a
+     primeira mensagem; o backend recusa se a conversa já tiver mensagens. */
+  async function startWaConversation() {
+    setWaStartBusy(true);
+    setWaError("");
+    try {
+      const data = await crmApi.ai.startWhatsappAuto(lead.id, currentUser);
+      setWaStartConfirm(false);
+      setNotice(`Abordagem enviada: “${(data && data.message) || ""}”`);
+      await loadWaAuto();
+      loadSessions();
+    } catch (err) {
+      setWaError(err.message || "Não foi possível iniciar a conversa.");
+      setWaStartConfirm(false);
+      loadWaAuto();
+    } finally {
+      setWaStartBusy(false);
+    }
+  }
+
+  /* Ligações: o backend cria a sala no LiveKit e devolve o link do lead. O
+     atendente abre a mesma chamada; o agente de IA entra se estiver publicado. */
+  async function criarLigacao(enviarNoWhatsApp) {
+    if (callBusy) return;
+    setCallBusy(enviarNoWhatsApp ? "enviando" : "criando");
+    setCallError("");
+    setCallWarnings([]);
+    try {
+      const data = await crmApi.ai.createCall(lead.id, { user: currentUser, sendWhatsApp: enviarNoWhatsApp });
+      setCall(data.call);
+      setCallWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+      if (data.whatsappSent) setNotice("Ligação criada e link enviado no WhatsApp do lead.");
+      else if (enviarNoWhatsApp) setNotice("Ligação criada, mas o link não foi enviado no WhatsApp.");
+      else setNotice("Ligação pronta: copie o link para o lead ou abra a chamada.");
+      loadCalls();
+    } catch (err) {
+      setCallError(err.message || "Não foi possível criar a ligação.");
+    } finally {
+      setCallBusy("");
+    }
+  }
+
+  async function copiarLink(url) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setNotice("Link copiado. Envie ao lead ou cole no WhatsApp.");
+    } catch (_) {
+      setError("Não consegui copiar automaticamente. Selecione o link na caixa e copie.");
+    }
+  }
+
+  async function enviarLinkWhatsApp() {
+    if (!call || callBusy) return;
+    setCallBusy("enviando");
+    setCallError("");
+    try {
+      await crmApi.ai.shareCall(lead.id, call.id, { user: currentUser });
+      setNotice("Link enviado na conversa do WhatsApp deste lead.");
+    } catch (err) {
+      setCallError(err.message || "Não foi possível enviar o link no WhatsApp.");
+    } finally {
+      setCallBusy("");
+    }
+  }
+
+  async function encerrarLigacao() {
+    if (!call || callBusy) return;
+    setCallBusy("encerrando");
+    setCallError("");
+    try {
+      await crmApi.ai.endCall(lead.id, call.id);
+      setCall(null);
+      setNotice("Sala encerrada: o link desta ligação deixou de funcionar.");
+      loadCalls();
+      if (typeof notify === "function") notify("Ligação encerrada.");
+    } catch (err) {
+      setCallError(err.message || "Não foi possível encerrar a sala.");
+    } finally {
+      setCallBusy("");
+    }
+  }
+
+  async function openHistory(item) {
+    setError("");
+    try {
+      const data = await crmApi.ai.transcript(item.id);
+      setHistoryDetail(data);
+    } catch (err) {
+      setError(err.message || "Não foi possível abrir o histórico.");
+    }
+  }
+
+  const llamaOk = Boolean(status && status.llama && status.llama.available);
+  const storageDurable = Boolean(status && status.storage && status.storage.durable);
+  const storageWarning = Boolean(status && status.storage && status.storage.migrationPending);
+  const livekitOk = Boolean(status && status.livekit && status.livekit.configured);
+  const livekitAgent = Boolean(status && status.livekit && status.livekit.agent);
+
+  const callBusyLabel = callBusy === "criando" ? "Criando a sala..."
+    : callBusy === "enviando" ? "Enviando o link..."
+      : callBusy === "encerrando" ? "Encerrando a sala..."
+        : "";
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl px-4 py-3" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          <span className="font-semibold text-sm mr-1">IA e ligações</span>
+          <AiStatusFlag ok={llamaOk} label={llamaOk ? "IA disponível" : "IA indisponível"} title={status && status.llama ? status.llama.detail : ""} />
+          <AiStatusFlag ok={livekitOk} label={livekitOk ? "LiveKit pronto" : "LiveKit não configurado"} title={status && status.livekit ? status.livekit.detail : ""} />
+          <AiStatusFlag ok={storageDurable} warn={storageWarning} label={storageDurable ? "Histórico no banco" : "Histórico em memória"} title={status && status.storage ? status.storage.detail : ""} />
+          <span className="ml-auto flex items-center gap-2">
+            {status && status.llama && status.llama.model ? <span className="gc-mono" style={{ color: "var(--slate)" }}>{status.llama.model}</span> : null}
+            <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => loadStatus(true)} disabled={statusLoading} title="Testar a IA e o LiveKit de novo">
+              {statusLoading ? "Testando..." : "Atualizar"}
+            </Button>
+          </span>
+        </div>
+        {statusError ? <div className="text-xs mt-2" style={{ color: "var(--danger)" }}>{statusError}</div> : null}
+        {status && status.storage && status.storage.migrationPending ? (
+          <div className="text-xs mt-2" style={{ color: "var(--warm, #B7791F)" }}>
+            A migration do histórico ainda não foi aplicada: as conversas da IA ficam só na memória até você rodar o SQL no Supabase.
+          </div>
+        ) : null}
+      </div>
+
+      {error ? (
+        <div className="rounded-xl px-4 py-3 text-sm" role="alert" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>{error}</div>
+      ) : null}
+      {notice ? (
+        <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "var(--success-bg)", color: "var(--success)" }}>{notice}</div>
+      ) : null}
+
+      <SectionCard
+        title="Atendimento automático no WhatsApp"
+        action={<span className="text-xs font-semibold" style={{ color: waAuto && waAuto.enabled ? "var(--success)" : "var(--slate)" }}>{waAuto && waAuto.enabled ? "Ativado" : "Desativado"}</span>}
+      >
+        <div className="px-5 py-4 space-y-3 text-sm">
+          <p style={{ color: "var(--ink-soft)" }}>
+            Quando ligado, a Sofia responde sozinha no WhatsApp <strong>deste lead</strong>, sem você confirmar cada mensagem.
+            Usa o mesmo WhatsApp já conectado no CRM; nenhum outro contato é afetado e você pode desligar quando quiser.
+          </p>
+          {waAuto ? (
+            <div className="flex items-center gap-2 flex-wrap text-xs" style={{ color: "var(--slate)" }}>
+              {waAuto.phone
+                ? <span>Número: <span className="gc-mono" style={{ color: "var(--ink)" }}>{waAuto.phone}</span></span>
+                : <span style={{ color: "var(--danger)" }}>Lead sem WhatsApp/telefone cadastrado.</span>}
+              <span>· WhatsApp {waAuto.whatsapp && waAuto.whatsapp.connected ? "conectado" : "desconectado"}</span>
+              <span>· IA {waAuto.llama && waAuto.llama.available ? "disponível" : "fora do ar"}</span>
+            </div>
+          ) : null}
+          {waAuto && waAuto.storage && !waAuto.storage.durable ? (
+            <div className="text-xs" style={{ color: "var(--warm, #B7791F)" }}>
+              A migration 017 ainda não foi aplicada: a opção fica só na memória e se perde ao reiniciar o backend.
+            </div>
+          ) : null}
+          {waError ? (
+            <div className="rounded-xl px-3 py-2 text-xs" role="alert" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>{waError}</div>
+          ) : null}
+          {waAuto && !waAuto.enabled && !waAuto.canEnable ? (
+            <div className="text-xs" style={{ color: "var(--warm, #B7791F)" }}>
+              Para ativar: {!waAuto.phone
+                ? "cadastre o WhatsApp do lead."
+                : !waAuto.whatsapp || !waAuto.whatsapp.connected
+                  ? (waAuto.whatsapp && waAuto.whatsapp.detail) || "conecte o WhatsApp no CRM."
+                  : "ligue os motores de IA (INICIAR_IA_VOZ.bat)."}
+            </div>
+          ) : null}
+          {waConfirm ? (
+            <div className="rounded-xl px-3 py-3 space-y-2" style={{ background: "var(--surface-sunken)", border: "1px solid var(--line)" }}>
+              <div className="text-xs" style={{ color: "var(--ink-soft)" }}>
+                Confirmar? A partir de agora a IA pode enviar mensagens ao cliente sem sua revisão. Ela não inventa preço nem condição,
+                mas a conversa passa a ser automática.
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button size="sm" variant="danger" onClick={() => changeWaAuto(true)} disabled={waAutoBusy}>
+                  {waAutoBusy ? "Ativando..." : "Confirmar e ativar"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setWaConfirm(false)} disabled={waAutoBusy}>Cancelar</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              {waAuto && waAuto.enabled ? (
+                <Button size="sm" variant="secondary" onClick={() => changeWaAuto(false)} disabled={waAutoBusy}>
+                  {waAutoBusy ? "Desligando..." : "Desativar envio automático"}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={MessageCircle}
+                  onClick={() => { setWaError(""); setWaConfirm(true); }}
+                  disabled={waAutoBusy || !waAuto || !waAuto.canEnable || Boolean(callBusy)}
+                >
+                  Ativar envio automático
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => loadWaAuto()} disabled={waAutoBusy}>Atualizar</Button>
+            </div>
+          )}
+          {waAuto && waAuto.enabled && !waConfirm ? (
+            <div className="space-y-2 pt-1" style={{ borderTop: "1px solid var(--line)" }}>
+              <p className="text-xs pt-2" style={{ color: "var(--slate)" }}>
+                Quer que a IA dê o primeiro passo? Ela escreve e envia a abordagem inicial.
+                Só vale para conversa nova — se o cliente já escreveu, a IA responde normalmente.
+              </p>
+              {waStartConfirm ? (
+                <div className="rounded-xl px-3 py-3 space-y-2" style={{ background: "var(--surface-sunken)", border: "1px solid var(--line)" }}>
+                  <div className="text-xs" style={{ color: "var(--ink-soft)" }}>
+                    A IA vai gerar e enviar agora a primeira mensagem, sem revisão sua. Se já existir conversa
+                    neste WhatsApp, nada é enviado e você verá o aviso.
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button size="sm" variant="primary" icon={Sparkles} onClick={startWaConversation} disabled={waStartBusy}>
+                      {waStartBusy ? "A IA está escrevendo..." : "Gerar e enviar abordagem"}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setWaStartConfirm(false)} disabled={waStartBusy}>Cancelar</Button>
+                  </div>
+                </div>
+              ) : (
+                <Button size="sm" variant="ghost" icon={Sparkles} onClick={() => { setWaError(""); setWaStartConfirm(true); }} disabled={waStartBusy || Boolean(callBusy)}>
+                  IA iniciar conversa
+                </Button>
+              )}
+            </div>
+          ) : null}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Ligar para o lead"
+        action={<Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => { loadCalls(); loadStatus(false); }}>Atualizar</Button>}
+      >
+        <div className="px-5 py-4 space-y-3 text-sm">
+          <p style={{ color: "var(--ink-soft)" }}>
+            O CRM cria uma sala do LiveKit e um link. O lead abre o link no navegador do celular ou do computador e fala com você.
+            {livekitAgent
+              ? " A Sofia também entra na chamada e atende pelo agente de IA publicado no LiveKit Cloud."
+              : " Se você publicar o agente de IA no LiveKit Cloud, a Sofia entra na chamada e atende sozinha."}
+            {" "}Usa os minutos gratuitos do LiveKit (WebRTC e agente). Ligação para telefone comum (PSTN) não está incluída.
+          </p>
+          {!livekitOk ? (
+            <div className="text-xs" style={{ color: "var(--warm, #B7791F)" }}>
+              LiveKit não configurado. Preencha LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET no backend/.env e reinicie o backend.
+              O link do lead também precisa de um endereço público: defina PUBLIC_BASE_URL (Railway ou ngrok) porque o celular do cliente não abre localhost.
+            </div>
+          ) : null}
+          {status && status.callsStorage && status.callsStorage.migrationPending ? (
+            <div className="text-xs" style={{ color: "var(--warm, #B7791F)" }}>
+              A migration 018 ainda não foi aplicada: o histórico de ligações fica só na memória até você rodar o SQL no Supabase.
+            </div>
+          ) : null}
+          {callError ? (
+            <div className="rounded-xl px-3 py-2 text-xs" role="alert" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>{callError}</div>
+          ) : null}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              size="sm"
+              variant="primary"
+              icon={Phone}
+              onClick={() => criarLigacao(false)}
+              disabled={Boolean(callBusy) || !livekitOk}
+            >
+              {callBusy === "criando" ? "Criando a sala..." : "Gerar link de ligação"}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={MessageCircle}
+              onClick={() => criarLigacao(true)}
+              disabled={Boolean(callBusy) || !livekitOk || !waAuto}
+            >
+              {callBusy === "enviando" ? "Enviando..." : "Gerar e enviar no WhatsApp"}
+            </Button>
+            {callBusyLabel ? <span className="text-xs" style={{ color: "var(--slate)" }}>{callBusyLabel}</span> : null}
+          </div>
+
+          {call ? (
+            <div className="rounded-xl px-3 py-3 space-y-2" style={{ background: "var(--surface-sunken)", border: "1px solid var(--line)" }}>
+              <div className="text-xs font-semibold" style={{ color: "var(--ink)" }}>
+                Ligação aberta · expira em {new Date(call.expiresAt).toLocaleString("pt-BR")}
+                {call.agent ? " · agente de IA acionado" : " · só entre navegadores"}
+              </div>
+              <input
+                readOnly
+                value={call.inviteUrl}
+                onFocus={(event) => event.target.select()}
+                className="w-full rounded-lg px-3 py-2 text-xs gc-mono"
+                style={{ background: "var(--surface)", border: "1px solid var(--line)", color: "var(--ink)" }}
+                aria-label="Link da ligação para o lead"
+              />
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button size="sm" variant="secondary" icon={Copy} onClick={() => copiarLink(call.inviteUrl)}>Copiar link</Button>
+                <Button size="sm" variant="primary" icon={Phone} onClick={() => window.open(call.ownerUrl, "_blank", "noopener")}>Abrir minha ligação</Button>
+                <Button size="sm" variant="ghost" icon={MessageCircle} onClick={enviarLinkWhatsApp} disabled={Boolean(callBusy)}>Reenviar no WhatsApp</Button>
+                <Button size="sm" variant="ghost" icon={X} onClick={encerrarLigacao} disabled={Boolean(callBusy)}>Encerrar sala</Button>
+              </div>
+            </div>
+          ) : null}
+
+          {callWarnings.length ? (
+            <ul className="text-xs space-y-1" style={{ color: "var(--warm, #B7791F)" }}>
+              {callWarnings.map((item, index) => <li key={index}>· {item}</li>)}
+            </ul>
+          ) : null}
+
+          <div className="pt-1" style={{ borderTop: "1px solid var(--line)" }}>
+            <div className="text-xs font-semibold pt-2 mb-1" style={{ color: "var(--ink-soft)" }}>Ligações deste lead</div>
+            {calls.length === 0 ? (
+              <div className="text-xs" style={{ color: "var(--slate)" }}>Nenhuma ligação registrada ainda.</div>
+            ) : (
+              <div className="space-y-1">
+                {calls.slice(0, 8).map((item) => (
+                  <div key={item.id} className="flex items-center gap-2 flex-wrap text-xs" style={{ color: "var(--slate)" }}>
+                    <Clock size={13} />
+                    <span className="gc-mono">{fmtDateTime(item.startedAt)}</span>
+                    <span>· {item.status === "ativa" ? "aberta agora" : "encerrada"}</span>
+                    <span>· {aiFmtDuration(item.durationSeconds)}</span>
+                    {item.status === "ativa" && item.inviteUrl ? (
+                      <Button size="sm" variant="ghost" icon={Copy} onClick={() => copiarLink(item.inviteUrl)}>Link</Button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Atendimentos da IA no WhatsApp"
+        action={<Button size="sm" variant="ghost" icon={RefreshCw} onClick={loadSessions}>Atualizar</Button>}
+      >
+        {sessions.length === 0 ? (
+          <div className="px-5 py-4 text-sm" style={{ color: "var(--slate)" }}>Nenhum atendimento automático registrado para este lead.</div>
+        ) : (
+          <div>
+            {sessions.slice(0, 10).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => openHistory(item)}
+                className="w-full text-left px-5 py-3 gc-row-hover gc-focus"
+                style={{ borderBottom: "1px solid var(--line)" }}
+              >
+                <div className="flex items-center gap-2 flex-wrap text-sm">
+                  <Clock size={14} style={{ color: "var(--slate)" }} />
+                  <span className="gc-mono text-xs">{fmtDateTime(item.startedAt)}</span>
+                  <span className="text-xs" style={{ color: "var(--slate)" }}>{aiFmtDuration(item.durationSeconds)} · {item.messageCount || 0} mensagens</span>
+                  <span className="ml-auto text-[11px] uppercase tracking-wide" style={{ color: item.status === "ativa" ? "var(--accent-ink)" : "var(--slate)" }}>{item.status}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {historyDetail ? (
+          <div className="px-5 py-4" style={{ borderTop: "1px solid var(--line)" }}>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="text-sm font-medium">Conversa · {fmtDateTime(historyDetail.session && historyDetail.session.startedAt)}</div>
+              <Button size="sm" variant="ghost" icon={X} onClick={() => setHistoryDetail(null)}>Fechar</Button>
+            </div>
+            <div className="rounded-xl p-3 space-y-2" style={{ background: "var(--surface-sunken)", maxHeight: 300, overflowY: "auto" }}>
+              {(historyDetail.messages || []).length === 0 ? (
+                <div className="text-sm" style={{ color: "var(--slate)" }}>Sem mensagens gravadas nesta sessão.</div>
+              ) : (historyDetail.messages || []).map((m) => (
+                <div key={m.id} className="text-sm whitespace-pre-wrap break-words">
+                  <strong style={{ color: "var(--ink-soft)" }}>{m.role === "assistant" ? (status && status.assistantName) || "Assistente" : "Cliente"}:</strong>{" "}
+                  {m.content}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </SectionCard>
+    </div>
+  );
+}
+
 function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initialTab, onEditLead, onDeleteLead, waConversation, onChangeWaStatus }) {
   const [tab, setTab] = useState(initialTab || "geral");
   useEffect(() => { setTab(initialTab || "geral"); }, [leadId]);
@@ -5330,6 +5907,12 @@ function LeadDetail({ leadId, db, onClose, currentUser, dispatch, notify, initia
           {proposals.length === 0 ? <EmptyState icon={FileText} title="Nenhuma proposta enviada" /> : (
             <div className="space-y-3">{proposals.map(p => <ProposalCard key={p.id} proposal={p} onUpdateStatus={(id, status) => { dispatch({ type: "UPDATE_PROPOSAL", id, patch: { status } }); notify("Proposta atualizada."); }} />)}</div>
           )}
+        </div>
+      )}
+
+      {tab === "ia" && (
+        <div className="gc-fade-in">
+          <LeadAiPanel lead={lead} currentUser={currentUser} notify={notify} />
         </div>
       )}
 
@@ -9505,7 +10088,7 @@ function WhatsAppView({ currentUser }) {
                 {historico.buscando ? "Buscando as mensagens antigas…" : (historico.erro || historico.aviso)}
               </div>
             )}
-            <div className="flex-1 min-h-0 p-4 space-y-3 overflow-y-auto">{conversation.messages.map(message => <div key={message.id} className={`flex ${message.direction === "outgoing" ? "justify-end" : "justify-start"}`}><div className="max-w-[85%] rounded-xl px-3 py-2" style={{ background: message.direction === "outgoing" ? "var(--accent-soft)" : "var(--surface-sunken)", color: "var(--ink)" }}>{message.hasAudio ? <VoiceNote conversationId={conversation.id} message={message} /> : <div className="text-sm whitespace-pre-wrap break-words">{message.content}</div>}<div className="text-[10px] text-right mt-1" style={{ color: "var(--slate)" }}>{formatTime(message.timestamp)} · {messageStatusLabel(message.status)}{message.direction === "outgoing" && message.sentBy === ENVIADA_PELO_CELULAR ? " · pelo celular" : ""}</div></div></div>)}<div ref={messagesEndRef} /></div>
+            <div className="flex-1 min-h-0 p-4 space-y-3 overflow-y-auto">{conversation.messages.map(message => <div key={message.id} className={`flex ${message.direction === "outgoing" ? "justify-end" : "justify-start"}`}><div className="max-w-[85%] rounded-xl px-3 py-2" style={{ background: message.direction === "outgoing" ? "var(--accent-soft)" : "var(--surface-sunken)", color: "var(--ink)" }}>{message.hasAudio ? <VoiceNote conversationId={conversation.id} message={message} /> : <div className="text-sm whitespace-pre-wrap break-words">{message.content}</div>}<div className="text-[10px] text-right mt-1" style={{ color: "var(--slate)" }}>{formatTime(message.timestamp)} · {messageStatusLabel(message.status)}{message.direction === "outgoing" && message.sentBy === ENVIADA_PELO_CELULAR ? " · pelo celular" : ""}{message.direction === "outgoing" && /^IA\b/.test(String(message.sentBy || "")) ? " · IA" : ""}</div></div></div>)}<div ref={messagesEndRef} /></div>
             <form onSubmit={send} className="p-3 space-y-2" style={{ borderTop: "1px solid var(--line)" }}>
               <input
                 ref={imageInputRef}

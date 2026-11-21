@@ -46,4 +46,8 @@ router.use('/finance', require('./financeRoutes'));
 router.use('/enrichment', require('./enrichmentRoutes'));
 router.use('/whatsapp', require('./whatsappRoutes'));
 
+/* IA local (llama.cpp para texto e whisper.cpp para áudio) e ligações
+   via LiveKit Cloud. Consulte backend/AI_VOZ.md e backend/LIGACOES_LIVEKIT.md. */
+router.use('/ai', require('./aiRoutes'));
+
 module.exports = router;

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Ligação — CRM Comercial</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<style>
+  :root {
+    --ink: #17191c; --ink-soft: #4b5563; --surface: #ffffff; --surface-sunken: #f4f6f8;
+    --line: #e3e7ec; --accent: #0f766e; --accent-strong: #115e59; --danger: #b42318;
+    --success: #067647; --warm: #b7791f;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(circle at 50% -10%, #d9f3ef, transparent 46%), var(--surface-sunken);
+    color: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px; min-height: 100svh;
+  }
+  .card {
+    width: 100%; max-width: 440px; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 24px; padding: 26px 24px;
+    box-shadow: 0 20px 60px rgba(23,25,28,0.10);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .brand img { width: 34px; height: 34px; }
+  .brand strong { font-size: 15px; letter-spacing: .2px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  p { margin: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.55; }
+  .status {
+    margin: 18px 0 6px; padding: 12px 14px; border-radius: 14px;
+    background: var(--surface-sunken); font-size: 13px; color: var(--ink-soft);
+  }
+  .status.ok { color: var(--success); background: #ecfdf3; }
+  .status.err { color: var(--danger); background: #fef3f2; }
+  .status.warn { color: var(--warm); background: #fffaeb; }
+  .participantes { margin-top: 10px; font-size: 12px; color: var(--ink-soft); }
+  .audio { display: none; }
+  .actions { display: grid; gap: 10px; margin-top: 20px; }
+  button {
+    appearance: none; border: 0; border-radius: 14px; padding: 14px 16px;
+    font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: filter .15s ease, transform .05s ease;
+  }
+  button:active { transform: scale(.99); }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  .primary { background: var(--accent); color: #fff; }
+  .primary:hover:not(:disabled) { filter: brightness(1.07); }
+  .secondary { background: var(--surface-sunken); color: var(--ink); border: 1px solid var(--line); }
+  .danger { background: #fef3f2; color: var(--danger); border: 1px solid #fecdca; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  .timer { margin-top: 14px; text-align: center; font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-soft); }
+  .foot { margin-top: 18px; font-size: 11px; color: var(--ink-soft); text-align: center; line-height: 1.5; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">
+      <img src="/favicon.svg" alt="" />
+      <strong>CRM Comercial</strong>
+    </div>
+    <h1 id="titulo">Ligação</h1>
+    <p id="descricao">Carregando a chamada…</p>
+
+    <div id="status" class="status">Preparando…</div>
+    <div id="participantes" class="participantes"></div>
+    <div id="audio" class="audio" aria-hidden="true"></div>
+    <div id="timer" class="timer hidden">00:00</div>
+
+    <div class="actions">
+      <button id="entrar" class="primary" disabled>Entrar na ligação</button>
+      <div id="controles" class="row hidden">
+        <button id="microfone" class="secondary">Desligar microfone</button>
+        <button id="sair" class="danger">Sair</button>
+      </div>
+    </div>
+
+    <div class="foot">
+      Abra o link no celular ou no computador. É preciso permitir o microfone.
+      Se a página pedir para instalar algo, ignore: a ligação roda direto no navegador.
+    </div>
+  </main>
+
+<script type="module">
+/* Página pública da ligação. O token vem assinado pelo backend e contém a sala;
+   aqui não há login do CRM, então nada de chave ou segredo no navegador. */
+const params = new URLSearchParams(window.location.search);
+const token = params.get("t") || "";
+const urlLiveKit = params.get("u") || "";
+
+const elTitulo = document.getElementById("titulo");
+const elDescricao = document.getElementById("descricao");
+const elStatus = document.getElementById("status");
+const elParticipantes = document.getElementById("participantes");
+const elAudio = document.getElementById("audio");
+const elTimer = document.getElementById("timer");
+const elEntrar = document.getElementById("entrar");
+const elControles = document.getElementById("controles");
+const elMicrofone = document.getElementById("microfone");
+const elSair = document.getElementById("sair");
+
+let Room = null;
+let RoomEvent = null;
+let Track = null;
+let room = null;
+let entrou = false;
+let iniciadoEm = 0;
+let timerId = null;
+let microfoneLigado = true;
+
+function definirStatus(texto, tipo) {
+  elStatus.textContent = texto;
+  elStatus.className = `status${tipo ? ` ${tipo}` : ""}`;
+}
+
+function lerToken(bruto) {
+  const parte = String(bruto).split(".")[1];
+  if (!parte) throw new Error("Token inválido.");
+  const base64 = parte.replace(/-/g, "+").replace(/_/g, "/");
+  const binario = atob(base64 + "===".slice((base64.length + 3) % 4));
+  const bytes = Uint8Array.from(binario, (c) => c.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+let dados = null;
+try {
+  dados = lerToken(token);
+} catch (_) {
+  definirStatus("Este link de ligação não é válido. Peça um novo link para quem enviou.", "err");
+  elDescricao.textContent = "Link incompleto ou corrompido.";
+  throw new Error("token inválido");
+}
+
+const expirado = Number(dados.exp || 0) * 1000 < Date.now();
+const nome = dados.name || "Convidado";
+elTitulo.textContent = `Ligação de ${nome}`;
+elDescricao.textContent = expirado
+  ? "Este link venceu. Peça um novo link para quem enviou."
+  : "Quando estiver pronto, toque em Entrar na ligação e permita o microfone.";
+
+if (!urlLiveKit) {
+  definirStatus("Falta o endereço do LiveKit neste link. Peça um novo link.", "err");
+} else if (expirado) {
+  definirStatus("Link expirado.", "err");
+} else {
+  definirStatus("Pronto para entrar.");
+  elEntrar.disabled = false;
+}
+
+function formatarTempo(segundos) {
+  const s = Math.max(0, Math.floor(segundos));
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function atualizarTimer() {
+  const segundos = (Date.now() - iniciadoEm) / 1000;
+  elTimer.textContent = formatarTempo(segundos);
+}
+
+function atualizarParticipantes() {
+  if (!room) { elParticipantes.textContent = ""; return; }
+  /* roomInfo.numParticipants já conta você; somar 1 mostrava "2" sozinho. */
+  const total = 1 + (room.remoteParticipants ? room.remoteParticipants.size : 0);
+  elParticipantes.textContent = total === 1
+    ? "Você está na sala. Aguardando a outra pessoa…"
+    : `${total} pessoas na ligação.`;
+}
+
+function anexarAudio(track) {
+  if (!track || track.kind !== Track.Kind.Audio) return;
+  const elemento = track.attach();
+  elemento.autoplay = true;
+  elemento.setAttribute("data-track", track.sid || "");
+  elAudio.appendChild(elemento);
+  const tentar = elemento.play();
+  if (tentar && tentar.catch) tentar.catch(() => {});
+}
+
+function removerAudio(track) {
+  if (!track) return;
+  track.detach().forEach((elemento) => elemento.remove());
+}
+
+elEntrar.addEventListener("click", async () => {
+  if (!token || !urlLiveKit) return;
+  elEntrar.disabled = true;
+  elEntrar.textContent = "Entrando…";
+  definirStatus("Conectando à sala…");
+
+  try {
+    if (!Room) {
+      /* O SDK é carregado sob demanda: abrir a página não baixa nada pesado. */
+      const sdk = await import("https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.esm.mjs");
+      Room = sdk.Room;
+      RoomEvent = sdk.RoomEvent;
+      Track = sdk.Track;
+    }
+
+    room = new Room({
+      adaptiveStream: true,
+      dynacast: true,
+      audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+
+    room
+      .on(RoomEvent.TrackSubscribed, (track) => anexarAudio(track))
+      .on(RoomEvent.TrackUnsubscribed, (track) => removerAudio(track))
+      .on(RoomEvent.ParticipantConnected, () => atualizarParticipantes())
+      .on(RoomEvent.ParticipantDisconnected, () => atualizarParticipantes())
+      .on(RoomEvent.Disconnected, () => {
+        entrou = false;
+        elControles.classList.add("hidden");
+        elEntrar.classList.remove("hidden");
+        elEntrar.disabled = false;
+        elEntrar.textContent = "Entrar de novo";
+        if (timerId) clearInterval(timerId);
+        timerId = null;
+        definirStatus("Você saiu da ligação. Pode entrar de novo enquanto o link valer.", "warn");
+        atualizarParticipantes();
+      });
+
+    await room.connect(urlLiveKit, token);
+    entrou = true;
+    iniciadoEm = Date.now();
+    elTimer.classList.remove("hidden");
+    atualizarTimer();
+    timerId = setInterval(atualizarTimer, 1000);
+
+    try {
+      await room.localParticipant.setMicrophoneEnabled(true);
+      microfoneLigado = true;
+    } catch (_) {
+      microfoneLigado = false;
+      definirStatus("Entrou, mas o microfone não foi liberado. Toque em Ligar microfone e permita no navegador.", "warn");
+    }
+
+    elEntrar.classList.add("hidden");
+    elControles.classList.remove("hidden");
+    elMicrofone.textContent = microfoneLigado ? "Desligar microfone" : "Ligar microfone";
+    atualizarParticipantes();
+    if (microfoneLigado) definirStatus("Conectado. Fale normalmente.", "ok");
+  } catch (erro) {
+    const mensagem = String((erro && erro.message) || erro);
+    const permissao = /permission|notallowed|microphone/i.test(mensagem);
+    definirStatus(
+      permissao
+        ? "O navegador bloqueou o microfone. Libere o microfone nas permissões do site e tente de novo."
+        : `Não foi possível entrar na ligação (${mensagem.slice(0, 160)}). Se o link venceu, peça outro.`,
+      "err"
+    );
+    elEntrar.disabled = false;
+    elEntrar.textContent = "Tentar de novo";
+  }
+});
+
+elMicrofone.addEventListener("click", async () => {
+  if (!room) return;
+  try {
+    microfoneLigado = !microfoneLigado;
+    await room.localParticipant.setMicrophoneEnabled(microfoneLigado);
+    elMicrofone.textContent = microfoneLigado ? "Desligar microfone" : "Ligar microfone";
+    definirStatus(microfoneLigado ? "Microfone ligado." : "Microfone desligado.", microfoneLigado ? "ok" : "warn");
+  } catch (_) {
+    microfoneLigado = !microfoneLigado;
+    definirStatus("Não foi possível mudar o microfone. Verifique a permissão do navegador.", "err");
+  }
+});
+
+elSair.addEventListener("click", async () => {
+  if (!room) return;
+  elSair.disabled = true;
+  try { await room.disconnect(); } catch (_) {}
+  elSair.disabled = false;
+});
+
+window.addEventListener("beforeunload", () => {
+  if (room && entrou) {
+    try { room.disconnect(); } catch (_) {}
+  }
+});
+</script>
+</body>
+</html>

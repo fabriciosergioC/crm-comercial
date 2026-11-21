@@ -46,6 +46,19 @@ function timestampFromMessage(msg) {
   const seconds = Number(msg?.messageTimestamp || 0);
   return seconds ? new Date(seconds * 1000).toISOString() : new Date().toISOString();
 }
+/* Rastro de cada lote de mensagens que o WhatsApp entrega. Serve para separar
+   "o cliente escreveu e a IA ignorou" de "a mensagem nem chegou neste
+   processo" — sem isso, diagnóstico é chute. Fica em data/whatsapp-incoming.log. */
+const INCOMING_LOG = path.join(__dirname, "../../data/whatsapp-incoming.log");
+function logUpsert(evento, dados) {
+  const linha = `${new Date().toISOString()} ${evento}${dados ? ` ${JSON.stringify(dados)}` : ""}`;
+  try {
+    if (fs.existsSync(INCOMING_LOG) && fs.statSync(INCOMING_LOG).size > 1024 * 1024) {
+      fs.renameSync(INCOMING_LOG, `${INCOMING_LOG}.1`);
+    }
+    fs.appendFileSync(INCOMING_LOG, `${linha}\n`);
+  } catch (_) { /* log nunca interrompe o atendimento */ }
+}
 /* Rótulo de quem mandou quando a mensagem saiu do APP do WhatsApp, e não do CRM.
    O front usa essa string exata para escrever "pelo celular" na bolha. */
 const ENVIADA_PELO_CELULAR = "WhatsApp do celular";
@@ -860,18 +873,64 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
     return { path, content };
   }
 
+  /* Enfileira a resposta automática para UMA mensagem de texto recebida.
+
+     Chamado no fluxo ao vivo E no histórico recente: quando o WhatsApp
+     reconecta, ele às vezes entrega uma mensagem recém-chegada dentro do lote
+     de histórico e o aviso "ao vivo" da MESMA mensagem chega logo depois,
+     marcado como duplicado. Se só o fluxo ao vivo disparasse a IA, a mensagem
+     seria salva e nunca respondida. O serviço descarta o que tem mais de
+     10 minutos, então histórico velho continua sem resposta automática. */
+  enfileirarAtendimentoAutomatico(msg, gravada) {
+    if (!gravada || gravada.duplicada || msg?.key?.fromMe) return false;
+    const texto = messageText(msg);
+    if (!texto || texto[0] === "[") return false;
+    const telefone = incomingPhone(msg.key);
+    if (!telefone) return false;
+    try {
+      require("../ai/whatsappAutoReply").noteIncoming({
+        conversationId: gravada.conversationId,
+        phone: telefone,
+        text: texto,
+        at: timestampFromMessage(msg),
+        messageId: msg?.key?.id || null,
+      });
+      logUpsert("atendimento-automatico", { id: msg?.key?.id, phone: telefone });
+      return true;
+    } catch (error) {
+      console.warn("[ia-whatsapp] Não consegui enfileirar a resposta automática:", error?.message || error);
+      logUpsert("atendimento-automatico-erro", { erro: error?.message || String(error) });
+      return false;
+    }
+  }
+
   async handleIncoming(upsert) {
+    logUpsert("upsert", { type: upsert?.type, total: (upsert?.messages || []).length });
     if (upsert?.type && !["notify", "append"].includes(upsert.type)) return;
     for (const msg of upsert?.messages || []) {
       /* Antes toda mensagem com key.fromMe era jogada fora, então o que ele
          digitava no APP do WhatsApp nunca aparecia no CRM. Agora ela entra como
          saída — a cópia chega pelo mesmo canal da recebida. */
       const gravada = await this.persistirMensagem(msg, { origem: "tempo-real" });
+      const texto = messageText(msg);
+      logUpsert("mensagem", {
+        id: msg?.key?.id,
+        fromMe: Boolean(msg?.key?.fromMe),
+        phone: incomingPhone(msg.key),
+        texto: String(texto || "").slice(0, 50),
+        gravada: Boolean(gravada),
+        duplicada: Boolean(gravada && gravada.duplicada),
+      });
       if (!gravada || gravada.duplicada) continue;
       if (msg?.message?.audioMessage && !msg.key?.fromMe) {
         await this.armarAudioDoCliente(msg, gravada.conversationId, gravada.messageId)
           .catch(error => console.warn("[audio] Preparei mal o áudio recebido:", error?.message || error));
       }
+      /* Atendimento automático da IA: só mensagem de texto RECEBIDA, e só se o
+         lead tiver a opção ligada (o serviço confere). O envio sai pelo mesmo
+         WhatsApp conectado, depois de um pequeno atraso que junta mensagens
+         seguidas em uma resposta só. Nunca interrompe o fluxo do chat. */
+      this.enfileirarAtendimentoAutomatico(msg, gravada);
     }
   }
 
@@ -971,19 +1030,32 @@ class BaileysWhatsAppProvider extends WhatsAppProvider {
 
     let importadas = 0;
     let repetidas = 0;
+    let falhas = 0;
     for (const msg of mensagens) {
       const phone = incomingPhone(msg?.key);
-      const gravada = await this.persistirMensagem(msg, {
-        origem: "historico",
-        nomeDoContato: phone ? nomes.get(phone) : null,
-      });
-      if (!gravada) continue;
-      if (gravada.duplicada) repetidas++;
-      else importadas++;
+      /* Uma mensagem problemática no lote não pode derrubar o lote inteiro:
+         antes, um erro aqui interrompia a importação e as mensagens seguintes
+         simplesmente não entravam. */
+      try {
+        const gravada = await this.persistirMensagem(msg, {
+          origem: "historico",
+          nomeDoContato: phone ? nomes.get(phone) : null,
+        });
+        if (!gravada) continue;
+        if (gravada.duplicada) { repetidas++; continue; }
+        importadas++;
+        /* Mensagem recém-chegada que veio junto no lote: o serviço decide pelo
+           horário (>10 min é histórico e fica em silêncio). */
+        this.enfileirarAtendimentoAutomatico(msg, gravada);
+      } catch (error) {
+        falhas++;
+        console.warn("[historico] Mensagem do lote não entrou:", error?.message || error);
+      }
     }
     this.lastHistoryImportAt = new Date().toISOString();
-    console.log(`[historico] Importadas ${importadas} mensagens antigas (${repetidas} já estavam no CRM), de ${chats.length} conversa(s) no lote.`);
-    return { importadas, repetidas, conversas: chats.length };
+    logUpsert("historico", { importadas, repetidas, falhas, conversas: chats.length });
+    console.log(`[historico] Importadas ${importadas} mensagens antigas (${repetidas} já estavam no CRM)${falhas ? `, ${falhas} com erro` : ''}, de ${chats.length} conversa(s) no lote.`);
+    return { importadas, repetidas, falhas, conversas: chats.length };
   }
 
   /* "Puxe as mensagens antigas desta conversa": o celular só entrega o que vem
