@@ -23,7 +23,9 @@ from livekit.plugins import silero
 STT_MODEL = os.getenv("LK_STT_MODEL", "deepgram/nova-3")
 LLM_MODEL = os.getenv("LK_LLM_MODEL", "google/gemma-4-31b-it")
 TTS_MODEL = os.getenv("LK_TTS_MODEL", "gradium/default")
-TTS_VOICE = os.getenv("LK_TTS_VOICE", "Bianca")
+# Voz brasileira do Gradium no LiveKit Inference (a antiga "Bianca" não tem
+# embeddings no servidor e derruba a sessão).
+TTS_VOICE = os.getenv("LK_TTS_VOICE", "uCqxlQCKi8sPHwG2")
 LANGUAGE = os.getenv("LK_LANGUAGE", "pt-BR")
 AGENT_NAME = os.getenv("LIVEKIT_AGENT_NAME", "sofia-crm")
 

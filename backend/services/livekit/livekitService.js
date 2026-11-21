@@ -114,12 +114,26 @@ function joinToken({ room, identity, name, metadata, ttlSeconds }) {
   });
 }
 
-async function twirp(service, method, body) {
+/* O AgentDispatch só aceita token com a sala no grant. O token global
+   (adminToken) serve para criar/listar/encerrar salas, mas recebe
+   "permissions denied" ao acionar o agente. */
+function roomAdminToken(room) {
+  const agora = nowSeconds();
+  return signJwt({
+    iss: config.apiKey,
+    sub: config.apiKey,
+    nbf: agora - 10,
+    exp: agora + 300,
+    video: { room, roomAdmin: true, roomCreate: true, roomList: true },
+  });
+}
+
+async function twirp(service, method, body, token) {
   const res = await fetch(`${httpBase()}/twirp/livekit.${service}/${method}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${adminToken()}`,
+      Authorization: `Bearer ${token || adminToken()}`,
     },
     body: JSON.stringify(body || {}),
     signal: AbortSignal.timeout(TWIRP_TIMEOUT_MS),
@@ -176,7 +190,7 @@ async function dispatchAgent(room, metadata) {
       room,
       agent_name: config.agentName,
       metadata: metadata ? JSON.stringify(metadata) : undefined,
-    });
+    }, roomAdminToken(room));
     return { dispatched: true, id: (dados && dados.id) || '', detail: 'Agente acionado na sala.' };
   } catch (error) {
     return { dispatched: false, detail: `Agente não acionado: ${String((error && error.message) || error).slice(0, 200)}` };

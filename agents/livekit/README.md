@@ -38,8 +38,8 @@ a chamada não é direcionada ao agente.
 | `LIVEKIT_AGENT_NAME` | `sofia-crm` | mesmo nome no backend |
 | `LK_STT_MODEL` | `deepgram/nova-3` | suporta português |
 | `LK_LLM_MODEL` | `google/gemma-4-31b-it` | rápido e barato |
-| `LK_TTS_MODEL` | `gradium/default` | vozes pt-BR: Bianca, Mateus |
-| `LK_TTS_VOICE` | `Bianca` | ajuste conforme o modelo |
+| `LK_TTS_MODEL` | `gradium/default` | voz brasileira via Gradium |
+| `LK_TTS_VOICE` | `uCqxlQCKi8sPHwG2` | feminina pt-BR (`AByHrwi1S-yLzW-s` = masculina) |
 | `LK_LANGUAGE` | `pt-BR` | aceita `pt`, `pt-BR`, `portuguese` |
 
 Veja a lista atual em [docs.livekit.io/agents/models](https://docs.livekit.io/agents/models/).
